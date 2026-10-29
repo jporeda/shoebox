@@ -1,0 +1,31 @@
+# Personal data lives in private/ and never leaves this machine.
+/private/*
+!/private/README.md
+.env
+.env.*
+!.env.example
+
+# Databases, scans and sidecars (tests generate synthetic images at runtime)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.heic
+*.xmp
+/data/
+/backup/
+
+# Build and tool output
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+.claude/settings.local.json
+.DS_Store

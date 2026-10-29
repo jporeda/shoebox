@@ -1,0 +1,13 @@
+# Copy to config/config.toml to override defaults. Environment variables
+# (SHOEBOX_<NAME>) take precedence over this file.
+
+# Regex on the file name without extension. A match marks a back scan; the
+# "stem" group must equal the front's file name. Default matches
+# IMG_0042_back, IMG_0042-b, "IMG_0042 reverse".
+# back_pattern = '^(?P<stem>.+?)[ _-](back|b|reverse)$'
+
+# thumb_size = 400
+# preview_size = 1600
+# dup_phash_distance = 4
+# snapshot_keep = 20
+# fixity_interval_days = 7

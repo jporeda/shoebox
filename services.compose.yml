@@ -1,0 +1,29 @@
+# Included by docker-compose.yml, which supplies private/.env for ${...} values.
+x-common: &common
+  image: shoebox:latest
+  env_file: private/.env
+  volumes:
+    - ${PHOTO_ROOT:?set PHOTO_ROOT in private/.env}:/photos:ro
+    - shoebox-data:/data
+    - ${BACKUP_ROOT:?set BACKUP_ROOT in private/.env}:/backup
+    - ./private:/config:ro
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *common
+    build: .
+    command: ["python", "-m", "shoebox.cli", "serve"]
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    <<: *common
+    command: ["python", "-m", "shoebox.cli", "worker"]
+    depends_on:
+      - app
+
+volumes:
+  # Live layer. Survives `docker compose down`; wiped by `down -v` and by
+  # Docker Desktop "Clean / Purge data". The backup folder is the permanent copy.
+  shoebox-data:

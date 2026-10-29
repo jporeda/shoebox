@@ -1,0 +1,11 @@
+.git
+.githooks
+.env
+private
+**/node_modules
+frontend/dist
+*.tsbuildinfo
+**/__pycache__
+.pytest_cache
+data
+backup

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Refuses commits that would publish personal data. Enable once per clone:
+#   git config core.hooksPath .githooks
+# Names, places and real paths to block go in private/denylist.txt (never committed).
+set -uo pipefail
+shopt -s nocasematch
+fail=0
+
+# 1. File types that must never be committed.
+while IFS= read -r f; do
+  case "$f" in
+    private/README.md) ;;
+    private/*|.env|*/.env|*.db|*.db-wal|*.db-shm|*.sqlite|*.jpg|*.jpeg|*.png|*.tif|*.tiff|*.heic|*.xmp)
+      echo "pre-commit: $f must not be committed (personal data belongs in private/)" >&2
+      fail=1 ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+# 2. Denylisted words anywhere in the staged tree.
+deny=private/denylist.txt
+terms=$(mktemp)
+trap 'rm -f "$terms"' EXIT
+[[ -f $deny ]] && grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$deny" > "$terms"
+if [[ -s $terms ]]; then
+  if git grep --cached -n -I -i -w -F -f "$terms" >&2; then
+    echo "pre-commit: the lines above contain words from $deny" >&2
+    fail=1
+  fi
+else
+  echo "pre-commit: warning: $deny is missing or empty, so names and paths aren't checked" >&2
+fi
+
+exit $fail
