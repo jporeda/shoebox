@@ -168,33 +168,29 @@ function summary(job: Job): string {
     case "orient":
       return r.checked !== undefined ? `${r.rotated} of ${r.checked} rotated` : "";
     case "restore":
-      return r.matched !== undefined ? `${r.matched} restored, ${len("unmatched")} not found` : "";
+      return r.matched !== undefined ? `${r.matched} restored from ${r.file}, ${len("unmatched")} not found` : "";
     default:
       return job.message;
   }
 }
 
+/** Automatic names can be reverted; date estimates just follow their evidence. */
 function RevertButtons({ result }: { result: Record<string, any> }) {
   const qc = useQueryClient();
-  const runs = [
-    { id: result.run_id as string | undefined, label: "dates" },
-    { id: result.names?.run_id as string | undefined, label: "names" },
-  ].filter((r) => r.id);
+  const runId = result.names?.run_id as string | undefined;
+  if (!runId || !result.names?.auto) return null;
   return (
     <div className="job__revert">
-      {runs.map((r) => (
-        <button
-          key={r.id}
-          className="btn btn--ghost"
-          onClick={async () => {
-            if (!window.confirm(`Clear the ${r.label} this run set? (Undoable; running inference again recreates them.)`)) return;
-            await api.revertRun(r.id!);
-            qc.invalidateQueries();
-          }}
-        >
-          Revert this run's {r.label}
-        </button>
-      ))}
+      <button
+        className="btn btn--ghost"
+        onClick={async () => {
+          if (!window.confirm("Clear the names this run gave automatically? Those faces will only get suggestions from now on. (Undoable.)")) return;
+          await api.revertRun(runId);
+          qc.invalidateQueries();
+        }}
+      >
+        Revert this run's names
+      </button>
     </div>
   );
 }

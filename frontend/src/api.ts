@@ -37,7 +37,8 @@ export class ApiError extends Error {}
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    // The server refuses changes without X-Shoebox, so other sites can't make them.
+    headers: { "X-Shoebox": "1", ...(init?.body ? { "Content-Type": "application/json" } : {}) },
   });
   if (!res.ok) {
     let detail = res.statusText;
@@ -68,7 +69,8 @@ export const api = {
   update: (body: BulkUpdate) => call<BulkResult>("/photos", { method: "PATCH", body: JSON.stringify(body) }),
   keeper: (id: number) => call<PhotoDetail>(`/photos/${id}/keeper`, { method: "POST" }),
   parseDate: (text: string) => call<ParsedDate>(`/parse-date${qs({ text })}`),
-  undo: (batch_id?: string) => call<UndoResult>("/undo", { method: "POST", body: JSON.stringify({ batch_id }) }),
+  undo: (batch_id?: string, skip = false) =>
+    call<UndoResult>("/undo", { method: "POST", body: JSON.stringify({ batch_id, skip }) }),
   edits: () => call<EditBatch[]>("/edits"),
   eventKinds: () => call<EventKind[]>("/event-kinds"),
   addEventKind: (name: string) =>

@@ -17,22 +17,60 @@ from .db import get_meta, session_scope, set_meta
 from .images import sha256_file
 from .jobs_ctx import NULL_CTX, JobContext
 from .models import EventInstance, EventKind, Face, LooseBack, Person, Photo, Suggestion, utcnow
-from .services import TRUSTED_FIELDS, get_or_create_instance
+from .services import TRUSTED_FIELDS, date_changes, event_date, get_or_create_instance
 
 log = logging.getLogger(__name__)
 
 TRUTH_FORMAT_VERSION = 1
+# Owner recorded for truth files written before databases had ids.
+LEGACY_OWNER = "legacy"
 
 
 def _stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
 
 
-def _atomic_write(path: Path, text: str) -> None:
+def atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
+
+
+# Snapshots are taken after nearly every job, so "the newest N" can cover less than an
+# hour. Beyond the newest few, keep the newest snapshot of each of the last 24 hours, 14
+# days, 8 weeks and 12 months that have any. Pre-upgrade snapshots are never pruned.
+SNAPSHOT_TIERS = (("%Y%m%d%H", 24), ("%Y%m%d", 14), ("%G%V", 8), ("%Y%m", 12))
+
+
+def _snapshot_time(path: Path) -> datetime | None:
+    try:  # shoebox-20261028-165725-475330-<reason>.db
+        return datetime.strptime(path.name[len("shoebox-"):][:22], "%Y%m%d-%H%M%S-%f")
+    except ValueError:
+        return None
+
+
+def prune_snapshots(out_dir: Path, keep_recent: int) -> list[Path]:
+    """Delete regular snapshots outside the retention tiers; returns what was deleted."""
+    dated = sorted(
+        ((when, path) for path in out_dir.glob("shoebox-*.db")
+         if "pre-upgrade" not in path.name and (when := _snapshot_time(path)) is not None),
+        reverse=True,
+    )
+    keep = {path for _, path in dated[:keep_recent]}
+    for fmt, count in SNAPSHOT_TIERS:
+        seen: set[str] = set()
+        for when, path in dated:  # newest first, so the first one per bucket is its newest
+            bucket = when.strftime(fmt)
+            if bucket not in seen:
+                if len(seen) == count:
+                    break
+                seen.add(bucket)
+                keep.add(path)
+    removed = [path for _, path in dated if path not in keep]
+    for path in removed:
+        path.unlink(missing_ok=True)
+    return removed
 
 
 def _prune(directory: Path, pattern: str, keep: int) -> None:
@@ -54,8 +92,20 @@ def snapshot(reason: str = "manual") -> Path:
     finally:
         conn.close()
     if not reason.startswith("pre-upgrade"):
-        _prune(out_dir, "shoebox-*.db", settings.snapshot_keep + len(list(out_dir.glob("*pre-upgrade*.db"))))
+        prune_snapshots(out_dir, settings.snapshot_keep)
     return out
+
+
+def pre_upgrade_snapshot(revision: str) -> Path:
+    """Snapshot before a schema upgrade. If an upgrade fails at every startup, the app
+    restarts in a loop; reuse the last snapshot while the database hasn't changed."""
+    settings = get_settings()
+    db_files = [settings.db_path, settings.db_path.with_name(settings.db_path.name + "-wal")]
+    changed = max(f.stat().st_mtime for f in db_files if f.exists())
+    earlier = sorted((settings.backup_dir / "db").glob(f"shoebox-*-pre-upgrade-{revision}.db"))
+    if earlier and earlier[-1].stat().st_mtime >= changed:
+        return earlier[-1]
+    return snapshot(f"pre-upgrade-{revision}")
 
 
 # --- truth.json -------------------------------------------------------------
@@ -94,7 +144,7 @@ def build_truth() -> dict:
                     "not": sorted(people[i].name for i in f.rejected_person_ids or [] if i in people),
                 }
                 for f in s.exec(select(Face).where(Face.photo_id == p.id)).all()
-                if f.source in ("manual", "drawn", "accepted") or f.ignored or f.rejected_person_ids
+                if f.source in ("manual", "drawn", "accepted", "reverted") or f.ignored or f.rejected_person_ids
             ]
             if faces:
                 entry["faces"] = faces
@@ -118,6 +168,7 @@ def build_truth() -> dict:
         return {
             "format_version": TRUTH_FORMAT_VERSION,
             "generated_at": utcnow().isoformat(),
+            "db_id": get_meta(s, "db_id"),
             "people": [
                 {"name": p.name, "birth_year": p.birth_year, "notes": p.notes} for p in people.values()
             ],
@@ -133,17 +184,50 @@ def build_truth() -> dict:
         }
 
 
-def export_truth() -> Path:
+def has_content(truth: dict) -> bool:
+    return bool(truth.get("photos") or truth.get("people") or truth.get("loose_backs"))
+
+
+def _may_replace(old: dict) -> bool:
+    """Only the database that wrote truth.json (or one restored from it) may replace it.
+
+    After the live volume is lost, the new empty database runs Import before Restore;
+    without this check its first backup would overwrite the file Restore needs.
+    """
+    if not has_content(old):
+        return True
+    with session_scope() as s:
+        mine, adopted = get_meta(s, "db_id"), get_meta(s, "truth_adopted")
+    owner = old.get("db_id")
+    return owner == mine or (owner or LEGACY_OWNER) == adopted
+
+
+def export_truth() -> Path | None:
+    """Write truth.json (and a history copy) if it changed. None if it belongs to another database."""
     settings = get_settings()
     truth_dir = settings.backup_dir / "truth"
     text = json.dumps(build_truth(), indent=1, ensure_ascii=False, sort_keys=True)
     current = truth_dir / "truth.json"
-    if current.exists() and _strip_ts(current.read_text(encoding="utf-8")) == _strip_ts(text):
-        return current
-    _atomic_write(truth_dir / "history" / f"truth-{_stamp()}.json", text)
+    if current.exists():
+        old = current.read_text(encoding="utf-8")
+        if _strip_ts(old) == _strip_ts(text):
+            return current
+        if not _may_replace(json.loads(old)):
+            log.warning("not updating %s: it was written by another database; run Restore first", current)
+            return None
+    atomic_write(truth_dir / "history" / f"truth-{_stamp()}.json", text)
     _prune(truth_dir / "history", "truth-*.json", settings.truth_history_keep)
-    _atomic_write(current, text)
+    atomic_write(current, text)
     return current
+
+
+def latest_truth_path() -> Path:
+    """truth.json, or the newest history copy that has entries if truth.json has none."""
+    truth_dir = get_settings().backup_dir / "truth"
+    for path in [truth_dir / "truth.json", *sorted((truth_dir / "history").glob("truth-*.json"), reverse=True)]:
+        if path.exists() and has_content(json.loads(path.read_text(encoding="utf-8"))):
+            return path
+    raise FileNotFoundError(f"no truth file with any entries in {truth_dir}")
 
 
 def _strip_ts(text: str) -> str:
@@ -171,7 +255,7 @@ def write_manifest() -> Path:
             lines.append(f"{lb.sha256}  {lb.rel_path}")
     lines.sort(key=lambda line: line.split("  ", 1)[1])
     out = settings.backup_dir / "manifest-sha256.txt"
-    _atomic_write(out, "\n".join(lines) + ("\n" if lines else ""))
+    atomic_write(out, "\n".join(lines) + ("\n" if lines else ""))
     return out
 
 
@@ -239,9 +323,10 @@ def fixity_due() -> bool:
 
 
 def run_backup(reason: str = "manual") -> dict:
+    truth = export_truth()
     return {
         "snapshot": str(snapshot(reason)),
-        "truth": str(export_truth()),
+        "truth": str(truth) if truth else "not updated: truth.json belongs to another database (run Restore)",
         "manifest": str(write_manifest()),
     }
 
@@ -272,7 +357,7 @@ def _restore_faces(s, p: Photo, entries: list[dict]) -> None:
         changes = [(match, "person_id", person_id), (match, "ignored", bool(e.get("ignored")))]
         if e.get("not"):
             changes.append((match, "rejected_person_ids", sorted(get_or_create_person(s, n).id for n in e["not"])))
-        if e.get("source") in ("manual", "drawn", "accepted"):
+        if e.get("source") in ("manual", "drawn", "accepted", "reverted"):
             changes.append((match, "source", e["source"]))
         editlog.record(s, changes, f"restore faces {p.rel_path}", actor="restore")
 
@@ -282,7 +367,12 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
     if truth.get("format_version", 0) > TRUTH_FORMAT_VERSION:
         raise ValueError(f"truth format {truth['format_version']} is newer than supported {TRUTH_FORMAT_VERSION}")
     matched, unmatched = 0, []
+    entries = truth.get("photos", [])
+    # One transaction, so no progress updates inside it: they'd wait on this transaction's own lock.
+    ctx.progress(0, len(entries), "restoring")
     with session_scope() as s:
+        if s.exec(select(Photo.id).limit(1)).first() is None:
+            raise ValueError("No photos are imported yet. Run Import first, then Restore.")
         for person in truth.get("people", []):
             existing = s.exec(select(Person).where(Person.name == person["name"])).first()
             changes = []
@@ -303,10 +393,7 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
             inst.month, inst.day = i.get("month"), i.get("day")
             s.add(inst)
 
-        entries = truth.get("photos", [])
-        for n, e in enumerate(entries):
-            if n % 50 == 0:
-                ctx.progress(n, len(entries), "restoring")
+        for e in entries:
             p = (
                 s.exec(select(Photo).where(Photo.sha256 == e["sha256"])).first()
                 or (e.get("image_data_hash") and s.exec(select(Photo).where(Photo.image_data_hash == e["image_data_hash"])).first())
@@ -322,6 +409,9 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
             if "event" in e:
                 inst = get_or_create_instance(s, kinds[e["event"]["kind"]], None, e["event"]["label"])
                 changes.append((p, "event_instance_id", inst.id))
+                # Dates that came from a dated event aren't stored; derive them again as bulk_update does.
+                if "date" not in e and (ev := event_date(inst)) and (p.t_year is None or p.t_source == "event"):
+                    changes += date_changes(p, ev, "event")
             if "caption" in e:
                 changes.append((p, "caption", e["caption"]))
             if "rotation" in e:
@@ -352,6 +442,14 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
                 f"restore {lb.rel_path}",
                 actor="restore",
             )
+        total = len(entries) + len(truth.get("loose_backs", []))
+        if total and not matched:
+            raise ValueError(
+                f"None of the {total} photos and backs in the truth file match an imported file, so nothing was "
+                "restored. Check that PHOTO_ROOT points at the same scans and that Import has finished."
+            )
+        # From now on this database owns the truth file (see _may_replace).
+        set_meta(s, "truth_adopted", truth.get("db_id") or LEGACY_OWNER)
     from .estimate import run_estimates
 
     run_estimates()

@@ -1,11 +1,9 @@
 import json
 
-from fastapi.testclient import TestClient
 from sqlmodel import select
 
-from conftest import make_image
+from conftest import api_client, make_image
 from shoebox import backup, services
-from shoebox.app import app
 from shoebox.db import session_scope
 from shoebox.estimate import run_estimates
 from shoebox.export import run_export
@@ -88,7 +86,7 @@ def test_estimates_never_touch_trusted_dates_and_clear_when_evidence_goes(env):
 
 def test_manual_loose_back_date_via_api_updates_neighbours_and_undoes(env):
     build(env.photos_root)
-    with TestClient(app) as client:
+    with api_client() as client:
         lb = [b for b in client.get("/api/loose-backs").json() if b["rel_path"].endswith("0004_b.jpg")][0]
         assert [n["distance"] for n in lb["neighbours"]] == [-3, -2, 1, 2, 3]
         res = client.patch(f"/api/loose-backs/{lb['id']}", json={"date": "1978-10"}).json()
@@ -108,7 +106,7 @@ def test_manual_loose_back_date_via_api_updates_neighbours_and_undoes(env):
 
 def test_estimated_month_exported_and_loose_back_in_truth(env):
     build(env.photos_root)
-    with TestClient(app) as client:
+    with api_client() as client:
         lb = [b for b in client.get("/api/loose-backs").json() if b["rel_path"].endswith("0004_b.jpg")][0]
         client.patch(f"/api/loose-backs/{lb['id']}", json={"date": "1978-10"})
     result = run_export()
@@ -122,7 +120,7 @@ def test_estimated_month_exported_and_loose_back_in_truth(env):
 
 def test_paired_back_review_dates_its_front(env):
     build(env.photos_root)
-    with TestClient(app) as client:
+    with api_client() as client:
         backs = client.get("/api/paired-backs").json()
         assert [b["rel_path"] for b in backs] == ["A7/Album7_0003_b.jpg"]
         b = backs[0]

@@ -1,12 +1,11 @@
-from fastapi.testclient import TestClient
+from conftest import api_client
 
-from shoebox.app import app
 from shoebox.ingest import run_ingest
 
 
 def test_grid_edit_undo_flow(album_tree, env):
     run_ingest()
-    with TestClient(app) as client:
+    with api_client() as client:
         albums = client.get("/api/albums").json()
         assert [a["name"] for a in albums] == ["Album 1980s", "Album 1990s"]
         page = client.get("/api/photos", params={"album_id": albums[0]["id"]}).json()
@@ -37,3 +36,20 @@ def test_grid_edit_undo_flow(album_tree, env):
 
         job = client.post("/api/jobs", json={"type": "backup"}).json()
         assert job["state"] == "queued"
+
+
+def test_other_sites_cannot_make_changes(album_tree, env):
+    from fastapi.testclient import TestClient
+
+    from shoebox.app import app
+
+    with TestClient(app, base_url="http://localhost") as browser:
+        # A page elsewhere can send a "simple" POST, but can't add the app's header.
+        r = browser.post("/api/jobs", content='{"type": "ingest"}')
+        assert r.status_code == 403
+        assert browser.get("/api/stats").status_code == 200  # reading is fine
+    with TestClient(app, base_url="http://evil.example") as rebound:
+        # DNS rebinding: a hostile name pointed at 127.0.0.1
+        assert rebound.get("/api/stats").status_code == 400
+    with api_client() as ui:
+        assert ui.post("/api/jobs", json={"type": "backup"}).status_code == 200

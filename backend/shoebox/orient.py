@@ -12,7 +12,7 @@ import numpy as np
 from sqlmodel import select
 
 from .config import get_settings
-from .db import session_scope
+from .db import session_scope, update_if
 from .images import open_display
 from .jobs_ctx import NULL_CTX, JobContext
 from .models import Photo
@@ -64,17 +64,20 @@ def run_orient(ctx: JobContext = NULL_CTX, scorer=face_score) -> dict:
             ctx.progress(i, len(ids), "checking orientation")
         with session_scope() as s:
             p = s.get(Photo, pid)
-            if p.rotation_source != "manual":
-                try:
-                    base = open_display(settings.photos_root / p.rel_path, 0, max_size=640).convert("RGB")
-                    scores = {r: scorer(np.asarray(base.rotate(-r, expand=True))) for r in ROTATIONS}
-                    rot = best_rotation(scores, settings.orient_margin)
-                    if rot != p.rotation:
-                        p.rotation = rot
-                        p.rotation_source = "auto" if rot else "none"
-                        rotated += bool(rot)
-                except Exception as exc:
-                    log.warning("orientation failed for %s: %s", p.rel_path, exc)
-            p.orient_ver = ORIENT_VERSION
-            s.add(p)
+        rot = None
+        if p.rotation_source != "manual":
+            try:
+                base = open_display(settings.photos_root / p.rel_path, 0, max_size=640).convert("RGB")
+                scores = {r: scorer(np.asarray(base.rotate(-r, expand=True))) for r in ROTATIONS}
+                rot = best_rotation(scores, settings.orient_margin)
+            except Exception as exc:
+                log.warning("orientation failed for %s: %s", p.rel_path, exc)
+        with session_scope() as s:
+            update_if(s, Photo, pid, orient_ver=ORIENT_VERSION)
+            # Scoring took a while; a rotation the user chose meanwhile wins.
+            if rot is not None and rot != p.rotation and update_if(
+                s, Photo, pid, Photo.rotation == p.rotation, Photo.rotation_source.is_distinct_from("manual"),
+                rotation=rot, rotation_source="auto" if rot else "none",
+            ):
+                rotated += bool(rot)
     return {"checked": len(ids), "rotated": rotated}

@@ -12,11 +12,12 @@ from sqlalchemy import case, func
 from sqlmodel import Session, col, select
 
 from . import editlog, jobs, services
+from .backs import loose_open, paired_open
 from .config import get_settings
 from .dates import DateParseError, format_partial, parse_partial_date
 from .db import get_session
 from .images import ensure_thumb
-from .models import Album, BackText, EditBatch, EventInstance, EventKind, Job, LooseBack, Photo
+from .models import Album, BackText, Edit, EditBatch, EventInstance, EventKind, Job, LooseBack, Photo
 
 router = APIRouter(prefix="/api")
 
@@ -105,13 +106,17 @@ class BulkResult(BaseModel):
 
 class UndoRequest(BaseModel):
     batch_id: Optional[str] = None
+    skip: bool = False  # mark a blocked batch undone without changing anything
 
 
 class UndoResult(BaseModel):
     undone: Optional[str]
+    batch_id: Optional[str] = None
     description: Optional[str] = None
     reverted: int
     conflicts: list[dict]
+    blocked: bool = False  # everything it changed was changed again since; nothing reverted
+    skipped: bool = False
 
 
 class EditBatchOut(BaseModel):
@@ -267,13 +272,6 @@ def summarize(p: Photo, labels: dict[int, str]) -> PhotoSummary:
     )
 
 
-def _loose_open():
-    """Loose backs still waiting on a decision (no date, not marked "no date")."""
-    return (LooseBack.d_year == None) & ((LooseBack.d_source == None) | (LooseBack.d_source != "manual"))  # noqa: E711
-
-
-def _paired_open():
-    return (Photo.back_year == None) & ((Photo.back_source == None) | (Photo.back_source != "manual"))  # noqa: E711
 
 
 def _month_label(year: Optional[int], month: Optional[int]) -> str:
@@ -324,10 +322,10 @@ def list_albums(s: Session = Depends(get_session)):
     )
     live_loose = select(LooseBack.album_id, func.count()).where(LooseBack.missing == False)  # noqa: E712
     loose = dict(s.exec(live_loose.group_by(LooseBack.album_id)).all())
-    loose_undated = dict(s.exec(live_loose.where(_loose_open()).group_by(LooseBack.album_id)).all())
+    loose_undated = dict(s.exec(live_loose.where(loose_open()).group_by(LooseBack.album_id)).all())
     live_paired = select(Photo.album_id, func.count()).where(Photo.missing == False, Photo.back_sha256 != None)  # noqa: E711,E712
     paired = dict(s.exec(live_paired.group_by(Photo.album_id)).all())
-    paired_undated = dict(s.exec(live_paired.where(_paired_open()).group_by(Photo.album_id)).all())
+    paired_undated = dict(s.exec(live_paired.where(paired_open()).group_by(Photo.album_id)).all())
     return [
         AlbumOut(
             id=a.id, name=a.name, rel_path=a.rel_path, sort_order=a.sort_order,
@@ -512,7 +510,7 @@ def paired_backs(album_id: Optional[int] = None, undated: bool = False, s: Sessi
     if album_id is not None:
         q = q.where(Photo.album_id == album_id)
     if undated:
-        q = q.where(_paired_open())
+        q = q.where(paired_open())
     albums = {a.id: a for a in s.exec(select(Album)).all()}
     return [_paired_out(s, p, albums) for p in s.exec(q.order_by(Album.sort_order, Photo.list_index)).all()]
 
@@ -542,7 +540,7 @@ def loose_backs(album_id: Optional[int] = None, undated: bool = False, s: Sessio
     if album_id is not None:
         q = q.where(LooseBack.album_id == album_id)
     if undated:
-        q = q.where(_loose_open())
+        q = q.where(loose_open())
     q = q.order_by(Album.sort_order, LooseBack.list_index)
     albums = {a.id: a for a in s.exec(select(Album)).all()}
     window = get_settings().loose_back_window
@@ -573,8 +571,17 @@ def set_loose_back_date(loose_id: int, body: BackDate, s: Session = Depends(get_
 
 @router.post("/undo", response_model=UndoResult)
 def undo(body: UndoRequest, s: Session = Depends(get_session)):
-    result = editlog.undo(s, body.batch_id)
+    result = editlog.undo(s, body.batch_id, skip=body.skip)
+    rotated: list[int] = []
+    if result["undone"] and not result.get("skipped"):
+        rotated = list(s.exec(select(Edit.entity_id).where(
+            Edit.batch_id == result["undone"], Edit.entity == "photo", Edit.field == "rotation")).all())
+        for p in s.exec(select(Photo).where(col(Photo.id).in_(rotated))).all():
+            p.faces_model_ver = 0  # look for faces again the right way up
+            s.add(p)
     s.commit()
+    if rotated:
+        jobs.enqueue("faces")
     if result["undone"]:
         from .estimate import run_estimates
 

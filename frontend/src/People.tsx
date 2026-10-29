@@ -201,14 +201,16 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
   const [all, setAll] = useState<Face[] | null>(null);
   const [error, setError] = useState("");
   const faces = all ?? cluster.faces;
-  // Excluded faces are only the ones shown; hidden members of a big group go with the name.
-  const allIds = () => (all ?? cluster.faces).map((f) => f.id);
+  // Hidden members of a big group go with the name. Use the ids listed with this group,
+  // not a fresh fetch by cluster id: regrouping renumbers clusters.
+  const loadAll = async () => {
+    const members = new Set(cluster.member_ids);
+    setAll((await api.clusterFaces(cluster.cluster_id)).filter((f) => members.has(f.id)));
+  };
 
   const run = useMutation({
     mutationFn: async (action: { name?: string; person_id?: number; ignore?: boolean }) => {
-      let ids = allIds();
-      if (!all && cluster.size > cluster.faces.length) ids = (await api.clusterFaces(cluster.cluster_id)).map((f) => f.id);
-      ids = ids.filter((id) => !excluded.has(id));
+      const ids = cluster.member_ids.filter((id) => !excluded.has(id));
       if (action.ignore) return api.ignoreFaces(ids);
       return api.assignFaces(ids, action.person_id ? { person_id: action.person_id } : { name: action.name });
     },
@@ -230,7 +232,7 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
           <FaceThumb key={f.id} face={f} dimmed={excluded.has(f.id)} onClick={() => toggle(f.id)} caption={f.year_label || undefined} />
         ))}
         {!all && cluster.size > cluster.faces.length && (
-          <button className="btn btn--ghost" onClick={async () => setAll(await api.clusterFaces(cluster.cluster_id))}>
+          <button className="btn btn--ghost" onClick={loadAll}>
             +{cluster.size - cluster.faces.length} more
           </button>
         )}

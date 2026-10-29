@@ -1,11 +1,9 @@
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
 from sqlmodel import select
 
-from conftest import make_image
+from conftest import api_client, make_image
 from shoebox import services
-from shoebox.app import app
 from shoebox.db import session_scope
 from shoebox.estimate import Evidence, combine, run_estimates
 from shoebox.evaluate import run_evaluate
@@ -13,7 +11,7 @@ from shoebox.faces import DetectedFace, to_blob
 from shoebox.ingest import run_ingest
 from shoebox.matching import decide, run_matching
 from shoebox.models import Face, Person, Photo
-from shoebox.people import accept, reject, revert_run
+from shoebox.people import accept, assign, reject, revert_run
 
 rng = np.random.default_rng(1)
 
@@ -151,10 +149,20 @@ def test_revert_run_clears_that_runs_names(album):
     faces_for(album, [(0, A, aid, "manual", 30), (1, A, aid, "manual", 30), (2, A, None, "auto", 30)])
     run_id = run_matching()["run_id"]
     with session_scope() as s:
-        assert s.exec(select(Face).where(Face.source == "auto", Face.person_id == aid)).first() is not None
+        auto = s.exec(select(Face).where(Face.source == "auto", Face.person_id == aid)).first()
+        assert auto is not None
         revert_run(s, run_id)
     with session_scope() as s:
         assert s.exec(select(Face).where(Face.source == "auto", Face.person_id == aid)).first() is None
+    run_matching()  # the next run (almost any edit triggers one) only suggests for that face
+    with session_scope() as s:
+        f = s.get(Face, auto.id)
+        assert (f.person_id, f.suggested_person_id, f.source) == (None, aid, "reverted")
+        accept(s, [auto.id])
+    with session_scope() as s:
+        assert (s.get(Face, auto.id).person_id, s.get(Face, auto.id).source) == (aid, "accepted")
+        with pytest.raises(ValueError):
+            revert_run(s, run_estimates()["run_id"])
 
 
 def test_evaluate_reports_holdout_accuracy(album):
@@ -177,7 +185,7 @@ def test_review_api_and_confirmed_only_export(album, env):
     faces_for(album, [(0, A, aid, "manual", 30), (1, A, aid, "manual", 30)])
     auto_id = faces_for(album, [(2, A, None, "auto", 30)])[0]
     run_matching()
-    with TestClient(app) as client:
+    with api_client() as client:
         groups = client.get("/api/faces/review").json()
         assert [(g["name"], [f["id"] for f in g["faces"]]) for g in groups] == [("Ann", [auto_id])]
         assert client.get("/api/faces/stats").json()["to_review"] == 1
@@ -211,3 +219,29 @@ def test_ocr_back_dates_are_weaker_anchors_and_not_double_counted(album):
         services.bulk_update(s, [album[0], album[8]], date="1975")
     run_estimates()
     assert p(album[4]).i_confidence > four.i_confidence
+
+
+def test_naming_a_face_by_hand_clears_its_suggestion(album):
+    with session_scope() as s:
+        ann = Person(name="Ann")
+        s.add(ann)
+        s.flush()
+        f = Face(photo_id=album[0], x=0.1, y=0.1, w=0.2, h=0.2, source="auto", suggested_person_id=ann.id)
+        s.add(f)
+        s.flush()
+        assign(s, [f.id], ann.id)
+    with api_client() as client:
+        assert client.get("/api/faces/review").json() == []  # nothing left to answer
+
+
+def test_evaluation_does_not_read_the_answer_off_the_hidden_photo(album):
+    from shoebox.evaluate import evaluate_dates
+
+    with session_scope() as s:
+        for i, pid in enumerate(album[:6]):
+            photo = s.get(Photo, pid)
+            photo.back_year, photo.back_source = 1980 + i, "manual"
+            s.add(photo)
+            services.bulk_update(s, [pid], date=str(1980 + i), source="back")  # "Use as date"
+    result = evaluate_dates(fraction=1.0, seed=0)
+    assert "own_back" not in result["by_main_evidence"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import logging
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from functools import lru_cache
@@ -14,7 +15,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import event
+from sqlalchemy import event, update
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, create_engine, select
 
@@ -106,22 +107,44 @@ def migrate() -> None:
         current, head = current_revision(), head_revision()
         if current != head:
             if current is not None:
-                from .backup import snapshot
+                from .backup import pre_upgrade_snapshot
 
-                path = snapshot(f"pre-upgrade-{current}")
+                path = pre_upgrade_snapshot(current)
                 log.info("snapshot before upgrade %s -> %s: %s", current, head, path)
             command.upgrade(alembic_config(), "head")
         seed()
 
 
 def seed() -> None:
-    from .models import EventKind
+    from .models import EventKind, Photo
 
     with session_scope() as s:
         existing = {k.name for k in s.exec(select(EventKind)).all()}
         for name, month, day in BUILTIN_EVENT_KINDS:
             if name not in existing:
                 s.add(EventKind(name=name, month=month, day=day, builtin=True))
+        if get_meta(s, "db_id") is None:
+            # Identifies this database in truth.json, so a fresh one can't overwrite another's.
+            set_meta(s, "db_id", uuid.uuid4().hex)
+            if s.exec(select(Photo.id).limit(1)).first() is not None:
+                # An existing database wrote any truth.json from before ids existed.
+                set_meta(s, "truth_adopted", "legacy")
+
+
+def same(column, value):
+    """SQL test that a column still holds a value read earlier (NULL-safe: ``IS``)."""
+    return column.is_not_distinct_from(value)
+
+
+def update_if(session: Session, model, row_id: int, *conditions, **values) -> bool:
+    """One atomic UPDATE of a row, only if ``conditions`` still hold. True if it wrote.
+
+    Worker jobs read a row, spend seconds on OCR or detection outside any transaction,
+    then write. Checking in the UPDATE itself means an edit the user made in between wins.
+    """
+    stmt = (update(model).where(model.id == row_id, *conditions).values(**values)
+            .execution_options(synchronize_session=False))
+    return session.exec(stmt).rowcount == 1
 
 
 def get_meta(session: Session, key: str, default=None):

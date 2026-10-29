@@ -3,12 +3,10 @@ import subprocess
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
 from sqlmodel import select
 
-from conftest import make_image, reset_caches
+from conftest import api_client, make_image, reset_caches
 from shoebox import backup, db, services
-from shoebox.app import app
 from shoebox.db import session_scope
 from shoebox.export import run_export
 from shoebox.faces import DetectedFace, iou, rotate_box
@@ -90,7 +88,7 @@ def test_naming_flow_via_api(photos):
     calls = iter([[det(0.1, 0.1, base=A)], [det(0.1, 0.1, base=A), det(0.6, 0.1, base=B)], [det(0.3, 0.2, base=A)], []])
     run_faces(detector=lambda rgb: next(calls))
     run_cluster()
-    with TestClient(app) as client:
+    with api_client() as client:
         clusters = client.get("/api/clusters").json()
         assert [c["size"] for c in clusters] == [3]
         ids = [f["id"] for f in clusters[0]["faces"]]
@@ -102,8 +100,8 @@ def test_naming_flow_via_api(photos):
         assert len(single) == 1
         # suggestion for a new look-alike group comes from Sam's faces
         client.post("/api/undo", json={})
-        assert client.get("/api/people").json()[0]["face_count"] == 0
-        client.post("/api/faces/assign", json={"face_ids": ids[:2], "person_id": sam["id"]})
+        assert client.get("/api/people").json() == []  # undoing the naming removes the person it added
+        sam = client.post("/api/faces/assign", json={"face_ids": ids[:2], "name": "Sam"}).json()["person"]
         run_cluster()
         c = client.get("/api/clusters").json()
         assert c == [] or c[0]["suggestion"] is None or c[0]["suggestion"]["name"] == "Sam"
@@ -187,3 +185,31 @@ def test_truth_round_trip_restores_faces(photos, env, tmp_path, monkeypatch):
         assert rose.birth_year == 1950
         assert [(round(f.x, 2), f.person_id == rose.id, f.ignored, f.source) for f in faces] == [
             (0.11, True, False, "manual"), (0.3, True, False, "drawn"), (0.61, False, True, "auto")]
+
+
+def test_drawn_faces_and_new_people_can_be_undone(album_tree, env):
+    run_ingest()
+    with session_scope() as s:
+        pid = s.exec(select(Photo).order_by(Photo.id)).first().id
+
+    def state():
+        with session_scope() as s:
+            faces = s.exec(select(Face).where(Face.photo_id == pid)).all()
+            return [(round(f.x, 2), f.person_id) for f in faces], sorted(p.name for p in s.exec(select(Person)).all())
+
+    box = {"x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}
+    with api_client() as c:
+        c.post(f"/api/photos/{pid}/faces", json={**box, "name": "Zed"})
+        assert state()[1] == ["Zed"]
+        assert c.post("/api/undo", json={}).json()["reverted"] == 2
+        assert state() == ([], [])  # the box and the person it created are both gone
+
+        face_id = c.post(f"/api/photos/{pid}/faces", json=box).json()["id"]
+        c.post("/api/faces/assign", json={"face_ids": [face_id], "name": "Yan"})
+        c.post("/api/undo", json={})
+        assert state() == ([(0.1, None)], [])
+
+        c.delete(f"/api/faces/{face_id}")
+        assert state() == ([], [])
+        c.post("/api/undo", json={})
+        assert state() == ([(0.1, None)], [])

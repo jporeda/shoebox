@@ -49,6 +49,9 @@ class Suggestion(BaseModel):
 class ClusterOut(BaseModel):
     cluster_id: int
     size: int
+    # Every member, including ones past `faces`: naming acts on exactly these, since
+    # cluster ids are renumbered whenever faces are grouped again.
+    member_ids: list[int]
     faces: list[FaceOut]
     suggestion: Optional[Suggestion]
 
@@ -165,10 +168,10 @@ def list_people(s: Session = Depends(get_session)):
 def create_person(body: PersonIn, s: Session = Depends(get_session)):
     if not body.name or not body.name.strip():
         raise HTTPException(422, "name required")
-    person = people.get_or_create_person(s, body.name)
+    person, changes = people.person_for_name(s, body.name)
     if body.birth_year is not None:
-        person.birth_year = body.birth_year
-    s.add(person)
+        changes.append((person, "birth_year", body.birth_year))
+    editlog.record(s, changes, f"add {person.name}")
     s.commit()
     return _person_out(s, person)
 
@@ -249,7 +252,7 @@ def list_clusters(per_cluster: int = 80, singles: bool = False, s: Session = Dep
             embs = [from_blob(f.embedding) for f in members if f.embedding]
             if (hit := people.suggest(embs, centroids)) is not None:
                 sug = Suggestion(person_id=hit[0], name=names[hit[0]], similarity=round(hit[1], 3))
-        out.append(ClusterOut(cluster_id=cid, size=len(members),
+        out.append(ClusterOut(cluster_id=cid, size=len(members), member_ids=[f.id for f in members],
                               faces=_faces_out(s, members[: (len(members) if singles else per_cluster)]), suggestion=sug))
     return out
 
@@ -269,12 +272,13 @@ def photo_faces(photo_id: int, s: Session = Depends(get_session)):
 
 @router.post("/faces/assign", response_model=BatchOut)
 def assign_faces(body: AssignIn, s: Session = Depends(get_session)):
-    person_id = body.person_id
+    person_id, new_person = body.person_id, []
     if body.name and body.name.strip():
-        person_id = people.get_or_create_person(s, body.name).id
+        person, new_person = people.person_for_name(s, body.name)
+        person_id = person.id
     elif person_id is not None and s.get(Person, person_id) is None:
         raise HTTPException(404, "person not found")
-    batch = people.assign(s, body.face_ids, person_id)
+    batch = people.assign(s, body.face_ids, person_id, extra=new_person)
     s.commit()
     jobs.enqueue("estimate")
     return BatchOut(batch_id=batch, person=_person_out(s, s.get(Person, person_id)) if person_id else None)
@@ -326,7 +330,10 @@ def review_faces(s: Session = Depends(get_session)):
 
 @router.post("/runs/{run_id}/revert", response_model=BatchOut)
 def revert_run(run_id: str, s: Session = Depends(get_session)):
-    batch = people.revert_run(s, run_id)
+    try:
+        batch = people.revert_run(s, run_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     s.commit()
     return BatchOut(batch_id=batch)
 
@@ -338,12 +345,13 @@ def draw_face(photo_id: int, body: DrawIn, s: Session = Depends(get_session)):
         raise HTTPException(404, "photo not found")
     if not (0 <= body.x < 1 and 0 <= body.y < 1 and 0 < body.w <= 1 and 0 < body.h <= 1):
         raise HTTPException(422, "box must be inside the photo")
-    person_id = body.person_id
+    person_id, changes = body.person_id, []
     if body.name and body.name.strip():
-        person_id = people.get_or_create_person(s, body.name).id
+        person, changes = people.person_for_name(s, body.name)
+        person_id = person.id
     f = Face(photo_id=p.id, x=body.x, y=body.y, w=body.w, h=body.h, frame_rotation=p.rotation,
              source="drawn", person_id=person_id)
-    s.add(f)
+    editlog.record(s, [*changes, (f, editlog.CREATED, True)], "draw a face")
     s.commit()
     jobs.enqueue("faces")  # computes its embedding in the worker, then re-infers
     return face_out(f, p, _names(s))
@@ -356,7 +364,7 @@ def delete_face(face_id: int, s: Session = Depends(get_session)):
     if f is None:
         raise HTTPException(404, "face not found")
     if f.source == "drawn":
-        s.delete(f)
+        editlog.record(s, [(f, editlog.DELETED, True)], "delete a drawn face")
         s.commit()
         return {"deleted": True}
     people.set_ignored(s, [face_id], True)

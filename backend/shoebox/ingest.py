@@ -216,6 +216,15 @@ def _upsert_albums(s: Session, album_rels: list[str]) -> dict[str, int]:
     return {rel: existing[rel].id for rel in album_rels}
 
 
+def _still_there(root: Path, p: Photo) -> bool:
+    """Is p's file still at its recorded path with the same size and time (so the same content)?"""
+    try:
+        st = (root / p.rel_path).stat()
+    except FileNotFoundError:
+        return False
+    return st.st_size == p.file_size and abs(st.st_mtime - p.file_mtime) < 1e-3
+
+
 def _ingest_one(s: Session, et: ExifTool, root: Path, front: ScannedFront, album_id: int, report: dict) -> int | None:
     path = root / front.rel_path
     photo = s.exec(select(Photo).where(Photo.rel_path == front.rel_path)).first()
@@ -227,13 +236,20 @@ def _ingest_one(s: Session, et: ExifTool, root: Path, front: ScannedFront, album
     if not unchanged:
         sha = sha256_file(path)
         by_sha = s.exec(select(Photo).where(Photo.sha256 == sha)).first()
-        if by_sha is not None and by_sha.rel_path != front.rel_path and (root / by_sha.rel_path).exists() and not by_sha.missing:
+        if by_sha is not None and by_sha.rel_path != front.rel_path and not by_sha.missing and _still_there(root, by_sha):
             report["exact_duplicate_files"].append({"path": front.rel_path, "same_as": by_sha.rel_path})
             return None
         meta = et.read([path], ["ImageDataHash", "Orientation", "DateTimeOriginal", "CreateDate"],
                        extra=["-api", "ImageHashType=SHA256"])[0]
         idh = _find(meta, "ImageDataHash")
         if by_sha is not None:
+            if photo is not None and photo.id != by_sha.id:
+                # Two files swapped names: this path's old photo now lives at another path. Park
+                # it until that file is scanned and matched back to it by hash.
+                photo.missing = True
+                photo.rel_path = f"{photo.rel_path}#moved-{photo.id}"
+                s.add(photo)
+                s.flush()
             photo = by_sha
             if photo.rel_path != front.rel_path:
                 report["moved"] += 1

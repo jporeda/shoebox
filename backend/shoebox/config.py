@@ -33,7 +33,7 @@ class Settings:
     ocr_max_year: int = 2015
     # Offset written to OffsetTimeOriginal on export, e.g. "-05:00".
     export_tz_offset: str = "-05:00"
-    snapshot_keep: int = 20
+    snapshot_keep: int = 10  # newest snapshots always kept; older ones thin out by hour/day/week/month
     truth_history_keep: int = 50
     thumb_size: int = 400
     preview_size: int = 1600

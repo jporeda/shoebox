@@ -17,12 +17,20 @@ export function App() {
   const edits = useQuery({ queryKey: ["edits"], queryFn: api.edits });
   const lastUndoable = edits.data?.find((e) => !e.undone);
 
+  // A batch whose changes were all changed again can't be undone; a second Undo skips it.
+  const [blocked, setBlocked] = useState<string | null>(null);
+
   const doUndo = async () => {
-    const r = await undo.mutateAsync(undefined);
+    const r = await undo.mutateAsync({ skip: blocked !== null && blocked === lastUndoable?.id });
+    setBlocked(r.blocked ? (r.batch_id ?? null) : null);
     setToast(
-      r.undone
-        ? `Undid “${r.description}”${r.conflicts.length ? ` (${r.conflicts.length} later change(s) kept)` : ""}`
-        : "Nothing to undo",
+      r.blocked
+        ? `Can't undo “${r.description}”: it was changed again since. Undo again to skip it.`
+        : r.skipped
+          ? `Skipped “${r.description}”`
+          : r.undone
+            ? `Undid “${r.description}”${r.conflicts.length ? ` (${r.conflicts.length} later change(s) kept)` : ""}`
+            : "Nothing to undo",
     );
   };
 
