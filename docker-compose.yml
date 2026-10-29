@@ -1,0 +1,7 @@
+# Settings (photo and backup paths, API key) come from private/.env, which git
+# ignores. Start from .env.example: cp .env.example private/.env
+name: shoebox
+
+include:
+  - path: services.compose.yml
+    env_file: private/.env

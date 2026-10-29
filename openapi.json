@@ -1,0 +1,3575 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Shoebox",
+  "version": "0.1.0"
+ },
+ "paths": {
+  "/api/albums": {
+   "get": {
+    "summary": "List Albums",
+    "operationId": "list_albums_api_albums_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AlbumOut"
+         },
+         "type": "array",
+         "title": "Response List Albums Api Albums Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/photos": {
+   "get": {
+    "summary": "List Photos",
+    "operationId": "list_photos_api_photos_get",
+    "parameters": [
+     {
+      "name": "album_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Album Id"
+      }
+     },
+     {
+      "name": "person_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Person Id"
+      }
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "untagged",
+          "inferred",
+          "reviewed"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "name": "duplicates",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Duplicates"
+      }
+     },
+     {
+      "name": "event_instance_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Event Instance Id"
+      }
+     },
+     {
+      "name": "order",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "album",
+        "chrono",
+        "confidence"
+       ],
+       "type": "string",
+       "default": "album",
+       "title": "Order"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 0,
+       "title": "Offset"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 50000,
+       "default": 20000,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PhotoPage"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "summary": "Update Photos",
+    "operationId": "update_photos_api_photos_patch",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BulkUpdate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BulkResult"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/photos/{photo_id}": {
+   "get": {
+    "summary": "Get Photo",
+    "operationId": "get_photo_api_photos__photo_id__get",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PhotoDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/photos/{photo_id}/keeper": {
+   "post": {
+    "summary": "Keep Photo",
+    "operationId": "keep_photo_api_photos__photo_id__keeper_post",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PhotoDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/parse-date": {
+   "get": {
+    "summary": "Parse Date",
+    "operationId": "parse_date_api_parse_date_get",
+    "parameters": [
+     {
+      "name": "text",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Text"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ParsedDate"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/img/{sha}/{kind}/{rotation}.jpg": {
+   "get": {
+    "summary": "Image",
+    "operationId": "image_api_img__sha___kind___rotation__jpg_get",
+    "parameters": [
+     {
+      "name": "sha",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Sha"
+      }
+     },
+     {
+      "name": "kind",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "enum": [
+        "thumb",
+        "preview"
+       ],
+       "type": "string",
+       "title": "Kind"
+      }
+     },
+     {
+      "name": "rotation",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rotation"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/paired-backs": {
+   "get": {
+    "summary": "Paired Backs",
+    "operationId": "paired_backs_api_paired_backs_get",
+    "parameters": [
+     {
+      "name": "album_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Album Id"
+      }
+     },
+     {
+      "name": "undated",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Undated"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/BackOut"
+         },
+         "title": "Response Paired Backs Api Paired Backs Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/paired-backs/{photo_id}": {
+   "patch": {
+    "summary": "Set Paired Back Date",
+    "operationId": "set_paired_back_date_api_paired_backs__photo_id__patch",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BackDate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BackOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/loose-backs": {
+   "get": {
+    "summary": "Loose Backs",
+    "operationId": "loose_backs_api_loose_backs_get",
+    "parameters": [
+     {
+      "name": "album_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Album Id"
+      }
+     },
+     {
+      "name": "undated",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Undated"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/BackOut"
+         },
+         "title": "Response Loose Backs Api Loose Backs Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/loose-backs/{loose_id}": {
+   "patch": {
+    "summary": "Set Loose Back Date",
+    "operationId": "set_loose_back_date_api_loose_backs__loose_id__patch",
+    "parameters": [
+     {
+      "name": "loose_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Loose Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BackDate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BackOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/undo": {
+   "post": {
+    "summary": "Undo",
+    "operationId": "undo_api_undo_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UndoRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UndoResult"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/edits": {
+   "get": {
+    "summary": "Recent Edits",
+    "operationId": "recent_edits_api_edits_get",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 30,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/EditBatchOut"
+         },
+         "title": "Response Recent Edits Api Edits Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/event-kinds": {
+   "get": {
+    "summary": "Event Kinds",
+    "operationId": "event_kinds_api_event_kinds_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/EventKindOut"
+         },
+         "type": "array",
+         "title": "Response Event Kinds Api Event Kinds Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Add Event Kind",
+    "operationId": "add_event_kind_api_event_kinds_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EventKindIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventKindOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/event-instances": {
+   "get": {
+    "summary": "Event Instances",
+    "operationId": "event_instances_api_event_instances_get",
+    "parameters": [
+     {
+      "name": "kind_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Kind Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/EventInstanceOut"
+         },
+         "title": "Response Event Instances Api Event Instances Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs": {
+   "get": {
+    "summary": "List Jobs",
+    "operationId": "list_jobs_api_jobs_get",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 30,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/JobOut"
+         },
+         "title": "Response List Jobs Api Jobs Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Start Job",
+    "operationId": "start_job_api_jobs_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/{job_id}/cancel": {
+   "post": {
+    "summary": "Cancel Job",
+    "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/claude/estimate": {
+   "get": {
+    "summary": "Claude Estimate",
+    "operationId": "claude_estimate_api_claude_estimate_get",
+    "parameters": [
+     {
+      "name": "scope",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "unread",
+        "all"
+       ],
+       "type": "string",
+       "default": "unread",
+       "title": "Scope"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ClaudeEstimate"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/stats": {
+   "get": {
+    "summary": "Stats",
+    "operationId": "stats_api_stats_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Stats"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people": {
+   "get": {
+    "summary": "List People",
+    "operationId": "list_people_api_people_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/PersonOut"
+         },
+         "type": "array",
+         "title": "Response List People Api People Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Create Person",
+    "operationId": "create_person_api_people_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PersonIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PersonOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people/{person_id}": {
+   "patch": {
+    "summary": "Update Person",
+    "operationId": "update_person_api_people__person_id__patch",
+    "parameters": [
+     {
+      "name": "person_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Person Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PersonIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PersonOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people/{person_id}/merge": {
+   "post": {
+    "summary": "Merge Person",
+    "operationId": "merge_person_api_people__person_id__merge_post",
+    "parameters": [
+     {
+      "name": "person_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Person Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MergeIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people/{person_id}/faces": {
+   "get": {
+    "summary": "Person Faces",
+    "operationId": "person_faces_api_people__person_id__faces_get",
+    "parameters": [
+     {
+      "name": "person_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Person Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/FaceOut"
+         },
+         "title": "Response Person Faces Api People  Person Id  Faces Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/clusters": {
+   "get": {
+    "summary": "List Clusters",
+    "operationId": "list_clusters_api_clusters_get",
+    "parameters": [
+     {
+      "name": "per_cluster",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 80,
+       "title": "Per Cluster"
+      }
+     },
+     {
+      "name": "singles",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Singles"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ClusterOut"
+         },
+         "title": "Response List Clusters Api Clusters Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/clusters/{cluster_id}/faces": {
+   "get": {
+    "summary": "Cluster Faces",
+    "operationId": "cluster_faces_api_clusters__cluster_id__faces_get",
+    "parameters": [
+     {
+      "name": "cluster_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Cluster Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/FaceOut"
+         },
+         "title": "Response Cluster Faces Api Clusters  Cluster Id  Faces Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/photos/{photo_id}/faces": {
+   "get": {
+    "summary": "Photo Faces",
+    "operationId": "photo_faces_api_photos__photo_id__faces_get",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/FaceOut"
+         },
+         "title": "Response Photo Faces Api Photos  Photo Id  Faces Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Draw Face",
+    "operationId": "draw_face_api_photos__photo_id__faces_post",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DrawIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FaceOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/faces/assign": {
+   "post": {
+    "summary": "Assign Faces",
+    "operationId": "assign_faces_api_faces_assign_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AssignIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/faces/ignore": {
+   "post": {
+    "summary": "Ignore Faces",
+    "operationId": "ignore_faces_api_faces_ignore_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/IgnoreIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/faces/accept": {
+   "post": {
+    "summary": "Accept Faces",
+    "operationId": "accept_faces_api_faces_accept_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FaceIds"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/faces/reject": {
+   "post": {
+    "summary": "Reject Faces",
+    "operationId": "reject_faces_api_faces_reject_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FaceIds"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/faces/review": {
+   "get": {
+    "summary": "Review Faces",
+    "description": "Automatic names and suggestions waiting for a yes/no, grouped by person.",
+    "operationId": "review_faces_api_faces_review_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ReviewGroup"
+         },
+         "type": "array",
+         "title": "Response Review Faces Api Faces Review Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/{run_id}/revert": {
+   "post": {
+    "summary": "Revert Run",
+    "operationId": "revert_run_api_runs__run_id__revert_post",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/faces/{face_id}": {
+   "delete": {
+    "summary": "Delete Face",
+    "description": "Drawn faces can be deleted; detected ones are ignored instead (so re-detection won't bring them back).",
+    "operationId": "delete_face_api_faces__face_id__delete",
+    "parameters": [
+     {
+      "name": "face_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Face Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/face/{face_id}.jpg": {
+   "get": {
+    "summary": "Face Image",
+    "operationId": "face_image_api_face__face_id__jpg_get",
+    "parameters": [
+     {
+      "name": "face_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Face Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/faces/stats": {
+   "get": {
+    "summary": "Face Stats",
+    "operationId": "face_stats_api_faces_stats_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "AlbumOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "rel_path": {
+      "type": "string",
+      "title": "Rel Path"
+     },
+     "sort_order": {
+      "type": "integer",
+      "title": "Sort Order"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     },
+     "dated": {
+      "type": "integer",
+      "title": "Dated"
+     },
+     "missing": {
+      "type": "boolean",
+      "title": "Missing"
+     },
+     "loose_backs": {
+      "type": "integer",
+      "title": "Loose Backs"
+     },
+     "loose_backs_undated": {
+      "type": "integer",
+      "title": "Loose Backs Undated"
+     },
+     "paired_backs": {
+      "type": "integer",
+      "title": "Paired Backs"
+     },
+     "paired_backs_undated": {
+      "type": "integer",
+      "title": "Paired Backs Undated"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "rel_path",
+     "sort_order",
+     "count",
+     "dated",
+     "missing",
+     "loose_backs",
+     "loose_backs_undated",
+     "paired_backs",
+     "paired_backs_undated"
+    ],
+    "title": "AlbumOut"
+   },
+   "AssignIn": {
+    "properties": {
+     "face_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Face Ids"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "face_ids"
+    ],
+    "title": "AssignIn"
+   },
+   "BackDate": {
+    "properties": {
+     "date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     }
+    },
+    "type": "object",
+    "title": "BackDate"
+   },
+   "BackOut": {
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "loose",
+       "paired"
+      ],
+      "title": "Kind"
+     },
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "album_id": {
+      "type": "integer",
+      "title": "Album Id"
+     },
+     "album_name": {
+      "type": "string",
+      "title": "Album Name"
+     },
+     "rel_path": {
+      "type": "string",
+      "title": "Rel Path"
+     },
+     "sha256": {
+      "type": "string",
+      "title": "Sha256"
+     },
+     "date_label": {
+      "type": "string",
+      "title": "Date Label"
+     },
+     "source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "candidates": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Candidates"
+     },
+     "transcription": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transcription"
+     },
+     "neighbours": {
+      "items": {
+       "$ref": "#/components/schemas/NeighbourOut"
+      },
+      "type": "array",
+      "title": "Neighbours"
+     }
+    },
+    "type": "object",
+    "required": [
+     "kind",
+     "id",
+     "album_id",
+     "album_name",
+     "rel_path",
+     "sha256",
+     "date_label",
+     "source",
+     "confidence",
+     "candidates",
+     "transcription",
+     "neighbours"
+    ],
+    "title": "BackOut"
+   },
+   "BatchOut": {
+    "properties": {
+     "batch_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Id"
+     },
+     "person": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PersonOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "batch_id"
+    ],
+    "title": "BatchOut"
+   },
+   "BulkResult": {
+    "properties": {
+     "batch_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Id"
+     },
+     "photos": {
+      "items": {
+       "$ref": "#/components/schemas/PhotoSummary"
+      },
+      "type": "array",
+      "title": "Photos"
+     }
+    },
+    "type": "object",
+    "required": [
+     "batch_id",
+     "photos"
+    ],
+    "title": "BulkResult"
+   },
+   "BulkUpdate": {
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Ids"
+     },
+     "date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     },
+     "clear_date": {
+      "type": "boolean",
+      "title": "Clear Date",
+      "default": false
+     },
+     "event_kind_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Kind Id"
+     },
+     "event_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Label"
+     },
+     "event_instance_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Instance Id"
+     },
+     "clear_event": {
+      "type": "boolean",
+      "title": "Clear Event",
+      "default": false
+     },
+     "caption": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Caption"
+     },
+     "rotate_by": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rotate By"
+     },
+     "date_source": {
+      "type": "string",
+      "enum": [
+       "manual",
+       "back",
+       "accepted"
+      ],
+      "title": "Date Source",
+      "default": "manual"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ids"
+    ],
+    "title": "BulkUpdate"
+   },
+   "ClaudeEstimate": {
+    "properties": {
+     "scope": {
+      "type": "string",
+      "title": "Scope"
+     },
+     "backs": {
+      "type": "integer",
+      "title": "Backs"
+     },
+     "model": {
+      "type": "string",
+      "title": "Model"
+     },
+     "input_tokens": {
+      "type": "integer",
+      "title": "Input Tokens"
+     },
+     "cost_low_usd": {
+      "type": "number",
+      "title": "Cost Low Usd"
+     },
+     "cost_high_usd": {
+      "type": "number",
+      "title": "Cost High Usd"
+     },
+     "has_api_key": {
+      "type": "boolean",
+      "title": "Has Api Key"
+     }
+    },
+    "type": "object",
+    "required": [
+     "scope",
+     "backs",
+     "model",
+     "input_tokens",
+     "cost_low_usd",
+     "cost_high_usd",
+     "has_api_key"
+    ],
+    "title": "ClaudeEstimate"
+   },
+   "ClusterOut": {
+    "properties": {
+     "cluster_id": {
+      "type": "integer",
+      "title": "Cluster Id"
+     },
+     "size": {
+      "type": "integer",
+      "title": "Size"
+     },
+     "faces": {
+      "items": {
+       "$ref": "#/components/schemas/FaceOut"
+      },
+      "type": "array",
+      "title": "Faces"
+     },
+     "suggestion": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Suggestion"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "cluster_id",
+     "size",
+     "faces",
+     "suggestion"
+    ],
+    "title": "ClusterOut"
+   },
+   "DrawIn": {
+    "properties": {
+     "x": {
+      "type": "number",
+      "title": "X"
+     },
+     "y": {
+      "type": "number",
+      "title": "Y"
+     },
+     "w": {
+      "type": "number",
+      "title": "W"
+     },
+     "h": {
+      "type": "number",
+      "title": "H"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "x",
+     "y",
+     "w",
+     "h"
+    ],
+    "title": "DrawIn"
+   },
+   "EditBatchOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "ts": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Ts"
+     },
+     "description": {
+      "type": "string",
+      "title": "Description"
+     },
+     "actor": {
+      "type": "string",
+      "title": "Actor"
+     },
+     "undone": {
+      "type": "boolean",
+      "title": "Undone"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "ts",
+     "description",
+     "actor",
+     "undone"
+    ],
+    "title": "EditBatchOut"
+   },
+   "EventInstanceOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "kind_id": {
+      "type": "integer",
+      "title": "Kind Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "kind_id",
+     "label",
+     "year",
+     "count"
+    ],
+    "title": "EventInstanceOut"
+   },
+   "EventKindIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "month": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Month"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "EventKindIn"
+   },
+   "EventKindOut": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "month": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Month"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "builtin": {
+      "type": "boolean",
+      "title": "Builtin"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "id",
+     "builtin"
+    ],
+    "title": "EventKindOut"
+   },
+   "FaceIds": {
+    "properties": {
+     "face_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Face Ids"
+     }
+    },
+    "type": "object",
+    "required": [
+     "face_ids"
+    ],
+    "title": "FaceIds"
+   },
+   "FaceOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "photo_id": {
+      "type": "integer",
+      "title": "Photo Id"
+     },
+     "photo_sha256": {
+      "type": "string",
+      "title": "Photo Sha256"
+     },
+     "rotation": {
+      "type": "integer",
+      "title": "Rotation"
+     },
+     "x": {
+      "type": "number",
+      "title": "X"
+     },
+     "y": {
+      "type": "number",
+      "title": "Y"
+     },
+     "w": {
+      "type": "number",
+      "title": "W"
+     },
+     "h": {
+      "type": "number",
+      "title": "H"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     },
+     "person_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Name"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "ignored": {
+      "type": "boolean",
+      "title": "Ignored"
+     },
+     "est_age": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Est Age"
+     },
+     "cluster_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cluster Id"
+     },
+     "year_label": {
+      "type": "string",
+      "title": "Year Label"
+     },
+     "suggested_person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Suggested Person Id"
+     },
+     "suggested_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Suggested Name"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "photo_id",
+     "photo_sha256",
+     "rotation",
+     "x",
+     "y",
+     "w",
+     "h",
+     "person_id",
+     "person_name",
+     "source",
+     "ignored",
+     "est_age",
+     "cluster_id",
+     "year_label",
+     "suggested_person_id",
+     "suggested_name",
+     "confidence"
+    ],
+    "title": "FaceOut"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "IgnoreIn": {
+    "properties": {
+     "face_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Face Ids"
+     },
+     "ignored": {
+      "type": "boolean",
+      "title": "Ignored",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "face_ids"
+    ],
+    "title": "IgnoreIn"
+   },
+   "JobIn": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "ingest",
+       "orient",
+       "read_backs",
+       "estimate",
+       "evaluate",
+       "claude_backs",
+       "faces",
+       "cluster",
+       "export",
+       "backup",
+       "fixity",
+       "restore"
+      ],
+      "title": "Type"
+     },
+     "params": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params",
+      "default": {}
+     }
+    },
+    "type": "object",
+    "required": [
+     "type"
+    ],
+    "title": "JobIn"
+   },
+   "JobOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "state": {
+      "type": "string",
+      "title": "State"
+     },
+     "params": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params"
+     },
+     "progress": {
+      "type": "integer",
+      "title": "Progress"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "result": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Result"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "type",
+     "state",
+     "params",
+     "progress",
+     "total",
+     "message",
+     "result",
+     "error",
+     "created_at",
+     "started_at",
+     "finished_at"
+    ],
+    "title": "JobOut"
+   },
+   "MergeIn": {
+    "properties": {
+     "into_id": {
+      "type": "integer",
+      "title": "Into Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "into_id"
+    ],
+    "title": "MergeIn"
+   },
+   "NeighbourOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "sha256": {
+      "type": "string",
+      "title": "Sha256"
+     },
+     "rotation": {
+      "type": "integer",
+      "title": "Rotation"
+     },
+     "rel_path": {
+      "type": "string",
+      "title": "Rel Path"
+     },
+     "distance": {
+      "type": "integer",
+      "title": "Distance"
+     },
+     "date_label": {
+      "type": "string",
+      "title": "Date Label"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "untagged",
+       "inferred",
+       "reviewed"
+      ],
+      "title": "Status"
+     },
+     "inferred_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inferred Source"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "sha256",
+     "rotation",
+     "rel_path",
+     "distance",
+     "date_label",
+     "status",
+     "inferred_source"
+    ],
+    "title": "NeighbourOut"
+   },
+   "ParsedDate": {
+    "properties": {
+     "ok": {
+      "type": "boolean",
+      "title": "Ok"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label",
+      "default": ""
+     },
+     "error": {
+      "type": "string",
+      "title": "Error",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "ok"
+    ],
+    "title": "ParsedDate"
+   },
+   "PersonIn": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "birth_year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Birth Year"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     }
+    },
+    "type": "object",
+    "title": "PersonIn"
+   },
+   "PersonOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "birth_year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Birth Year"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "face_count": {
+      "type": "integer",
+      "title": "Face Count"
+     },
+     "auto_count": {
+      "type": "integer",
+      "title": "Auto Count"
+     },
+     "cover_face_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cover Face Id"
+     },
+     "first_year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Year"
+     },
+     "last_year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Year"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "birth_year",
+     "notes",
+     "face_count",
+     "auto_count",
+     "cover_face_id",
+     "first_year",
+     "last_year"
+    ],
+    "title": "PersonOut"
+   },
+   "PhotoDetail": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "sha256": {
+      "type": "string",
+      "title": "Sha256"
+     },
+     "rel_path": {
+      "type": "string",
+      "title": "Rel Path"
+     },
+     "album_id": {
+      "type": "integer",
+      "title": "Album Id"
+     },
+     "album_index": {
+      "type": "integer",
+      "title": "Album Index"
+     },
+     "rotation": {
+      "type": "integer",
+      "title": "Rotation"
+     },
+     "rotation_source": {
+      "type": "string",
+      "title": "Rotation Source"
+     },
+     "back_sha256": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Back Sha256"
+     },
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year"
+     },
+     "date_label": {
+      "type": "string",
+      "title": "Date Label"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "untagged",
+       "inferred",
+       "reviewed"
+      ],
+      "title": "Status"
+     },
+     "date_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date Source"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "event_instance_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Instance Id"
+     },
+     "event_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Label"
+     },
+     "dup_group_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dup Group Id"
+     },
+     "is_dup_keeper": {
+      "type": "boolean",
+      "title": "Is Dup Keeper"
+     },
+     "width": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Width"
+     },
+     "height": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Height"
+     },
+     "album_name": {
+      "type": "string",
+      "title": "Album Name"
+     },
+     "back_rel_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Back Rel Path"
+     },
+     "caption": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Caption"
+     },
+     "scan_datetime": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scan Datetime"
+     },
+     "trusted_label": {
+      "type": "string",
+      "title": "Trusted Label"
+     },
+     "inferred_label": {
+      "type": "string",
+      "title": "Inferred Label"
+     },
+     "inferred_confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inferred Confidence"
+     },
+     "inferred_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inferred Source"
+     },
+     "back_date_label": {
+      "type": "string",
+      "title": "Back Date Label"
+     },
+     "back_date_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Back Date Source"
+     },
+     "back_candidates": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Back Candidates"
+     },
+     "back_transcription": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Back Transcription"
+     },
+     "dup_members": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Dup Members"
+     },
+     "fixity_ok": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fixity Ok"
+     },
+     "fixity_checked_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fixity Checked At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "sha256",
+     "rel_path",
+     "album_id",
+     "album_index",
+     "rotation",
+     "rotation_source",
+     "back_sha256",
+     "year",
+     "date_label",
+     "status",
+     "date_source",
+     "confidence",
+     "event_instance_id",
+     "event_label",
+     "dup_group_id",
+     "is_dup_keeper",
+     "width",
+     "height",
+     "album_name",
+     "back_rel_path",
+     "caption",
+     "scan_datetime",
+     "trusted_label",
+     "inferred_label",
+     "inferred_confidence",
+     "inferred_source",
+     "back_date_label",
+     "back_date_source",
+     "back_candidates",
+     "back_transcription",
+     "dup_members",
+     "fixity_ok",
+     "fixity_checked_at"
+    ],
+    "title": "PhotoDetail"
+   },
+   "PhotoPage": {
+    "properties": {
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/PhotoSummary"
+      },
+      "type": "array",
+      "title": "Items"
+     }
+    },
+    "type": "object",
+    "required": [
+     "total",
+     "items"
+    ],
+    "title": "PhotoPage"
+   },
+   "PhotoSummary": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "sha256": {
+      "type": "string",
+      "title": "Sha256"
+     },
+     "rel_path": {
+      "type": "string",
+      "title": "Rel Path"
+     },
+     "album_id": {
+      "type": "integer",
+      "title": "Album Id"
+     },
+     "album_index": {
+      "type": "integer",
+      "title": "Album Index"
+     },
+     "rotation": {
+      "type": "integer",
+      "title": "Rotation"
+     },
+     "rotation_source": {
+      "type": "string",
+      "title": "Rotation Source"
+     },
+     "back_sha256": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Back Sha256"
+     },
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year"
+     },
+     "date_label": {
+      "type": "string",
+      "title": "Date Label"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "untagged",
+       "inferred",
+       "reviewed"
+      ],
+      "title": "Status"
+     },
+     "date_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date Source"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Confidence"
+     },
+     "event_instance_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Instance Id"
+     },
+     "event_label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Label"
+     },
+     "dup_group_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dup Group Id"
+     },
+     "is_dup_keeper": {
+      "type": "boolean",
+      "title": "Is Dup Keeper"
+     },
+     "width": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Width"
+     },
+     "height": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Height"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "sha256",
+     "rel_path",
+     "album_id",
+     "album_index",
+     "rotation",
+     "rotation_source",
+     "back_sha256",
+     "year",
+     "date_label",
+     "status",
+     "date_source",
+     "confidence",
+     "event_instance_id",
+     "event_label",
+     "dup_group_id",
+     "is_dup_keeper",
+     "width",
+     "height"
+    ],
+    "title": "PhotoSummary"
+   },
+   "ReviewGroup": {
+    "properties": {
+     "person_id": {
+      "type": "integer",
+      "title": "Person Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "faces": {
+      "items": {
+       "$ref": "#/components/schemas/FaceOut"
+      },
+      "type": "array",
+      "title": "Faces"
+     }
+    },
+    "type": "object",
+    "required": [
+     "person_id",
+     "name",
+     "faces"
+    ],
+    "title": "ReviewGroup"
+   },
+   "Stats": {
+    "properties": {
+     "photos": {
+      "type": "integer",
+      "title": "Photos"
+     },
+     "reviewed": {
+      "type": "integer",
+      "title": "Reviewed"
+     },
+     "inferred": {
+      "type": "integer",
+      "title": "Inferred"
+     },
+     "untagged": {
+      "type": "integer",
+      "title": "Untagged"
+     },
+     "with_back": {
+      "type": "integer",
+      "title": "With Back"
+     },
+     "duplicate_groups": {
+      "type": "integer",
+      "title": "Duplicate Groups"
+     },
+     "albums": {
+      "type": "integer",
+      "title": "Albums"
+     }
+    },
+    "type": "object",
+    "required": [
+     "photos",
+     "reviewed",
+     "inferred",
+     "untagged",
+     "with_back",
+     "duplicate_groups",
+     "albums"
+    ],
+    "title": "Stats"
+   },
+   "Suggestion": {
+    "properties": {
+     "person_id": {
+      "type": "integer",
+      "title": "Person Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "similarity": {
+      "type": "number",
+      "title": "Similarity"
+     }
+    },
+    "type": "object",
+    "required": [
+     "person_id",
+     "name",
+     "similarity"
+    ],
+    "title": "Suggestion"
+   },
+   "UndoRequest": {
+    "properties": {
+     "batch_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Id"
+     }
+    },
+    "type": "object",
+    "title": "UndoRequest"
+   },
+   "UndoResult": {
+    "properties": {
+     "undone": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Undone"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "reverted": {
+      "type": "integer",
+      "title": "Reverted"
+     },
+     "conflicts": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Conflicts"
+     }
+    },
+    "type": "object",
+    "required": [
+     "undone",
+     "reverted",
+     "conflicts"
+    ],
+    "title": "UndoResult"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}

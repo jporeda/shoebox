@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shoebox"
+version = "0.1.0"
+description = "Curation workbench for scanned family photo albums"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "sqlmodel==0.0.22",
+  "alembic==1.14.0",
+  "pillow==11.1.0",
+  "pillow-heif==0.21.0",
+  "imagehash==4.3.1",
+  "numpy==2.2.1",
+  "natsort==8.4.0",
+  "pytesseract==0.3.13",
+  "anthropic>=1,<2",
+]
+
+[project.optional-dependencies]
+faces = [
+  "insightface==0.7.3",
+  "onnxruntime==1.20.1",
+  "opencv-python-headless==4.10.0.84",
+]
+dev = [
+  "pytest==8.3.4",
+  "httpx==0.28.1",
+]
+
+[project.scripts]
+shoebox = "shoebox.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/shoebox"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
