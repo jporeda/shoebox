@@ -20,7 +20,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
-from .backup import run_fixity
+from .backup import atomic_write, run_fixity
 from .config import get_settings
 from .dates import export_calendar_date, xmp_partial
 from .db import session_scope
@@ -303,11 +303,16 @@ def run_export(ctx: JobContext = NULL_CTX, sidecars: bool = True) -> dict:
             ctx.check_cancel()
             if i % 10 == 0:
                 ctx.progress(i, len(plan), f"exporting {it.rel_path}")
+            key = str(it.photo_id)
+            prev = old_index.get(key)
+            # On any failure below, the last good copy stays (and stays in the index).
+            keep_prev = prev is not None and (out_root / prev["path"]).exists()
             if it.rel_path in bad:
                 failed.append({"path": it.rel_path, "error": "original failed fixity check"})
+                if keep_prev:
+                    new_index[key] = prev
                 continue
             name, sig = it.export_name(), it.signature()
-            prev = old_index.get(str(it.photo_id))
             if prev and prev["sig"] == sig and (out_root / prev["path"]).exists():
                 new_index[str(it.photo_id)] = prev
                 skipped_same += 1
@@ -328,16 +333,20 @@ def run_export(ctx: JobContext = NULL_CTX, sidecars: bool = True) -> dict:
                     args += region_args(it, raw, _dims(it, raw))
                 et.write(tmp, ["-charset", "iptc=UTF8", *args])
                 os.replace(tmp, dest)
+                new_index[key] = {"path": name, "sig": sig}
                 if not baked and it.rotation:
                     not_baked.append(it.rel_path)
                 if sidecars:
                     _write_sidecar(et, dest, side_root / f"{it.rel_path}.xmp", it)
-                new_index[str(it.photo_id)] = {"path": name, "sig": sig}
                 written += 1
             except Exception as exc:
                 tmp.unlink(missing_ok=True)
                 log.warning("export failed for %s: %s", it.rel_path, exc)
                 failed.append({"path": it.rel_path, "error": str(exc)})
+                if key in new_index:
+                    new_index[key]["sig"] = ""  # the copy was written but its sidecar wasn't: redo next time
+                elif keep_prev:
+                    new_index[key] = prev
 
     # Remove files from earlier exports that moved or dropped out (only ones we wrote).
     removed = 0
@@ -345,7 +354,7 @@ def run_export(ctx: JobContext = NULL_CTX, sidecars: bool = True) -> dict:
         if new_index.get(pid, {}).get("path") != entry["path"]:
             (out_root / entry["path"]).unlink(missing_ok=True)
             removed += 1
-    index_path.write_text(json.dumps(new_index, indent=1, sort_keys=True))
+    atomic_write(index_path, json.dumps(new_index, indent=1, sort_keys=True))
     return {
         "planned": len(plan),
         "written": written,

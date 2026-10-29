@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import numpy as np
 from PIL import Image
@@ -18,15 +18,17 @@ from sqlmodel import Session, select
 
 from . import editlog
 from .config import get_settings
-from .db import session_scope
+from .db import session_scope, update_if
 from .faces import DETECTOR_VERSION, DetectedFace, from_blob, iou, rotate_box, to_blob
-from .images import open_display
+from .images import open_display, save_jpeg
 from .jobs_ctx import NULL_CTX, JobContext
 from .models import Face, Person, Photo
 
 log = logging.getLogger(__name__)
 
 FACES_VERSION = 1
+# Source of a face whose automatic name the user reverted: it only gets suggestions from now on.
+REVERTED = "reverted"
 MATCH_IOU = 0.5
 # Complete linkage: every pair of faces in a group is within this cosine distance.
 # Measured on a real ~1,900-photo collection: 0.6 keeps young siblings mostly apart (largest group
@@ -95,15 +97,20 @@ def run_faces(ctx: JobContext = NULL_CTX, detector=None) -> dict:
             ctx.progress(i, len(ids), f"detecting faces ({rate:.1f} photos/s)")
         with session_scope() as s:
             p = s.get(Photo, pid)
-            try:
-                result = merge_detections(s, p, detector(_display_rgb(p)), run_id)
+        try:
+            found = detector(_display_rgb(p))
+        except Exception as exc:
+            log.warning("face detection failed for %s: %s", p.rel_path, exc)
+            totals["failed"] += 1
+            found = None
+        with session_scope() as s:
+            # Rotated while detecting: the rotate reset this photo's marker and queued another run.
+            if not update_if(s, Photo, pid, Photo.rotation == p.rotation, faces_model_ver=FACES_VERSION):
+                continue
+            if found is not None:
+                result = merge_detections(s, s.get(Photo, pid), found, run_id)
                 totals["faces_added"] += result["added"]
                 totals["faces_updated"] += result["updated"]
-            except Exception as exc:
-                log.warning("face detection failed for %s: %s", p.rel_path, exc)
-                totals["failed"] += 1
-            p.faces_model_ver = FACES_VERSION
-            s.add(p)
     elapsed = time.monotonic() - started
     totals["seconds"] = round(elapsed, 1)
     totals["seconds_per_photo"] = round(elapsed / max(len(ids), 1), 3)
@@ -211,12 +218,26 @@ def get_or_create_person(s: Session, name: str) -> Person:
     return person
 
 
-def assign(s: Session, face_ids: list[int], person_id: Optional[int], description: str = "") -> Optional[str]:
+def person_for_name(s: Session, name: str) -> tuple[Person, list]:
+    """The person with this name, plus the edit-log change that adds them if they're new
+    (so undoing the naming also removes the person it created)."""
+    name = name.strip()
+    person = s.exec(select(Person).where(Person.name == name)).first()
+    if person is not None:
+        return person, []
+    person = Person(name=name)
+    s.add(person)
+    s.flush()
+    return person, [(person, editlog.CREATED, True)]
+
+
+def assign(s: Session, face_ids: list[int], person_id: Optional[int], description: str = "",
+           extra: Iterable[tuple] = ()) -> Optional[str]:
     faces = s.exec(select(Face).where(Face.id.in_(face_ids))).all()
-    changes = []
+    changes = list(extra)
     for f in faces:
-        changes += [(f, "person_id", person_id), (f, "ignored", False)]
-        if person_id is not None and f.source == "auto":
+        changes += [(f, "person_id", person_id), (f, "ignored", False), (f, "suggested_person_id", None)]
+        if person_id is not None and f.source in ("auto", REVERTED):
             changes.append((f, "source", "manual"))
     if not description:
         who = s.get(Person, person_id).name if person_id else "nobody"
@@ -232,7 +253,7 @@ def accept(s: Session, face_ids: list[int]) -> Optional[str]:
             changes.append((f, "person_id", f.suggested_person_id))
         if f.person_id is not None or f.suggested_person_id is not None:
             changes.append((f, "suggested_person_id", None))
-            if f.source == "auto":
+            if f.source in ("auto", REVERTED):
                 changes.append((f, "source", "accepted"))
     return editlog.record(s, changes, f"confirm {len(face_ids)} name(s)")
 
@@ -250,14 +271,17 @@ def reject(s: Session, face_ids: list[int]) -> Optional[str]:
 
 
 def revert_run(s: Session, run_id: str) -> Optional[str]:
-    """Undo one inference run's outputs (as an undoable batch)."""
+    """Clear one naming run's automatic names (as an undoable batch).
+
+    The faces are marked so later runs only suggest names for them; otherwise the next
+    run, which almost any edit triggers, would name them again. Date estimates can't be
+    reverted this way: they're recomputed from their evidence, so fix the evidence instead.
+    """
+    if not run_id.startswith("names-"):
+        raise ValueError("only naming runs can be reverted; date estimates follow their evidence")
     changes = []
-    if run_id.startswith("names-"):
-        for f in s.exec(select(Face).where(Face.run_id == run_id, Face.source == "auto", Face.person_id != None)).all():  # noqa: E711
-            changes.append((f, "person_id", None))
-    elif run_id.startswith("est-"):
-        for p in s.exec(select(Photo).where(Photo.i_run_id == run_id)).all():
-            changes += [(p, k, None) for k in ("i_year", "i_month", "i_min", "i_max", "i_precision", "i_confidence", "i_source", "i_run_id")]
+    for f in s.exec(select(Face).where(Face.run_id == run_id, Face.source == "auto", Face.person_id != None)).all():  # noqa: E711
+        changes += [(f, "person_id", None), (f, "source", REVERTED)]
     return editlog.record(s, changes, f"revert {run_id}")
 
 
@@ -296,5 +320,5 @@ def face_crop(f: Face, p: Photo, size: int = 200) -> Path:
     cx, cy, side = (x + w / 2) * W, (y + h / 2) * H, max(w * W, h * H) * 1.5
     crop = img.crop((int(cx - side / 2), int(cy - side / 2), int(cx + side / 2), int(cy + side / 2)))
     crop.thumbnail((size, size), Image.Resampling.LANCZOS)
-    crop.save(out, "JPEG", quality=85)
+    save_jpeg(crop, out, quality=85)
     return out

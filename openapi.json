@@ -2096,6 +2096,13 @@
       "type": "integer",
       "title": "Size"
      },
+     "member_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Member Ids"
+     },
      "faces": {
       "items": {
        "$ref": "#/components/schemas/FaceOut"
@@ -2118,6 +2125,7 @@
     "required": [
      "cluster_id",
      "size",
+     "member_ids",
      "faces",
      "suggestion"
     ],
@@ -3487,6 +3495,11 @@
        }
       ],
       "title": "Batch Id"
+     },
+     "skip": {
+      "type": "boolean",
+      "title": "Skip",
+      "default": false
      }
     },
     "type": "object",
@@ -3504,6 +3517,17 @@
        }
       ],
       "title": "Undone"
+     },
+     "batch_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Id"
      },
      "description": {
       "anyOf": [
@@ -3527,6 +3551,16 @@
       },
       "type": "array",
       "title": "Conflicts"
+     },
+     "blocked": {
+      "type": "boolean",
+      "title": "Blocked",
+      "default": false
+     },
+     "skipped": {
+      "type": "boolean",
+      "title": "Skipped",
+      "default": false
      }
     },
     "type": "object",

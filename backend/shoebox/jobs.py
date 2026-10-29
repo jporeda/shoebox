@@ -112,11 +112,10 @@ def _fixity(ctx: JobContext, params: dict) -> dict:
 
 
 def _restore(ctx: JobContext, params: dict) -> dict:
-    from .backup import restore_truth
-    from .config import get_settings
+    from .backup import latest_truth_path, restore_truth
 
-    path = Path(params.get("path") or get_settings().backup_dir / "truth" / "truth.json")
-    return restore_truth(json.loads(path.read_text(encoding="utf-8")), ctx)
+    path = Path(params["path"]) if params.get("path") else latest_truth_path()
+    return {**restore_truth(json.loads(path.read_text(encoding="utf-8")), ctx), "file": path.name}
 
 
 HANDLERS: dict[str, Callable[[JobContext, dict], dict]] = {

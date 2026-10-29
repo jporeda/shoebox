@@ -37,6 +37,15 @@ def env(tmp_path, monkeypatch):
     reset_caches()
 
 
+def api_client():
+    """Test client that looks like the app's own UI (localhost, with the app header)."""
+    from fastapi.testclient import TestClient
+
+    from shoebox.app import app
+
+    return TestClient(app, base_url="http://localhost", headers={"X-Shoebox": "1"})
+
+
 def reset_caches() -> None:
     config.get_settings.cache_clear()
     try:

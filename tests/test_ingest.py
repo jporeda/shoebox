@@ -98,3 +98,21 @@ def test_missing_file_flagged(album_tree):
     report = run_ingest()
     assert report["missing"] == ["Album 1990s/scan 2.jpg"]
     assert photos_by_path()["Album 1990s/scan 2.jpg"].missing
+
+
+def test_swapped_file_names_keep_their_tags(album_tree):
+    run_ingest()
+    a, b = "Album 1980s/IMG_0001.jpg", "Album 1980s/IMG_0002.jpg"
+    with session_scope() as s:
+        ids = photos_by_path()
+        services.bulk_update(s, [ids[a].id], date="1971")
+        services.bulk_update(s, [ids[b].id], date="1972")
+    tmp = album_tree / "swap.tmp"
+    (album_tree / a).rename(tmp)
+    (album_tree / b).rename(album_tree / a)
+    tmp.rename(album_tree / b)
+    report = run_ingest()
+    assert report["exact_duplicate_files"] == []
+    after = photos_by_path()
+    assert (after[a].id, after[a].t_year, after[a].missing) == (ids[b].id, 1972, False)
+    assert (after[b].id, after[b].t_year, after[b].missing) == (ids[a].id, 1971, False)

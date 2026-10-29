@@ -40,12 +40,12 @@ def get_or_create_instance(
     return inst
 
 
-def _date_changes(p: Photo, pd: Optional[PartialDate], source: str) -> list[tuple[Photo, str, Any]]:
+def date_changes(p: Photo, pd: Optional[PartialDate], source: str) -> list[tuple[Photo, str, Any]]:
     values = pd.as_trusted(source) if pd else dict.fromkeys(TRUSTED_FIELDS)
     return [(p, f, values[f]) for f in TRUSTED_FIELDS]
 
 
-def _event_date(inst: EventInstance) -> Optional[PartialDate]:
+def event_date(inst: EventInstance) -> Optional[PartialDate]:
     if inst.year is None:
         return None
     if inst.month and inst.day:
@@ -91,20 +91,20 @@ def bulk_update(
             years = {p.t_year for p in photos if p.t_year and p.t_precision in ("day", "month", "year")}
             year = years.pop() if len(years) == 1 else None
         inst = get_or_create_instance(session, kind, year, event_label)
-    ev_date = _event_date(inst) if inst is not None else None
+    ev_date = event_date(inst) if inst is not None else None
     # "1985" + Christmas means Dec 25, 1985: a fixed-date holiday refines a bare year.
     if pd and pd.precision == "year" and ev_date and ev_date.precision == "day" and ev_date.year == pd.year:
         pd = ev_date
     if pd or clear_date:
         for p in tagged:
-            changes += _date_changes(p, pd, source)
+            changes += date_changes(p, pd, source)
 
     if inst is not None:
         for p in tagged:
             changes.append((p, "event_instance_id", inst.id))
             # An event with a known date dates photos that have no trusted date of their own.
             if pd is None and ev_date and (p.t_year is None or p.t_source == "event"):
-                changes += _date_changes(p, ev_date, "event")
+                changes += date_changes(p, ev_date, "event")
     elif clear_event:
         for p in tagged:
             changes.append((p, "event_instance_id", None))
@@ -114,10 +114,14 @@ def bulk_update(
             changes.append((p, "caption", caption.strip() or None))
 
     if rotate_by:
+        if rotate_by % 90:
+            raise ValueError("photos rotate in steps of 90 degrees")
         for p in photos:
             changes.append((p, "rotation", (p.rotation + rotate_by) % 360))
             changes.append((p, "rotation_source", "manual"))
-            changes.append((p, "faces_model_ver", 0))  # look for faces again the right way up
+            # Look for faces again the right way up. A progress marker, not an edit: the faces
+            # job changes it seconds later, which would make the rotation impossible to undo.
+            p.faces_model_ver = 0
 
     if not description:
         parts = []

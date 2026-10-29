@@ -131,3 +131,27 @@ def test_changed_original_is_not_exported(album_tree, env):
     result = run_export()
     assert result["written"] == 0
     assert result["failed"][0]["error"] == "original failed fixity check"
+
+
+def test_failed_re_export_keeps_the_last_good_copy(album_tree, env, monkeypatch):
+    from shoebox import export
+
+    run_ingest()
+    a = pid("Album 1980s/IMG_0001.jpg")
+    with session_scope() as s:
+        services.bulk_update(s, [a], date="1987")
+    run_export()
+    good = exported(env, a)
+    with session_scope() as s:
+        services.bulk_update(s, [a], date="1990")  # new name and contents next time
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(export, "_bake_rotation", broken)
+    result = run_export()
+    assert result["failed"] and result["removed_stale"] == 0
+    assert good.exists() and exported(env, a) == good
+    monkeypatch.undo()
+    assert run_export()["written"] == 1  # retried once the problem is gone
+    assert not good.exists() and "1990" in str(exported(env, a))

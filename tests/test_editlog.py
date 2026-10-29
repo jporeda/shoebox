@@ -79,3 +79,54 @@ def test_year_plus_fixed_holiday_becomes_that_day_and_undoes_cleanly(album_tree)
         result = editlog.undo(s)
         assert not result["conflicts"]
         assert s.get(Photo, pid).t_year is None and s.get(Photo, pid).event_instance_id is None
+
+
+def test_rotation_still_undoes_after_the_faces_job_ran(album_tree):
+    from shoebox.people import FACES_VERSION
+
+    run_ingest()
+    with session_scope() as s:
+        pid = ids(s)[0]
+        p = s.get(Photo, pid)
+        p.faces_model_ver = FACES_VERSION  # faces were found after import
+        s.add(p)
+    with session_scope() as s:
+        services.bulk_update(s, [pid], rotate_by=90)
+    with session_scope() as s:
+        p = s.get(Photo, pid)
+        assert p.faces_model_ver == 0
+        p.faces_model_ver = FACES_VERSION  # the faces job ran seconds later
+        s.add(p)
+    with session_scope() as s:
+        result = editlog.undo(s)
+        assert result["reverted"] == 2 and not result["conflicts"]
+        assert s.get(Photo, pid).rotation == 0
+
+
+def test_undo_that_reverts_nothing_stays_until_skipped(album_tree):
+    run_ingest()
+    with session_scope() as s:
+        a, b = ids(s)[:2]
+        older = services.bulk_update(s, [a], date="1970")
+        newer = services.bulk_update(s, [b], caption="by hand")
+    with session_scope() as s:
+        p = s.get(Photo, b)
+        p.caption = "changed outside the edit log"
+        s.add(p)
+    with session_scope() as s:
+        result = editlog.undo(s)
+        assert result["blocked"] and result["batch_id"] == newer and result["undone"] is None
+    with session_scope() as s:
+        assert editlog.undo(s)["batch_id"] == newer  # not silently used up
+        assert editlog.undo(s, skip=True)["skipped"]
+    with session_scope() as s:
+        assert editlog.undo(s)["undone"] == older
+        assert s.get(Photo, a).t_year is None
+
+
+def test_rotation_must_be_quarter_turns(album_tree):
+    import pytest
+
+    run_ingest()
+    with session_scope() as s, pytest.raises(ValueError):
+        services.bulk_update(s, ids(s)[:1], rotate_by=45)

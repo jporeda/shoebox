@@ -262,9 +262,9 @@ def load_world(s, album_id: Optional[int] = None, exclude: set[int] = frozenset(
     return World(photos, loose_by_album, build_anchors(photos, loose, exclude), faces_by_photo, people)
 
 
-def estimate_for(p: Photo, world: World, window: int) -> Optional[Estimate]:
+def estimate_for(p: Photo, world: World, window: int, own_back: bool = True) -> Optional[Estimate]:
     evidence = (
-        own_back_evidence(p)
+        (own_back_evidence(p) if own_back else [])
         + loose_back_evidence(p, world.loose_by_album.get(p.album_id, []), window)
         + neighbour_evidence(p, world.anchors_by_album.get(p.album_id, []), window)
         + age_evidence(world.faces_by_photo.get(p.id, []), world.people)

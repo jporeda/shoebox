@@ -24,7 +24,7 @@ from scipy import ndimage
 from sqlmodel import select
 
 from .config import get_settings
-from .db import session_scope
+from .db import session_scope, update_if
 from .jobs_ctx import NULL_CTX, JobContext
 from .models import LooseBack, Photo
 
@@ -191,7 +191,27 @@ def _consistent(accepted: dict | None, lo: int | None, hi: int | None) -> dict |
     return accepted
 
 
+def loose_open():
+    """Loose backs nobody has dated or marked "no date" yet."""
+    return (LooseBack.d_year == None) & ((LooseBack.d_source == None) | (LooseBack.d_source != "manual"))  # noqa: E711
+
+
+def paired_open():
+    """Paired backs nobody has dated or marked "no date" yet."""
+    return (Photo.back_year == None) & ((Photo.back_source == None) | (Photo.back_source != "manual"))  # noqa: E711
+
+
+def _ocr(reader: Callable[[Path], dict], path: Path) -> dict:
+    try:
+        return reader(path)
+    except Exception as exc:
+        log.warning("OCR failed for %s: %s", path, exc)
+        return {"candidates": [], "accepted": None}
+
+
 def run_read_backs(ctx: JobContext = NULL_CTX, reader: Callable[[Path], dict] = read_back) -> dict:
+    """OCR backs that aren't dated yet. OCR runs outside any transaction, and a reading is
+    only written if the back is still undated, so a date typed meanwhile wins."""
     root = get_settings().photos_root
     with session_scope() as s:
         loose = s.exec(
@@ -208,55 +228,41 @@ def run_read_backs(ctx: JobContext = NULL_CTX, reader: Callable[[Path], dict] = 
         ctx.check_cancel()
         if done % 5 == 0:
             ctx.progress(done, total, "reading loose backs")
+        done += 1
         with session_scope() as s:
             lb = s.get(LooseBack, lid)
-            if lb.d_year is not None or lb.d_source == "manual":
-                lb.ocr_ver = OCR_VERSION
-                s.add(lb)
-                done += 1
-                continue
-            try:
-                result = reader(root / lb.rel_path)
-            except Exception as exc:
-                log.warning("OCR failed for %s: %s", lb.rel_path, exc)
-                result = {"candidates": [], "accepted": None}
-            lb.candidates = result["candidates"]
             fronts = s.exec(
                 select(Photo.name_year_min, Photo.name_year_max).where(
                     Photo.album_id == lb.album_id, Photo.name_year_min != None  # noqa: E711
                 )
             ).first()
+        values: dict = {"ocr_ver": OCR_VERSION}
+        acc = None
+        if lb.d_year is None and lb.d_source != "manual":
+            result = _ocr(reader, root / lb.rel_path)
+            values["candidates"] = result["candidates"]
             acc = _consistent(result["accepted"], *(fronts or (None, None)))
-            if lb.d_source != "manual":
-                lb.d_year, lb.d_month = (acc["year"], acc["month"]) if acc else (None, None)
-                lb.d_source, lb.d_confidence = ("ocr", acc["confidence"]) if acc else (None, None)
-            accepted += acc is not None
-            lb.ocr_ver = OCR_VERSION
-            s.add(lb)
-        done += 1
+        with session_scope() as s:
+            update_if(s, LooseBack, lid, **values)
+            if acc and update_if(s, LooseBack, lid, loose_open(), d_year=acc["year"], d_month=acc["month"],
+                                 d_source="ocr", d_confidence=acc["confidence"]):
+                accepted += 1
     for pid in paired:
         ctx.check_cancel()
         if done % 5 == 0:
             ctx.progress(done, total, "reading paired backs")
+        done += 1
         with session_scope() as s:
             p = s.get(Photo, pid)
-            if p.back_year is not None or p.back_source == "manual":
-                p.back_ocr_ver = OCR_VERSION
-                s.add(p)
-                done += 1
-                continue
-            try:
-                result = reader(root / p.back_rel_path)
-            except Exception as exc:
-                log.warning("OCR failed for %s: %s", p.back_rel_path, exc)
-                result = {"candidates": [], "accepted": None}
-            p.back_candidates = result["candidates"]
+        values = {"back_ocr_ver": OCR_VERSION}
+        acc = None
+        if p.back_year is None and p.back_source != "manual":
+            result = _ocr(reader, root / p.back_rel_path)
+            values["back_candidates"] = result["candidates"]
             acc = _consistent(result["accepted"], p.name_year_min, p.name_year_max)
-            if p.back_source != "manual":
-                p.back_year, p.back_month = (acc["year"], acc["month"]) if acc else (None, None)
-                p.back_source, p.back_confidence = ("ocr", acc["confidence"]) if acc else (None, None)
-            accepted += acc is not None
-            p.back_ocr_ver = OCR_VERSION
-            s.add(p)
-        done += 1
+        with session_scope() as s:
+            update_if(s, Photo, pid, **values)
+            if acc and update_if(s, Photo, pid, paired_open(), back_year=acc["year"], back_month=acc["month"],
+                                 back_source="ocr", back_confidence=acc["confidence"]):
+                accepted += 1
     return {"loose_backs": len(loose), "paired_backs": len(paired), "dates_accepted": accepted}

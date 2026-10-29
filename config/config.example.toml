@@ -1,4 +1,4 @@
-# Copy to config/config.toml to override defaults. Environment variables
+# Copy to private/config.toml to override defaults. Environment variables
 # (SHOEBOX_<NAME>) take precedence over this file.
 
 # Regex on the file name without extension. A match marks a back scan; the
@@ -9,5 +9,5 @@
 # thumb_size = 400
 # preview_size = 1600
 # dup_phash_distance = 4
-# snapshot_keep = 20
+# snapshot_keep = 10
 # fixity_interval_days = 7

@@ -29,7 +29,7 @@ export function useUpdatePhotos() {
 export function useUndo() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (batchId?: string) => api.undo(batchId),
+    mutationFn: (opts?: { batchId?: string; skip?: boolean }) => api.undo(opts?.batchId, opts?.skip),
     onSuccess: () => qc.invalidateQueries(),
   });
 }

@@ -89,13 +89,16 @@ Anything that identifies your family stays out of git:
   "Name?" with a dashed box. Otherwise it suggests a name, and faces that look
   under 6 are only ever suggested. Answer them under *People → Check* (click the
   wrong ones, then Confirm) or with Yes/No on a face box. "Not them" is
-  remembered. Automatic names are never exported until you confirm them. Each
-  inference run can be reverted from the Jobs page.
+  remembered. Automatic names are never exported until you confirm them. The
+  Jobs page can revert the names one run gave automatically; those faces then
+  only get suggestions.
 - **Measure accuracy** (Jobs) hides 20% of your confirmed dates and names,
   predicts them, and reports how close the app gets. It needs at least 5
   confirmed dates and 10 named faces.
 - `R` / `Shift+R` rotates. `⌘Z` (or the Undo button) undoes the last action,
-  including a bulk one.
+  including a bulk one, a drawn or deleted face box, and a person added by
+  naming. If everything an action changed has been changed again since, Undo
+  says so; press it again to skip that action.
 - Double-click a photo to see the front and back side by side; `←` `→` move
   through the album.
 - Possible duplicates (rescans) are flagged **D**. Tags are shared across a
@@ -107,7 +110,7 @@ Anything that identifies your family stays out of git:
 | Layer | Location | Contents |
 |---|---|---|
 | Live | Docker volume `shoebox-data` | SQLite DB, thumbnails |
-| Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after every job and before schema upgrades |
+| Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after every job (the newest 10, then one per hour, day, week and month going back a year) and before schema upgrades (never deleted automatically) |
 | Permanent | `BACKUP_ROOT/truth/truth.json` | Everything you entered, keyed by file hash; `history/` keeps older versions |
 | Permanent | `BACKUP_ROOT/manifest-sha256.txt` | Checksums of every original |
 | Output | `BACKUP_ROOT/export/` | Dated copies with embedded metadata |
@@ -115,7 +118,13 @@ Anything that identifies your family stays out of git:
 
 - `docker compose down -v` **deletes the live volume**, and so does Docker
   Desktop's *Clean / Purge data*. To rebuild: start the stack, run **Import**,
-  then **Restore from truth.json**.
+  wait for it to finish, then click **Restore from truth.json** on the Jobs page. Until you
+  restore, the new empty database leaves `truth.json` alone. Restore reads
+  `truth.json`, or the newest copy in `truth/history/` that has entries, and
+  stops with an error if nothing in it matches your imported scans. To start
+  over on purpose instead, move `truth.json` out of the way first.
+- Or copy a snapshot from `BACKUP_ROOT/db/` into the volume as `shoebox.db`
+  (with the stack stopped) to get back the whole database as it was then.
 - Verify originals without the app:
   ```bash
   cd "$PHOTO_ROOT" && shasum -a 256 -c "$BACKUP_ROOT/manifest-sha256.txt"
@@ -157,6 +166,10 @@ docker run --rm shoebox:latest python -m shoebox.cli openapi > openapi.json && (
 
 Test images are synthetic, and test file names are made up. Never commit real
 family photos, names or paths.
+
+The server only answers to `localhost` / `127.0.0.1`, and only accepts changes
+(anything but GET) that carry the `X-Shoebox: 1` header, which the UI sends. A web
+page open in another tab can't add that header, so it can't drive the app.
 
 ## Licensing note
 

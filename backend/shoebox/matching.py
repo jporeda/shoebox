@@ -17,7 +17,7 @@ from typing import Optional
 import numpy as np
 from sqlmodel import select
 
-from .db import session_scope
+from .db import same, session_scope, update_if
 from .estimate import TRUSTED_FACE_SOURCES
 from .faces import from_blob
 from .jobs_ctx import NULL_CTX, JobContext
@@ -119,9 +119,11 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
             counts["auto" if verdict == "auto" else "suggested" if verdict == "suggest" else "unnamed"] += 1
             if (f.person_id, f.suggested_person_id) == new:
                 continue
-            f.person_id, f.suggested_person_id = new
-            f.confidence = m.score if m and verdict != "none" else None
+            values = {"person_id": new[0], "suggested_person_id": new[1],
+                      "confidence": m.score if m and verdict != "none" else None}
             if verdict == "auto":
-                f.run_id, f.cluster_id = run_id, None
-            s.add(f)
+                values.update(run_id=run_id, cluster_id=None)
+            # Skipped if someone named, ignored or answered this face since it was read.
+            update_if(s, Face, f.id, same(Face.person_id, f.person_id), same(Face.suggested_person_id, f.suggested_person_id),
+                      same(Face.source, f.source), Face.ignored == False, **values)  # noqa: E712
     return counts

@@ -48,11 +48,14 @@ def evaluate_dates(fraction: float, seed: int) -> dict:
         if len(trusted) < MIN_DATES:
             return {"status": f"need at least {MIN_DATES} confirmed single-year dates (have {len(trusted)})"}
         hidden = random.Random(seed).sample(trusted, max(1, round(len(trusted) * fraction)))
-        held = load_world(s, exclude={p.id for p in hidden})
+        # Hide each photo's duplicates too: they share its tags, so they'd give the answer away.
+        groups = {p.dup_group_id for p in hidden if p.dup_group_id is not None}
+        held = load_world(s, exclude={p.id for p in hidden} | {p.id for p in world.photos if p.dup_group_id in groups})
         window = get_settings().loose_back_window
         errors, by_kind, by_conf, missing = [], {}, {}, 0
         for p in hidden:
-            est = estimate_for(p, held, window)
+            # A date that was taken from the photo's own back would just be read off it again.
+            est = estimate_for(p, held, window, own_back=p.t_source != "back")
             if est is None:
                 missing += 1
                 continue

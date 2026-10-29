@@ -737,6 +737,8 @@ export interface components {
             cluster_id: number;
             /** Size */
             size: number;
+            /** Member Ids */
+            member_ids: number[];
             /** Faces */
             faces: components["schemas"]["FaceOut"][];
             suggestion: components["schemas"]["Suggestion"] | null;
@@ -1153,11 +1155,18 @@ export interface components {
         UndoRequest: {
             /** Batch Id */
             batch_id?: string | null;
+            /**
+             * Skip
+             * @default false
+             */
+            skip?: boolean;
         };
         /** UndoResult */
         UndoResult: {
             /** Undone */
             undone: string | null;
+            /** Batch Id */
+            batch_id?: string | null;
             /** Description */
             description?: string | null;
             /** Reverted */
@@ -1166,6 +1175,16 @@ export interface components {
             conflicts: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Blocked
+             * @default false
+             */
+            blocked?: boolean;
+            /**
+             * Skipped
+             * @default false
+             */
+            skipped?: boolean;
         };
         /** ValidationError */
         ValidationError: {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from pathlib import Path
 
 import imagehash
@@ -76,10 +77,19 @@ def ensure_thumb(src: Path, sha: str, size: int, rotation: int = 0) -> Path:
     img = open_display(src, rotation, max_size=size)
     if img.mode != "RGB":
         img = img.convert("RGB")
-    tmp = out.with_suffix(".tmp")
-    img.save(tmp, "JPEG", quality=85, optimize=True)
-    tmp.replace(out)
+    save_jpeg(img, out, quality=85, optimize=True)
     return out
+
+
+def save_jpeg(img: Image.Image, out: Path, **options) -> None:
+    """Write through a uniquely named temp file: the API's threads and the worker can make
+    the same thumbnail at once, and a half-written file must never be served (it's cached)."""
+    tmp = out.with_name(f".{out.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        img.save(tmp, "JPEG", **options)
+        tmp.replace(out)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def phash(img: Image.Image) -> str:
