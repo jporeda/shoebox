@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, imgUrl, type Face } from "./api";
+import { api, ApiError, faceUrl, imgUrl, type Face } from "./api";
 import { NameInput } from "./People";
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -17,7 +17,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
   const frame = useRef<HTMLDivElement>(null);
 
   const refresh = () => {
-    for (const k of ["photoFaces", "clusters", "people", "personFaces", "faceStats", "edits"]) qc.invalidateQueries({ queryKey: [k] });
+    for (const k of ["photoFaces", "clusters", "people", "personFaces", "faceStats", "faceReview", "edits"]) qc.invalidateQueries({ queryKey: [k] });
   };
   const act = async (fn: () => Promise<unknown>) => {
     setError("");
@@ -61,6 +61,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
   const visible = (faces.data ?? []).filter((f) => showIgnored || !f.ignored);
   const current = visible.find((f) => f.id === active);
   const hidden = (faces.data ?? []).filter((f) => f.ignored).length;
+  const guesses = visible.filter((f) => !f.ignored && guessName(f));
 
   return (
     <div className="facelayer">
@@ -91,6 +92,38 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
           {drawing ? "Drag around the face…" : "＋ Draw face"}
         </button>
       </div>
+      {visible.length > 0 && (
+        <div className="facelist">
+          <ul>
+            {visible.map((f) => {
+              const guess = guessName(f);
+              return (
+                <li key={f.id}>
+                  <button className={`facelist__row ${f.id === active ? "is-active" : ""}`} onClick={() => setActive(f.id === active ? null : f.id)}>
+                    <img src={faceUrl(f.id)} alt="" loading="lazy" />
+                    {f.ignored ? (
+                      <span className="muted">Ignored</span>
+                    ) : guess ? (
+                      <span>
+                        {guess}? <span className="muted small">{f.source === "auto" && f.person_name ? "named by the app" : "suggested"}</span>
+                      </span>
+                    ) : f.person_name ? (
+                      <span className="facelist__confirmed">{f.person_name}</span>
+                    ) : (
+                      <span className="muted">Unnamed</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {guesses.length > 0 && (
+            <button className="btn btn--primary" onClick={() => act(() => api.acceptFaces(guesses.map((f) => f.id)))}>
+              Accept {guesses.length === 1 ? "the guess" : `all ${guesses.length} guesses`}
+            </button>
+          )}
+        </div>
+      )}
       {current && (
         <div className="facepop">
           <span className="facepop__who">
@@ -144,8 +177,13 @@ function pct(b: Box): React.CSSProperties {
   return { left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` };
 }
 
+/** The name the app guessed for this face (its own automatic name, or a suggestion), if any. */
+function guessName(face: Face): string | null {
+  return (face.source === "auto" && face.person_name) || face.suggested_name || null;
+}
+
 function FaceBox({ face, active, onClick }: { face: Face; active: boolean; onClick: () => void }) {
-  const guess = (face.source === "auto" && face.person_name) || face.suggested_name;
+  const guess = guessName(face);
   const cls = face.ignored ? "is-ignored" : guess ? "is-guess" : face.person_name ? "is-named" : "is-unnamed";
   return (
     <button
