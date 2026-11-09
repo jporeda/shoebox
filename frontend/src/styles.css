@@ -266,8 +266,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .linkish { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0 0 0 8px; }
 .facepop { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); line-height: 1.4; }
 .facepop__who { font-weight: 600; }
-.facelist { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; line-height: 1.4; }
-.facelist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.facelist { display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; }
+.facelist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.facelist > .btn { flex: none; }
 .facelist__row { display: flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
 .facelist__row.is-active { border-color: var(--accent); }
 .facelist__row img { width: 36px; height: 36px; object-fit: cover; border-radius: 5px; }
