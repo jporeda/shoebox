@@ -276,7 +276,6 @@ function SourceFile({ rel, folder, albumId, children }: { rel: string; folder: s
         </>
       )}
       <a className="btn btn--ghost" href={gridHref({ album_id: albumId })}>Open album</a>
-      <span className="spacer" />
       {children}
     </div>
   );
