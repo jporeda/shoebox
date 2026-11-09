@@ -82,7 +82,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           {idx >= 0 && ` · ${idx + 1} of ${items.length}`}
         </span>
         <span className="spacer" />
-        <AcceptGuesses photoId={p.id} />
+        <AcceptGuesses photoId={p.id} rotation={p.rotation} />
         <button className="btn btn--ghost photo-view__step" disabled={!prev} onClick={() => step(prev)}>
           ‹ Prev
         </button>
@@ -90,7 +90,16 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           Next ›
         </button>
       </div>
-      <SourceFile rel={p.rel_path} folder={p.source_folder ?? null} albumId={p.album_id} />
+      <SourceFile rel={p.rel_path} folder={p.source_folder ?? null} albumId={p.album_id}>
+        <span className="photo-view__rotate" role="group" aria-label="Rotate photo">
+          <button className="btn btn--ghost" disabled={update.isPending} onClick={() => update.mutate({ ids: [id], rotate_by: 270 })} title="Rotate left (Shift+R)">
+            ⟲ Left
+          </button>
+          <button className="btn btn--ghost" disabled={update.isPending} onClick={() => update.mutate({ ids: [id], rotate_by: 90 })} title="Rotate right (R)">
+            ⟳ Right
+          </button>
+        </span>
+      </SourceFile>
       <div
         className={`photo-view__images ${p.back_sha256 ? "has-back" : ""}`}
         onPointerDown={onSwipeDown}
@@ -236,7 +245,7 @@ function usePinchZoomed(): boolean {
 
 /** The original's file name, its folder on the Mac (with Copy, for Finder's Go to Folder, ⇧⌘G)
  *  and a link to that folder's album here. Browsers can't open Finder folders from a web page. */
-function SourceFile({ rel, folder, albumId }: { rel: string; folder: string | null; albumId: number }) {
+function SourceFile({ rel, folder, albumId, children }: { rel: string; folder: string | null; albumId: number; children?: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
   const name = rel.split("/").pop() ?? rel;
   const copy = async () => {
@@ -266,6 +275,8 @@ function SourceFile({ rel, folder, albumId }: { rel: string; folder: string | nu
         </>
       )}
       <a className="btn btn--ghost" href={gridHref({ album_id: albumId })}>Open album</a>
+      <span className="spacer" />
+      {children}
     </div>
   );
 }

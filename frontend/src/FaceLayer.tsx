@@ -28,9 +28,10 @@ function refreshFaces(qc: QueryClient) {
 }
 
 /** Photo-view toolbar button: confirm every name the app guessed on this photo, as one undo step. */
-export function AcceptGuesses({ photoId }: { photoId: number }) {
+export function AcceptGuesses({ photoId, rotation }: { photoId: number; rotation: number }) {
   const qc = useQueryClient();
-  const faces = useQuery({ queryKey: ["photoFaces", photoId], queryFn: () => api.photoFaces(photoId) });
+  // Boxes come back in the photo's current rotation, so a rotate must fetch them again.
+  const faces = useQuery({ queryKey: ["photoFaces", photoId, rotation], queryFn: () => api.photoFaces(photoId) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const guesses = (faces.data ?? []).filter((f) => !f.ignored && guessName(f));
@@ -61,7 +62,8 @@ export function AcceptGuesses({ photoId }: { photoId: number }) {
 /** Front image with face boxes: click a box to name it, or draw a box around a missed face. */
 export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sha: string; rotation: number; alt: string }) {
   const qc = useQueryClient();
-  const faces = useQuery({ queryKey: ["photoFaces", photoId], queryFn: () => api.photoFaces(photoId) });
+  // Boxes come back in the photo's current rotation, so a rotate must fetch them again.
+  const faces = useQuery({ queryKey: ["photoFaces", photoId, rotation], queryFn: () => api.photoFaces(photoId) });
   const [active, setActive] = useState<number | null>(null);
   const [drawing, setDrawing] = useState(false);
   // "Draw several": stays in drawing mode after each box, until switched off (or another photo opens).
