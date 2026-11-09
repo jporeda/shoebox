@@ -32,13 +32,39 @@ By default only this Mac can open Shoebox. To use it from other devices on your 
 2. Find this Mac's local name in *System Settings → General → Sharing* (under "Local
    hostname", e.g. `Family-Mac.local`).
 3. On the phone or tablet, open `http://Family-Mac.local:8000`. If macOS asks whether
-   Docker may accept incoming connections, allow it.
-4. The Mac has to be awake for other devices to reach it.
+   Docker may accept incoming connections, allow it. Many Android phones can't open
+   `.local` names: use the Mac's IP address instead, e.g. `http://192.168.1.20:8000`
+   (*System Settings → Wi-Fi → Details* shows it).
+4. The Mac has to be awake, with Docker Desktop running, for other devices to reach it.
+   *System Settings → Battery → Options* can keep it from sleeping on power, and Docker
+   Desktop's *Start Docker Desktop when you sign in* setting brings Shoebox back after a restart.
+
+Browsers show "Not Secure" in the address bar because this is plain `http` on your own
+network; that's expected.
+
+**If it doesn't connect:**
+- The phone must be on the same Wi-Fi as the Mac, not a guest network.
+- Check Docker Desktop is running and the Mac is awake.
+- If you clicked *Don't Allow* on the firewall prompt: *System Settings → Network → Firewall →
+  Options*, find Docker and set it to allow incoming connections.
+- "Invalid host header" means the address isn't one Shoebox answers to: use the exact
+  `.local` name or the IP address. Other names (say one your router gives the Mac) can be
+  added to `SHOEBOX_HOSTS` in `private/.env`.
+- `SHOEBOX_BIND` only takes effect from `private/.env` followed by `docker compose up -d`.
 
 **There is no login.** Anyone on the same Wi-Fi can view every photo and change anything,
 including Restore and Export. Put guests and smart-home devices on a separate guest network,
-and never forward port 8000 on your router. Undo on each device takes back that device's own
-edits (jobs and older edits are shared). Set `SHOEBOX_BIND` back to `127.0.0.1` to turn it off.
+never forward port 8000 on your router, and set `SHOEBOX_BIND` back to `127.0.0.1` before
+taking a laptop onto someone else's Wi-Fi (a café, a hotel).
+
+**Undo on phones and tablets.** The Undo button on each browser takes back that browser's own
+edits only, so it never undoes something done on another device, and it asks first when an
+undo would change more than about 20 things. A job such as *Accept guesses* is undone from the
+Jobs page instead; anything another device has edited since is left alone and reported.
+Restore can't be undone in one step: to go back, copy an earlier snapshot from
+`BACKUP_ROOT/db/` (see "Where data lives"). Undo history belongs to one browser at one
+address: the same phone opening the `.local` name and the IP address, a private window, or a
+Home Screen icon each start their own history.
 
 ## Personal data
 

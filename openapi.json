@@ -643,6 +643,7 @@
   "/api/edits": {
    "get": {
     "summary": "Recent Edits",
+    "description": "Newest first. By default the batches the Undo button takes back (from a browser: its own).\nWith ``shared=true``, the batches no device owns (jobs, restore, CLI, older edits), which any\ndevice may undo by passing their id to /undo.",
     "operationId": "recent_edits_api_edits_get",
     "parameters": [
      {
@@ -653,6 +654,16 @@
        "type": "integer",
        "default": 30,
        "title": "Limit"
+      }
+     },
+     {
+      "name": "shared",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Shared"
       }
      }
     ],
@@ -2253,6 +2264,11 @@
      "undone": {
       "type": "boolean",
       "title": "Undone"
+     },
+     "edits": {
+      "type": "integer",
+      "title": "Edits",
+      "default": 0
      }
     },
     "type": "object",

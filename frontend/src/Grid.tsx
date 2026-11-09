@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { imgUrl, type ListParams, type PhotoSummary } from "./api";
 import { FiltersButton, SidebarDrawer } from "./Drawer";
 import { DateEventEditor } from "./Editor";
 import { useAlbums, useDrawer, useLongPress, usePhotos, useTouch, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
-import { backsHref, gridHref, navigate, photoHref } from "./route";
+import { backsHref, gridHref, listQuery, navigate, photoHref, takeLastPhoto } from "./route";
 
 const STATUS_FILTERS: { value: ListParams["status"]; label: string }[] = [
   { value: undefined, label: "All" },
@@ -189,6 +189,9 @@ function Tile({
   );
 }
 
+// Scroll position of each grid list (by its URL query), so coming back from a photo returns to it.
+const scrollMemory = new Map<string, number>();
+
 export function Grid({ list }: { list: ListParams }) {
   const photos = usePhotos(list);
   const items = photos.data?.items ?? [];
@@ -208,6 +211,28 @@ export function Grid({ list }: { list: ListParams }) {
     setSelectMode(false);
     anchor.current = null;
   }, [listKey]);
+
+  // Back from a photo: restore this list's scroll position once its tiles are rendered, then make
+  // sure the photo last viewed (possibly several swipes on) is on screen.
+  const gridEl = useRef<HTMLDivElement>(null);
+  const scrollKey = listQuery(list);
+  // Once per visit to the grid: switching filters inside the grid keeps today's behaviour.
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    const el = gridEl.current;
+    // Wait for this list's own data (not the previous list's placeholder) before restoring.
+    if (!el || restored.current || !photos.data || photos.isPlaceholderData) return;
+    restored.current = true;
+    const saved = scrollMemory.get(scrollKey);
+    if (saved !== undefined) el.scrollTop = saved;
+    const last = takeLastPhoto(list);
+    const tile = last !== null ? el.querySelector<HTMLElement>(`.tile[data-id="${last}"]`) : null;
+    if (tile) {
+      const t = tile.getBoundingClientRect();
+      const g = el.getBoundingClientRect();
+      if (t.top < g.top || t.bottom > g.bottom) tile.scrollIntoView({ block: "center" });
+    }
+  }, [scrollKey, list, photos.data, photos.isPlaceholderData]);
 
   const indexOf = useMemo(() => new Map(items.map((p, i) => [p.id, i])), [items]);
   const selectedIds = useMemo(() => items.filter((p) => selected.has(p.id)).map((p) => p.id), [items, selected]);
@@ -338,7 +363,11 @@ export function Grid({ list }: { list: ListParams }) {
             No photos here yet. Run <a href="#/jobs">Import</a> to scan the photo folder.
           </div>
         )}
-        <div className={`grid ${selectMode ? "is-selecting" : ""} ${selectedIds.length ? "has-sheet" : ""}`}>
+        <div
+          ref={gridEl}
+          className={`grid ${selectMode ? "is-selecting" : ""} ${selectedIds.length ? "has-sheet" : ""}`}
+          onScroll={(e) => scrollMemory.set(scrollKey, e.currentTarget.scrollTop)}
+        >
           {items.map((p) => (
             <Tile
               key={p.id}

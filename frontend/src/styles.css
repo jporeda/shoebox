@@ -73,6 +73,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .field__hint { font-size: 12px; color: var(--ok); min-height: 16px; }
 .field__hint.is-error { color: var(--bad); }
 .field__inline { display: flex; gap: 4px; }
+/* "New person: X" under a face-name box: the row wraps only while the hint shows. */
+.field__inline.name-input--new { flex-wrap: wrap; }
+.name-input__hint { flex-basis: 100%; color: var(--muted); min-height: 0; }
 .field--actions { justify-content: flex-start; }
 .check { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 
@@ -187,7 +190,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 
 .toast {
   position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); padding: 10px 16px;
-  border-radius: 8px; background: var(--text); color: var(--bg); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); z-index: 10;
+  border-radius: 8px; background: var(--text); color: var(--bg); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); z-index: 30; /* above the bottom sheets (20, 25) */
 }
 
 @media (max-width: 720px) {
@@ -313,7 +316,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   /* Photo view */
   .photo-view__bar { flex-wrap: wrap; row-gap: 6px; }
   .photo-view__step { min-width: 76px; }
-  .photo-view__images { touch-action: pan-y pinch-zoom; }
+  /* Vertical scrolling stays native; sideways drags are ours (swipe). Plain pan-y by default: a browser
+     that doesn't know pinch-zoom (iOS Safari) drops the whole "pan-y pinch-zoom" declaration. */
+  .photo-view__images { touch-action: pan-y; }
+  @supports (touch-action: pan-y pinch-zoom) {
+    .photo-view__images { touch-action: pan-y pinch-zoom; }
+  }
   .photo-view.is-zoomed .photo-view__images { touch-action: auto; }
   .photo-frame.is-drawing { touch-action: none; }
   /* Tiny face boxes still get a finger-sized hit area. */
@@ -337,6 +345,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 @media (max-width: 600px) {
   .topbar { gap: 6px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); flex-wrap: nowrap; }
   .topbar .stats, .topbar__undo-label { display: none; }
+  .topbar__undo-word { font-size: 14px; }
   .topbar nav { gap: 0; overflow-x: auto; min-width: 0; scrollbar-width: none; }
   .topbar nav a { padding: 4px 8px; }
   .topbar .spacer { display: none; }

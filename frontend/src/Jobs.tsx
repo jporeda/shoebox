@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Job, type JobType } from "./api";
+import { api, ApiError, type Job, type JobType } from "./api";
+import { useUndo } from "./hooks";
 
 const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[] = [
   { type: "ingest", label: "Import", help: "Scan the photo folder: new albums, photos, back scans, duplicates, thumbnails. Then auto-rotates." },
@@ -46,7 +47,7 @@ const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[
     label: "Restore from truth.json",
     help: "Re-apply backed-up dates, events, captions and rotations onto imported photos.",
     confirm:
-      "Re-apply backup/truth/truth.json onto the current photos? Existing values are overwritten. This can't be undone in one step: Undo reverses it one photo at a time.",
+      "Re-apply backup/truth/truth.json onto the current photos? Existing values are overwritten, and Restore can't be undone from Shoebox. To go back afterwards, copy an earlier database snapshot into place (see “Where data lives” in the README).",
   },
 ];
 
@@ -114,7 +115,7 @@ function AcceptGuessesAction({ disabled, onStart }: { disabled: boolean; onStart
   const valid = text.trim() !== "" && Number.isFinite(value) && value > 0 && value <= 100;
   const run = () => {
     if (!valid) return;
-    if (window.confirm(`Confirm every guessed name with a match of ${value}% or higher? One Undo reverses the whole run.`)) onStart(value);
+    if (window.confirm(`Confirm every guessed name with a match of ${value}% or higher? “Undo this run” in Recent jobs reverses the whole run.`)) onStart(value);
   };
   return (
     <div className="action">
@@ -170,6 +171,7 @@ function JobRow({ job }: { job: Job }) {
       </summary>
       {job.error && <pre className="error">{job.error}</pre>}
       {job.type === "estimate" && job.state === "done" && <RevertButtons result={job.result as Record<string, any>} />}
+      {job.type === "accept_guesses" && job.state === "done" && <UndoRunButton result={job.result as Record<string, unknown>} />}
       {Object.keys(job.result).length > 0 && <pre className="job__result">{JSON.stringify(job.result, null, 2)}</pre>}
     </details>
   );
@@ -228,6 +230,43 @@ function summary(job: Job): string {
     default:
       return job.message;
   }
+}
+
+/** "Undo this run" for a finished Accept guesses job: one batch, undone by its id (the top-bar Undo
+ *  never takes back jobs). Shows the outcome under the button. */
+function UndoRunButton({ result }: { result: Record<string, unknown> }) {
+  const undo = useUndo();
+  const [outcome, setOutcome] = useState<{ text: string; error?: boolean } | null>(null);
+  const batchId = typeof result.batch_id === "string" ? result.batch_id : null;
+  if (!batchId) return null;
+  const count = typeof result.accepted === "number" ? result.accepted : null;
+  const run = async () => {
+    const what = count !== null ? `${count} accepted name${count === 1 ? "" : "s"}` : "the names this run accepted";
+    if (!window.confirm(`Undo this run? It takes back ${what}. Names changed since are kept.`)) return;
+    setOutcome(null);
+    try {
+      // useUndo invalidates every query on success.
+      const r = await undo.mutateAsync({ batchId });
+      if (r.undone) {
+        const kept = r.conflicts.length;
+        setOutcome({ text: `Undid “${r.description ?? "Accept guesses"}”${kept ? ` (${kept} kept because they were changed since)` : ""}` });
+      } else if (r.blocked) {
+        setOutcome({ text: "Couldn't undo: every change in this run was changed again since.", error: true });
+      } else {
+        setOutcome({ text: "Already undone" });
+      }
+    } catch (e) {
+      setOutcome({ text: `Couldn't undo: ${e instanceof ApiError ? e.message : String(e)}`, error: true });
+    }
+  };
+  return (
+    <div className="job__revert">
+      <button className="btn btn--ghost" onClick={run} disabled={undo.isPending}>
+        {undo.isPending ? "Undoing…" : "Undo this run"}
+      </button>
+      {outcome && <span className={outcome.error ? "error" : "muted"}>{outcome.text}</span>}
+    </div>
+  );
 }
 
 /** Automatic names can be reverted; date estimates just follow their evidence. */

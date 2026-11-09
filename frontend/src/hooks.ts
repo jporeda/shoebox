@@ -55,7 +55,8 @@ export const usePhone = () => useMedia("(max-width: 600px)");
 
 export const LONG_PRESS_MS = 450;
 
-/** Long-press for touch and pen pointers (mouse is left alone, so desktop clicks don't change).
+/** Long-press for finger pointers only. Mouse and pen are left alone, so desktop clicks (and a pen
+ *  or stylus, which clicks precisely) keep their click behaviour.
  *  Spread `handlers` on the element; in its onClick, `consumeLongPress()` returns true (once) for
  *  the click that ends a long press, which should then be ignored, and `wasTouch()` says whether
  *  the last press was a finger. */
@@ -74,7 +75,7 @@ export function useLongPress(onLongPress: () => void, ms = LONG_PRESS_MS) {
   useEffect(() => cancel, []);
   const handlers = {
     onPointerDown: (e: React.PointerEvent) => {
-      touch.current = e.pointerType !== "mouse";
+      touch.current = e.pointerType === "touch";
       fired.current = false;
       cancel();
       if (!touch.current || !e.isPrimary) return;

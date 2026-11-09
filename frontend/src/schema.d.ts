@@ -199,7 +199,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Recent Edits */
+        /**
+         * Recent Edits
+         * @description Newest first. By default the batches the Undo button takes back (from a browser: its own).
+         *     With ``shared=true``, the batches no device owns (jobs, restore, CLI, older edits), which any
+         *     device may undo by passing their id to /undo.
+         */
         get: operations["recent_edits_api_edits_get"];
         put?: never;
         post?: never;
@@ -793,6 +798,11 @@ export interface components {
             actor: string;
             /** Undone */
             undone: boolean;
+            /**
+             * Edits
+             * @default 0
+             */
+            edits?: number;
         };
         /** EventInstanceOut */
         EventInstanceOut: {
@@ -1638,6 +1648,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+                shared?: boolean;
             /** @description Successful Response */
             200: {
                 headers: {

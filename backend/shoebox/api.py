@@ -125,6 +125,7 @@ class EditBatchOut(BaseModel):
     description: str
     actor: str
     undone: bool
+    edits: int = 0  # changes an undo would revert (bookkeeping fields not counted)
 
 
 class EventKindIn(BaseModel):
@@ -590,11 +591,18 @@ def undo(body: UndoRequest, s: Session = Depends(get_session)):
 
 
 @router.get("/edits", response_model=list[EditBatchOut])
-def recent_edits(limit: int = 30, s: Session = Depends(get_session)):
-    # This device's own edits plus shared ones: the ones its Undo button can take back.
-    mine = editlog.mine(editlog.CURRENT_ACTOR.get())
-    rows = s.exec(select(EditBatch).where(mine).order_by(EditBatch.ts.desc()).limit(limit)).all()
-    return [EditBatchOut(**r.model_dump()) for r in rows]
+def recent_edits(limit: int = 30, shared: bool = False, s: Session = Depends(get_session)):
+    """Newest first. By default the batches the Undo button takes back (from a browser: its own).
+    With ``shared=true``, the batches no device owns (jobs, restore, CLI, older edits), which any
+    device may undo by passing their id to /undo."""
+    who = editlog.shared_batches() if shared else editlog.undoable(editlog.CURRENT_ACTOR.get())
+    rows = s.exec(select(EditBatch).where(who).order_by(EditBatch.ts.desc()).limit(limit)).all()
+    counts = dict(s.exec(
+        select(Edit.batch_id, func.count())
+        .where(col(Edit.batch_id).in_([r.id for r in rows]), col(Edit.field).not_in(editlog.STAGE_FIELDS))
+        .group_by(Edit.batch_id)
+    ).all()) if rows else {}
+    return [EditBatchOut(**r.model_dump(), edits=counts.get(r.id, 0)) for r in rows]
 
 
 # --- events --------------------------------------------------------------------

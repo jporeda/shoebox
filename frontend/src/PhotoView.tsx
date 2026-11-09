@@ -5,7 +5,7 @@ import { DateEventEditor } from "./Editor";
 import { AcceptGuesses, FaceLayer } from "./FaceLayer";
 import { usePhotos, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
-import { gridHref, navigate, photoHref } from "./route";
+import { gridHref, navigate, navigateReplace, photoHref, rememberPhoto } from "./route";
 
 export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   const detail = useQuery({ queryKey: ["photo", id], queryFn: () => api.photo(id) });
@@ -18,11 +18,16 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   const next = idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
   const p = detail.data;
 
+  // Stepping between photos replaces the history entry, so Back returns to the grid (which then
+  // scrolls to the last photo viewed) instead of walking back through every photo.
+  const step = (to: { id: number } | null) => to && navigateReplace(photoHref(to.id, list));
+  useEffect(() => rememberPhoto(list, id), [list, id]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e)) return;
-      if (e.key === "ArrowLeft" && prev) navigate(photoHref(prev.id, list));
-      else if (e.key === "ArrowRight" && next) navigate(photoHref(next.id, list));
+      if (e.key === "ArrowLeft" && prev) step(prev);
+      else if (e.key === "ArrowRight" && next) step(next);
       else if (e.key === "Escape") navigate(gridHref(list));
       // Holding R would otherwise fire a rotate per auto-repeat.
       else if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.repeat)
@@ -38,7 +43,11 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
   const onSwipeDown = (e: React.PointerEvent) => {
     if (e.pointerType === "mouse") return;
-    if (!e.isPrimary || zoomed || (e.target as Element).closest(".photo-frame.is-drawing")) {
+    // Only the photo itself starts a swipe: not the face tools, slider, face list or face sheet,
+    // which sit inside this element (the sheet only looks separate on a phone).
+    const t = e.target as Element;
+    const onPhoto = t.closest(".photo-frame") || t.matches(".photo-view__images > figure > img");
+    if (!e.isPrimary || zoomed || !onPhoto || t.closest(".photo-frame.is-drawing")) {
       swipe.current = null; // a second finger (pinch) cancels the swipe
       return;
     }
@@ -51,8 +60,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
     const dx = e.clientX - s.x;
     const dy = e.clientY - s.y;
     if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy) || e.timeStamp - s.t > 800) return;
-    const to = dx < 0 ? next : prev;
-    if (to) navigate(photoHref(to.id, list));
+    step(dx < 0 ? next : prev);
   };
 
   // Preload neighbours so arrowing through an album feels instant.
@@ -75,10 +83,10 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
         </span>
         <span className="spacer" />
         <AcceptGuesses photoId={p.id} />
-        <button className="btn btn--ghost photo-view__step" disabled={!prev} onClick={() => prev && navigate(photoHref(prev.id, list))}>
+        <button className="btn btn--ghost photo-view__step" disabled={!prev} onClick={() => step(prev)}>
           ‹ Prev
         </button>
-        <button className="btn btn--ghost photo-view__step" disabled={!next} onClick={() => next && navigate(photoHref(next.id, list))}>
+        <button className="btn btn--ghost photo-view__step" disabled={!next} onClick={() => step(next)}>
           Next ›
         </button>
       </div>

@@ -46,12 +46,16 @@ def lan_enabled() -> bool:
     return get_settings().bind not in ("127.0.0.1", "localhost", "::1", "")
 
 
+def _norm_host(hostname: str) -> str:
+    return hostname.lower().rstrip(".")
+
+
 def _is_allowed_host(hostname: str | None) -> bool:
     """Names this server answers to: this machine's own, plus (with network access on) the home
     network's .local names, private addresses and any names listed in SHOEBOX_HOSTS."""
     if not hostname:
         return False
-    host = hostname.lower().rstrip(".")
+    host = _norm_host(hostname)
     if host in LOCAL_HOSTS:
         return True
     if not lan_enabled():
@@ -67,8 +71,10 @@ def _is_allowed_host(hostname: str | None) -> bool:
 
 
 def _is_own_origin(origin: str, request: Request) -> bool:
-    """True for this app's own pages: an allowed host name on the port the browser used to reach
-    us (the Host header, so a remapped Docker port still works), or the Vite dev server."""
+    """True for this app's own pages: the host name and port the browser used to reach us (the Host
+    header, so a remapped Docker port still works; localhost and 127.0.0.1 count as one), or the
+    Vite dev server on this machine. A page on another device of the home network is not ours,
+    even on the same port."""
     def port(u) -> int | None:
         return u.port if u.port is not None else _DEFAULT_PORTS.get(u.scheme)
 
@@ -81,7 +87,11 @@ def _is_own_origin(origin: str, request: Request) -> bool:
         return False  # includes "null" (sandboxed iframes, file:// pages) and other sites
     if o.username or o.password or o.path or o.query or o.fragment:
         return False  # a browser's Origin is only scheme://host[:port]
-    return o_port in (own_port, VITE_DEV_PORT)
+    o_host, own_host = _norm_host(o.hostname), _norm_host(request.url.hostname or "")
+    loopback = o_host in LOCAL_HOSTS and own_host in LOCAL_HOSTS
+    if o_port == VITE_DEV_PORT:
+        return loopback
+    return o_port == own_port and (o_host == own_host or loopback)
 
 
 @app.middleware("http")
@@ -97,8 +107,11 @@ async def guard(request: Request, call_next):
     refused = _refuse_write(request)
     if refused is not None:
         return refused
+    # A web request without a valid client id (curl, a script, a malformed header) is anonymous:
+    # its Undo reaches shared batches only, never a device's. Only the CLI undoes everything.
     client = request.headers.get(CLIENT_HEADER, "")
-    token = editlog.CURRENT_ACTOR.set(f"client:{client}" if CLIENT_ID.fullmatch(client) else "user")
+    actor = f"{editlog.CLIENT_PREFIX}{client}" if CLIENT_ID.fullmatch(client) else editlog.ANONYMOUS
+    token = editlog.CURRENT_ACTOR.set(actor)
     try:
         return await call_next(request)
     finally:

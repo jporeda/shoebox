@@ -183,7 +183,8 @@ def update_person(person_id: int, body: PersonIn, s: Session = Depends(get_sessi
         raise HTTPException(404, "person not found")
     changes = []
     if body.name is not None and body.name.strip() and body.name.strip() != person.name:
-        if s.exec(select(Person).where(Person.name == body.name.strip())).first():
+        taken = select(Person).where(func.lower(Person.name) == body.name.strip().lower(), Person.id != person.id)
+        if s.exec(taken).first():
             raise HTTPException(409, f"{body.name.strip()} already exists; merge instead")
         changes.append((person, "name", body.name.strip()))
     if "birth_year" in body.model_fields_set:

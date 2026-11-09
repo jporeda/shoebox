@@ -96,7 +96,8 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
       setScanning(false);
     }
   };
-  const [drag, setDrag] = useState<{ start: [number, number]; box: Box } | null>(null);
+  // The box being dragged, and the pointer drawing it: other pointers (a second finger) are ignored.
+  const [drag, setDrag] = useState<{ start: [number, number]; box: Box; pointerId: number } | null>(null);
   const [showIgnored, setShowIgnored] = useState(false);
   const [showBoxes, setShowBoxes] = useState(readShowBoxes);
   const [zoom, setZoom] = useState<number | null>(null); // context around the face, in face sizes; null = closed
@@ -128,16 +129,16 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = point(e);
-    setDrag({ start: p, box: { x: p[0], y: p[1], w: 0, h: 0 } });
+    setDrag({ start: p, box: { x: p[0], y: p[1], w: 0, h: 0 }, pointerId: e.pointerId });
   };
   const onMove = (e: React.PointerEvent) => {
-    if (!drag || !e.isPrimary) return;
+    if (!drag || e.pointerId !== drag.pointerId) return;
     const [x, y] = point(e);
     const [sx, sy] = drag.start;
     setDrag({ ...drag, box: { x: Math.min(x, sx), y: Math.min(y, sy), w: Math.abs(x - sx), h: Math.abs(y - sy) } });
   };
-  const onUp = async () => {
-    if (!drag) return;
+  const onUp = async (e: React.PointerEvent) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
     const box = drag.box;
     setDrag(null);
     if (box.w < 0.01 || box.h < 0.01) return;
@@ -156,6 +157,26 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
     });
   };
 
+  // Escape during a drag drops the box without saving; drawing mode stays on. Captured first so the
+  // photo view's Escape (back to the grid) doesn't also fire.
+  const dragPointer = drag?.pointerId;
+  useEffect(() => {
+    if (dragPointer === undefined) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      try {
+        frame.current?.releasePointerCapture(dragPointer);
+      } catch {
+        // already released
+      }
+      setDrag(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [dragPointer]);
+
   const visible = (faces.data ?? []).filter((f) => showIgnored || !f.ignored);
   const current = visible.find((f) => f.id === active);
   const hidden = (faces.data ?? []).filter((f) => f.ignored).length;
@@ -168,7 +189,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
-        onPointerCancel={() => setDrag(null)}
+        onPointerCancel={(e) => drag && e.pointerId === drag.pointerId && setDrag(null)}
       >
         <img
           src={imgUrl(sha, "preview", rotation)}

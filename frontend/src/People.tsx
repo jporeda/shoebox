@@ -27,10 +27,16 @@ export function NameInput({
   busy?: boolean;
 }) {
   const people = usePeople();
+  const touch = useTouch();
   const [name, setName] = useState("");
+  // A name that matches no one creates a new person on submit; say so, so a typo doesn't quietly
+  // make a duplicate. Only once the people list has loaded, to avoid a false "new" while loading.
+  const typed = name.trim();
+  const isNew =
+    typed !== "" && !!people.data && !people.data.some((p) => p.name.trim().toLowerCase() === typed.toLowerCase());
   return (
     <form
-      className="field__inline"
+      className={`field__inline ${isNew ? "name-input--new" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         if (name.trim()) {
@@ -45,6 +51,13 @@ export function NameInput({
         onChange={(e) => setName(e.target.value)}
         placeholder={placeholder}
         autoFocus={autoFocus}
+        // Names, not words: no autocorrect or spelling fixes that would turn "Siobhan" into someone new.
+        autoCorrect="off"
+        spellCheck={false}
+        autoCapitalize="words"
+        // Turn off the keyboard's own suggestions on touch. Not on desktop: Firefox also hides the
+        // datalist (the list of existing people) when autocomplete is off.
+        autoComplete={touch ? "off" : undefined}
       />
       <datalist id="people-names">
         {people.data?.map((p) => <option key={p.id} value={p.name} />)}
@@ -52,6 +65,11 @@ export function NameInput({
       <button className="btn btn--primary" type="submit" disabled={busy || !name.trim()}>
         Name
       </button>
+      {isNew && (
+        <span className="field__hint name-input__hint" aria-live="polite">
+          New person: {typed}
+        </span>
+      )}
     </form>
   );
 }

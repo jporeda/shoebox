@@ -14,6 +14,7 @@ from typing import Iterable, Optional
 
 import numpy as np
 from PIL import Image
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from . import editlog
@@ -279,7 +280,7 @@ def suggest(embs: list[np.ndarray], centroids: dict[int, np.ndarray]) -> Optiona
 
 def get_or_create_person(s: Session, name: str) -> Person:
     name = name.strip()
-    person = s.exec(select(Person).where(Person.name == name)).first()
+    person = s.exec(select(Person).where(func.lower(Person.name) == name.lower())).first()  # "grandma" is Grandma
     if person is None:
         person = Person(name=name)
         s.add(person)
@@ -291,7 +292,7 @@ def person_for_name(s: Session, name: str) -> tuple[Person, list]:
     """The person with this name, plus the edit-log change that adds them if they're new
     (so undoing the naming also removes the person it created)."""
     name = name.strip()
-    person = s.exec(select(Person).where(Person.name == name)).first()
+    person = s.exec(select(Person).where(func.lower(Person.name) == name.lower())).first()  # "grandma" is Grandma
     if person is not None:
         return person, []
     person = Person(name=name)
