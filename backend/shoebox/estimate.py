@@ -4,6 +4,8 @@ Evidence (each with a year range and a weight):
   own_back    the photo's own back: printed lab date, or a date someone typed in
   loose_back  the nearest dated loose back within ``loose_back_window`` files
   neighbours  confirmed dates earlier/later in the same album, interpolated by position
+  shared_people  dated photos within ``SURROUNDING`` files in the same album that show the same
+              named people (the same people nearby in an album were usually photographed together)
   age         a named person with a birth year and an estimated age in the photo
   file_name   years in the file name (e.g. Album3_1984_1986_0161 -> 1984-1986)
 
@@ -37,6 +39,8 @@ NEIGHBOUR_BOTH = 0.75  # between two anchors that agree; drops with the years an
 NEIGHBOUR_ONE = 0.5  # past the last anchor in an album
 TRUSTED_FACE_SOURCES = ("manual", "drawn", "accepted")
 OCR_ANCHOR_TRUST = 0.7  # a machine-read back date anchors neighbours, but counts for less
+SURROUNDING = 15  # files either side in the same album that count as "nearby" for shared people
+SHARED_PEOPLE = 0.7  # one nearby photo, every named person shared, right next to this one
 
 
 @dataclass
@@ -140,6 +144,45 @@ def neighbour_evidence(p: Photo, anchors: list[Anchor], skip_within: int = -1) -
     where = "after" if left else "before"
     return [Evidence("neighbours", a.year, None, a.lo - spread, a.hi + spread, round(w, 2),
                      f"{d} file{'s' if d != 1 else ''} {where} {a.label} in this album")]
+
+
+def shared_people_evidence(p: Photo, anchors: list[Anchor], faces_by_photo: dict[int, list[Face]],
+                           people: dict[int, Person]) -> list[Evidence]:
+    """Dated photos close by in this album that show the same people as this one.
+
+    Both sides use only names a person gave or confirmed, and only dates a person set (an anchor
+    from a photo at full trust: no OCR readings, no loose backs). Closer photos and more of this
+    photo's people in common count for more; nearby dates that disagree widen the range and
+    lower the weight."""
+    mine = _trusted_people(faces_by_photo.get(p.id, []))
+    if not mine:
+        return []
+    hits = []
+    for a in anchors:
+        if a.photo_id is None or a.photo_id == p.id or a.trust < 1.0:
+            continue
+        d = abs(a.index - p.list_index)
+        if d > SURROUNDING:
+            continue
+        shared = mine & _trusted_people(faces_by_photo.get(a.photo_id, []))
+        if shared:
+            hits.append((len(shared) / len(mine) * (1 - d / (SURROUNDING + 1)), a, shared))
+    if not hits:
+        return []
+    total = sum(w for w, _, _ in hits)
+    year = round(sum(w * a.year for w, a, _ in hits) / total)
+    lo, hi = min(a.lo for _, a, _ in hits), max(a.hi for _, a, _ in hits)
+    best = max(w for w, _, _ in hits)
+    weight = _clamp(SHARED_PEOPLE * best + 0.05 * (len(hits) - 1) - 0.05 * (hi - lo), 0.2, SHARED_PEOPLE)
+    names = sorted({people[pid].name for _, _, shared in hits for pid in shared if pid in people})
+    who = ", ".join(names[:3]) + (f" +{len(names) - 3}" if len(names) > 3 else "")
+    span = str(lo) if lo == hi else f"{lo}-{hi}"
+    return [Evidence("shared_people", year, None, lo, hi, round(weight, 2),
+                     f"{who} also in {len(hits)} dated photo{'s' if len(hits) != 1 else ''} nearby ({span})")]
+
+
+def _trusted_people(faces: Iterable[Face]) -> set[int]:
+    return {f.person_id for f in faces if f.person_id and not f.ignored and f.source in TRUSTED_FACE_SOURCES}
 
 
 def age_evidence(faces: Iterable[Face], people: dict[int, Person]) -> list[Evidence]:
@@ -267,6 +310,7 @@ def estimate_for(p: Photo, world: World, window: int, own_back: bool = True) -> 
         (own_back_evidence(p) if own_back else [])
         + loose_back_evidence(p, world.loose_by_album.get(p.album_id, []), window)
         + neighbour_evidence(p, world.anchors_by_album.get(p.album_id, []), window)
+        + shared_people_evidence(p, world.anchors_by_album.get(p.album_id, []), world.faces_by_photo, world.people)
         + age_evidence(world.faces_by_photo.get(p.id, []), world.people)
         + file_name_evidence(p)
     )
@@ -280,7 +324,7 @@ def compute_estimates(world: World) -> dict[int, Optional[Estimate]]:
 
 def run_estimates(ctx: JobContext = NULL_CTX, album_id: Optional[int] = None) -> dict:
     run_id = f"est-{uuid.uuid4().hex[:8]}"
-    counts = {"own_back": 0, "loose_back": 0, "neighbours": 0, "age": 0, "file_name": 0, "cleared": 0}
+    counts = {"own_back": 0, "loose_back": 0, "neighbours": 0, "shared_people": 0, "age": 0, "file_name": 0, "cleared": 0}
     with session_scope() as s:
         world = load_world(s, album_id)
         ctx.progress(0, len(world.photos), "estimating dates")
@@ -300,6 +344,6 @@ def run_estimates(ctx: JobContext = NULL_CTX, album_id: Optional[int] = None) ->
                 p.i_year, p.i_month, p.i_min, p.i_max, p.i_precision, p.i_confidence, p.i_source = new
                 p.i_run_id = run_id
                 s.add(p)
-    counts["estimated"] = sum(counts[k] for k in ("own_back", "loose_back", "neighbours", "age", "file_name"))
+    counts["estimated"] = sum(counts[k] for k in ("own_back", "loose_back", "neighbours", "shared_people", "age", "file_name"))
     counts["run_id"] = run_id
     return counts

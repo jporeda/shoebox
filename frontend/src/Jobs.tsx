@@ -210,7 +210,7 @@ function summary(job: Job): string {
     case "estimate": {
       if (r.estimated === undefined) return "";
       const n = r.names as Record<string, number> | undefined;
-      return `${r.estimated} dates estimated (${r.own_back} back, ${r.loose_back} loose back, ${r.neighbours ?? 0} neighbours, ${r.age ?? 0} age, ${r.file_name} file name)${n ? ` · ${n.auto} names applied, ${n.suggested} suggested` : ""}`;
+      return `${r.estimated} dates estimated (${r.own_back} back, ${r.loose_back} loose back, ${r.neighbours ?? 0} neighbours, ${r.shared_people ?? 0} shared people, ${r.age ?? 0} age, ${r.file_name} file name)${n ? ` · ${n.auto} names applied, ${n.suggested} suggested` : ""}`;
     }
     case "evaluate": {
       const d = (r.dates as Record<string, any>) ?? {};

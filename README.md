@@ -57,8 +57,11 @@ Anything that identifies your family stays out of git:
      after it in the same album. Measured on a real collection: exact year 92% of the
      time, within one year 96%. Dates you confirm anchor it fully; OCR-read back
      dates anchor it at 70% weight;
-  4. **ages**: a named person with a birth year, and how old their face looks;
-  5. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
+  4. **people nearby**: dated photos within 15 files in the same album that show the same
+     people. Both only count dates you set and names you gave or confirmed; closer photos and
+     more people in common weigh more;
+  5. **ages**: a named person with a birth year, and how old their face looks;
+  6. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
 
   When pieces of evidence agree, confidence goes up; disagreements are shown
   ("… but file name says 1990"). Estimates never overwrite a date you entered and
