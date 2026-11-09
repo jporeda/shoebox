@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type ParsedDate } from "./api";
-import { useEventKinds, useUpdatePhotos } from "./hooks";
+import { useEventKinds, usePlaces, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 
 function useParsedDate(text: string): ParsedDate | null {
@@ -169,5 +169,90 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
         {error && <span className="error">{error}</span>}
       </div>
     </div>
+  );
+}
+
+type PlaceFields = { country: string; state: string; city: string };
+const PLACE_FIELDS: { key: keyof PlaceFields; label: string; hint: string }[] = [
+  { key: "country", label: "Country", hint: "e.g. United States" },
+  { key: "state", label: "State", hint: "e.g. Massachusetts" },
+  { key: "city", label: "City", hint: "e.g. Salem" },
+];
+
+/** Country / state / city for one photo (pre-filled) or a selection (blank = leave as is). Suggests
+ *  places already used; only fields you change are sent, so a blank field in bulk changes nothing. */
+export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?: Partial<Record<keyof PlaceFields, string | null>>; compact?: boolean }) {
+  const initial: PlaceFields = { country: current?.country ?? "", state: current?.state ?? "", city: current?.city ?? "" };
+  const [values, setValues] = useState<PlaceFields>(initial);
+  const [error, setError] = useState("");
+  const places = usePlaces();
+  const update = useUpdatePhotos();
+  const key = `${ids.join(",")}|${initial.country}|${initial.state}|${initial.city}`;
+  useEffect(() => {
+    setValues(initial);
+    setError("");
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changed = PLACE_FIELDS.filter(({ key: k }) => values[k].trim() !== initial[k].trim());
+  // Suggestions narrow to what fits the fields already typed (a state within the chosen country, …).
+  const options = (k: keyof PlaceFields) => {
+    const rows = (places.data ?? []).filter(
+      (p) => (k === "country" || !values.country || p.country === values.country) && (k !== "city" || !values.state || p.state === values.state),
+    );
+    return [...new Set(rows.map((p) => p[k]).filter((v): v is string => !!v))];
+  };
+  const save = async (body: Partial<PlaceFields>) => {
+    setError("");
+    try {
+      await update.mutateAsync({ ids, ...body });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    }
+  };
+  const listId = (k: string) => `place-${k}-${ids[0] ?? "x"}`;
+  return (
+    <form
+      className={`editor__row place-editor ${compact ? "editor--compact" : ""}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (changed.length) save(Object.fromEntries(changed.map(({ key: k }) => [k, values[k].trim()])));
+      }}
+    >
+      {PLACE_FIELDS.map(({ key: k, label, hint }) => (
+        <label className="field" key={k}>
+          <span className="field__label">{label}</span>
+          <input
+            list={listId(k)}
+            value={values[k]}
+            onChange={(e) => setValues((v) => ({ ...v, [k]: e.target.value }))}
+            placeholder={current ? hint : "leave as is"}
+            autoComplete="off"
+            autoCapitalize="words"
+          />
+          <datalist id={listId(k)}>
+            {options(k).map((o) => (
+              <option key={o} value={o} />
+            ))}
+          </datalist>
+        </label>
+      ))}
+      <div className="field field--actions">
+        <span className="field__label">&nbsp;</span>
+        <span className="field__inline">
+          <button className="btn btn--primary" type="submit" disabled={!changed.length || update.isPending}>
+            Set place{ids.length > 1 ? ` on ${ids.length}` : ""}
+          </button>
+          <button
+            className="btn btn--ghost"
+            type="button"
+            disabled={update.isPending || (!!current && !initial.country && !initial.state && !initial.city)}
+            onClick={() => save({ country: "", state: "", city: "" })}
+          >
+            Clear place
+          </button>
+        </span>
+      </div>
+      {error && <span className="error">{error}</span>}
+    </form>
   );
 }

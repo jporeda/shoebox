@@ -11,6 +11,7 @@ export type UndoResult = S["UndoResult"];
 export type EditBatch = S["EditBatchOut"];
 export type EventKind = S["EventKindOut"];
 export type EventInstance = S["EventInstanceOut"];
+export type Place = S["PlaceOut"];
 export type ParsedDate = S["ParsedDate"];
 export type Job = S["JobOut"];
 export type JobType = S["JobIn"]["type"];
@@ -91,6 +92,7 @@ export const api = {
     call<UndoResult>("/undo", { method: "POST", body: JSON.stringify({ batch_id, skip }) }),
   edits: () => call<EditBatch[]>("/edits"),
   eventKinds: () => call<EventKind[]>("/event-kinds"),
+  places: () => call<Place[]>("/places"),
   addEventKind: (name: string) =>
     call<EventKind>("/event-kinds", { method: "POST", body: JSON.stringify({ name }) }),
   eventInstances: () => call<EventInstance[]>("/event-instances"),

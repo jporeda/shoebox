@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { imgUrl, type ListParams, type PhotoSummary } from "./api";
 import { FiltersButton, SidebarDrawer } from "./Drawer";
-import { DateEventEditor } from "./Editor";
+import { DateEventEditor, PlaceEditor } from "./Editor";
 import { useAlbums, useDrawer, useLongPress, usePhotos, useTouch, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
@@ -387,6 +387,7 @@ export function Grid({ list }: { list: ListParams }) {
             </button>
             <div className="bulkbar__body">
               <DateEventEditor ids={selectedIds} compact />
+              <PlaceEditor ids={selectedIds} compact />
             </div>
           </div>
         )}

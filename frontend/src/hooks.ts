@@ -5,6 +5,7 @@ import { api, type BulkUpdate, type ListParams, type PhotoPage } from "./api";
 export const useAlbums = () => useQuery({ queryKey: ["albums"], queryFn: api.albums });
 export const useStats = () => useQuery({ queryKey: ["stats"], queryFn: api.stats });
 export const useEventKinds = () => useQuery({ queryKey: ["eventKinds"], queryFn: api.eventKinds });
+export const usePlaces = () => useQuery({ queryKey: ["places"], queryFn: api.places });
 export const usePhotos = (list: ListParams) =>
   useQuery({ queryKey: ["photos", list], queryFn: () => api.photos(list), placeholderData: (prev) => prev });
 
@@ -23,6 +24,7 @@ export function useUpdatePhotos() {
       qc.invalidateQueries({ queryKey: ["stats"] });
       qc.invalidateQueries({ queryKey: ["edits"] });
       qc.invalidateQueries({ queryKey: ["eventInstances"] });
+      qc.invalidateQueries({ queryKey: ["places"] });
     },
   });
 }

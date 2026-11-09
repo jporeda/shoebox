@@ -127,6 +127,8 @@ def build_truth() -> dict:
                 entry["event"] = {"kind": kinds[inst.kind_id].name, "label": inst.label}
             if p.caption:
                 entry["caption"] = p.caption
+            if p.country or p.state or p.city:
+                entry["place"] = {"country": p.country, "state": p.state, "city": p.city}
             if p.rotation_source == "manual":
                 entry["rotation"] = p.rotation
             if p.is_dup_keeper:
@@ -416,6 +418,8 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
                     changes += date_changes(p, ev, "event")
             if "caption" in e:
                 changes.append((p, "caption", e["caption"]))
+            if "place" in e:
+                changes += [(p, f, e["place"].get(f)) for f in ("country", "state", "city")]
             if "rotation" in e:
                 changes += [(p, "rotation", e["rotation"]), (p, "rotation_source", "manual")]
             if e.get("dup_keeper"):

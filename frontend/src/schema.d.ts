@@ -214,6 +214,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Places
+         * @description Every place already used (country, state, city), most used first: suggestions for typing.
+         */
+        get: operations["places_api_places_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/event-kinds": {
         parameters: {
             query?: never;
@@ -730,6 +750,12 @@ export interface components {
             clear_event?: boolean;
             /** Caption */
             caption?: string | null;
+            /** Country */
+            country?: string | null;
+            /** State */
+            state?: string | null;
+            /** City */
+            city?: string | null;
             /** Rotate By */
             rotate_by?: number | null;
             /**
@@ -1077,6 +1103,12 @@ export interface components {
             back_rel_path: string | null;
             /** Caption */
             caption: string | null;
+            /** Country */
+            country: string | null;
+            /** State */
+            state: string | null;
+            /** City */
+            city: string | null;
             /** Scan Datetime */
             scan_datetime: string | null;
             /** Trusted Label */
@@ -1154,6 +1186,17 @@ export interface components {
             width: number | null;
             /** Height */
             height: number | null;
+        };
+        /** PlaceOut */
+        PlaceOut: {
+            /** Country */
+            country: string | null;
+            /** State */
+            state: string | null;
+            /** City */
+            city: string | null;
+            /** Count */
+            count: number;
         };
         /** ReviewGroup */
         ReviewGroup: {
@@ -1680,6 +1723,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    places_api_places_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceOut"][];
                 };
             };
         };

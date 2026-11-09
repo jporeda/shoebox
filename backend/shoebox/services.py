@@ -64,6 +64,9 @@ def bulk_update(
     event_instance_id: Optional[int] = None,
     clear_event: bool = False,
     caption: Optional[str] = None,
+    country: Optional[str] = None,
+    state: Optional[str] = None,
+    city: Optional[str] = None,
     rotate_by: Optional[int] = None,
     source: str = "manual",
     description: str = "",
@@ -113,6 +116,13 @@ def bulk_update(
         for p in tagged:
             changes.append((p, "caption", caption.strip() or None))
 
+    # Place: None leaves a field alone, "" clears it.
+    place = {"country": country, "state": state, "city": city}
+    for field, value in place.items():
+        if value is not None:
+            for p in tagged:
+                changes.append((p, field, " ".join(value.split()) or None))
+
     if rotate_by:
         if rotate_by % 90:
             raise ValueError("photos rotate in steps of 90 degrees")
@@ -135,6 +145,8 @@ def bulk_update(
             parts.append("clear event")
         if caption is not None:
             parts.append("caption")
+        if any(v is not None for v in place.values()):
+            parts.append("place")
         if rotate_by:
             parts.append(f"rotate {rotate_by}")
         description = f"{', '.join(parts) or 'edit'} on {len(photos)} photo(s)"

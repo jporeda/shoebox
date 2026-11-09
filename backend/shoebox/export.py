@@ -64,7 +64,10 @@ class ExportItem:
     keywords: list[str] = field(default_factory=list)
     hierarchical: list[str] = field(default_factory=list)
     people: list[str] = field(default_factory=list)
-    pets: list[str] = field(default_factory=list)  # named animals: keywords and "Pet" regions, never PersonInImage
+    pets: list[str] = field(default_factory=list)
+    country: str | None = None
+    state: str | None = None
+    city: str | None = None  # named animals: keywords and "Pet" regions, never PersonInImage
     # Named faces: (name, x, y, w, h) normalized, in the display frame at the photo's rotation.
     faces: list[tuple[str, float, float, float, float]] = field(default_factory=list)
     width: int = 0  # display size at rotation 0 (after the file's own EXIF orientation)
@@ -91,8 +94,9 @@ class ExportItem:
 
     def signature(self) -> str:
         d = {k: v for k, v in self.__dict__.items()}
-        if not d["pets"]:
-            del d["pets"]  # added later: photos without pets keep their fingerprint, so no mass re-export
+        for later in ("pets", "country", "state", "city"):  # added later: photos without them keep
+            if not d[later]:  # their fingerprint, so there's no mass re-export
+                del d[later]
         d["v"] = EXPORT_VERSION
         return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -158,6 +162,9 @@ def build_plan(session: Session) -> list[ExportItem]:
             caption=p.caption,
             event_kind=kind.name if kind else None,
             event_label=inst.label if inst else None,
+            country=p.country,
+            state=p.state,
+            city=p.city,
         )
         if it.dated:
             it.cal = export_calendar_date(it.year, it.month, it.day, it.precision)
@@ -175,6 +182,10 @@ def build_plan(session: Session) -> list[ExportItem]:
         it.width, it.height = p.width or 0, p.height or 0
         kw += it.people + it.pets
         hier += [f"People|{name}" for name in it.people] + [f"Pets|{name}" for name in it.pets]
+        place = [v for v in (it.country, it.state, it.city) if v]
+        if place:
+            kw += place
+            hier.append("Places|" + "|".join(place))
         kw.append(f"Album: {album.name}")
         hier.append(f"Albums|{album.name}")
         if not it.dated:
@@ -253,11 +264,18 @@ def tag_args(it: ExportItem, tz: str, ext: str) -> list[str]:
     args += [f"-XMP-iptcExt:PersonInImage={escape(n)}" for n in it.people]
     if it.caption:
         args += [f"-XMP-dc:Description={escape(it.caption)}", f"-EXIF:ImageDescription={escape(it.caption)}"]
+    # Place as text only (never GPS): XMP photoshop fields, and IPTC below for older readers.
+    for tag, value in (("Country", it.country), ("State", it.state), ("City", it.city)):
+        if value:
+            args.append(f"-XMP-photoshop:{tag}={escape(value)}")
     if ext in IPTC_FORMATS:
         args += ["-IPTC:CodedCharacterSet=UTF8", "-IPTC:Keywords="]
         args += [f"-IPTC:Keywords={escape(k)}" for k in it.keywords]
         if it.caption:
             args.append(f"-IPTC:Caption-Abstract={escape(it.caption)}")
+        for tag, value in (("Country-PrimaryLocationName", it.country), ("Province-State", it.state), ("City", it.city)):
+            if value:
+                args.append(f"-IPTC:{tag}={escape(value)}")
         args.append("-Photoshop:IPTCDigest=new")
     args += [
         f"-XMP-shoebox:PhotoID={it.photo_id}",

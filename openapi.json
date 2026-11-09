@@ -695,6 +695,29 @@
     }
    }
   },
+  "/api/places": {
+   "get": {
+    "summary": "Places",
+    "description": "Every place already used (country, state, city), most used first: suggestions for typing.",
+    "operationId": "places_api_places_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/PlaceOut"
+         },
+         "type": "array",
+         "title": "Response Places Api Places Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/event-kinds": {
    "get": {
     "summary": "Event Kinds",
@@ -2076,6 +2099,39 @@
       ],
       "title": "Caption"
      },
+     "country": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "city": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "City"
+     },
      "rotate_by": {
       "anyOf": [
        {
@@ -3157,6 +3213,39 @@
       ],
       "title": "Caption"
      },
+     "country": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "city": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "City"
+     },
      "scan_datetime": {
       "anyOf": [
        {
@@ -3287,6 +3376,9 @@
      "album_name",
      "back_rel_path",
      "caption",
+     "country",
+     "state",
+     "city",
      "scan_datetime",
      "trusted_label",
      "inferred_label",
@@ -3493,6 +3585,55 @@
      "height"
     ],
     "title": "PhotoSummary"
+   },
+   "PlaceOut": {
+    "properties": {
+     "country": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "city": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "City"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "country",
+     "state",
+     "city",
+     "count"
+    ],
+    "title": "PlaceOut"
    },
    "ReviewGroup": {
     "properties": {

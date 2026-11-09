@@ -178,3 +178,34 @@ def test_undated_photos_are_exported_without_an_invented_date(album_tree, env):
     result = run_export()
     assert result["written"] == 1 and result["removed_stale"] == 1
     assert not copy.exists() and exported(env, a).name.startswith("1987")  # moved out of undated/
+
+
+def test_place_is_set_in_bulk_suggested_backed_up_and_exported(album_tree, env):
+    from conftest import api_client
+    from shoebox import backup
+
+    run_ingest()
+    a, b = pid("Album 1980s/IMG_0001.jpg"), pid("Album 1980s/IMG_0002.jpg")
+    with api_client() as c:
+        body = {"ids": [a, b], "date": "1987", "country": "United States", "state": "Massachusetts", "city": " Salem "}
+        assert c.patch("/api/photos", json=body).status_code == 200
+        assert c.patch("/api/photos", json={"ids": [b], "city": ""}).status_code == 200  # clear one field only
+        d = c.get(f"/api/photos/{b}").json()
+        assert (d["country"], d["state"], d["city"]) == ("United States", "Massachusetts", None)
+        assert sorted((p["city"] or "", p["count"]) for p in c.get("/api/places").json()) == [("", 1), ("Salem", 1)]
+
+        truth = backup.build_truth()
+        place = next(e["place"] for e in truth["photos"] if e.get("place", {}).get("city") == "Salem")
+        assert place == {"country": "United States", "state": "Massachusetts", "city": "Salem"}
+
+        run_export()
+        t = tags(exported(env, a), "XMP-photoshop:Country", "XMP-photoshop:State", "XMP-photoshop:City",
+                 "IPTC:City", "IPTC:Province-State", "XMP-lr:HierarchicalSubject", "IPTC:Keywords")
+        assert (t["XMP-photoshop:Country"], t["XMP-photoshop:State"], t["XMP-photoshop:City"]) == (
+            "United States", "Massachusetts", "Salem")
+        assert (t["IPTC:City"], t["IPTC:Province-State"]) == ("Salem", "Massachusetts")
+        assert "Places|United States|Massachusetts|Salem" in t["XMP-lr:HierarchicalSubject"]
+        assert "Salem" in t["IPTC:Keywords"]
+
+        c.post("/api/undo", json={})  # takes back clearing the city
+        assert c.get(f"/api/photos/{b}").json()["city"] == "Salem"

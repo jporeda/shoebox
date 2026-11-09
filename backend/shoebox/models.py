@@ -88,6 +88,10 @@ class Photo(SQLModel, table=True):
 
     event_instance_id: Optional[int] = Field(default=None, foreign_key="eventinstance.id", index=True)
     caption: Optional[str] = None
+    # Where the photo was taken, as plain text (no coordinates), exported as IPTC location fields.
+    country: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
 
     missing: bool = False
     fixity_checked_at: Optional[datetime] = None

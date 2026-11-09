@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, imgUrl, type ListParams } from "./api";
-import { DateEventEditor } from "./Editor";
+import { DateEventEditor, PlaceEditor } from "./Editor";
 import { AcceptGuesses, FaceLayer } from "./FaceLayer";
 import { usePhotos, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
@@ -206,6 +206,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           )}
         </div>
         <DateEventEditor ids={[p.id]} currentDate={p.date_label} currentEvent={p.event_label} />
+        <PlaceEditor ids={[p.id]} current={{ country: p.country, state: p.state, city: p.city }} />
         <CaptionEditor id={p.id} caption={p.caption ?? ""} />
       </div>
     </div>

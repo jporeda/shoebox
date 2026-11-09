@@ -72,6 +72,9 @@ class PhotoDetail(PhotoSummary):
     source_folder: Optional[str] = None
     back_rel_path: Optional[str]
     caption: Optional[str]
+    country: Optional[str]
+    state: Optional[str]
+    city: Optional[str]
     scan_datetime: Optional[str]
     trusted_label: str
     inferred_label: str
@@ -100,6 +103,10 @@ class BulkUpdate(BaseModel):
     event_instance_id: Optional[int] = None
     clear_event: bool = False
     caption: Optional[str] = None
+    # Place: omit to leave a field alone, "" to clear it.
+    country: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
     rotate_by: Optional[int] = None
     date_source: Literal["manual", "back", "accepted"] = "manual"
 
@@ -304,6 +311,9 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
         source_folder=_host_folder(p.rel_path),
         back_rel_path=p.back_rel_path,
         caption=p.caption,
+        country=p.country,
+        state=p.state,
+        city=p.city,
         scan_datetime=p.scan_datetime,
         trusted_label=format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max),
         inferred_label=format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max),
@@ -619,6 +629,25 @@ def recent_edits(limit: int = 30, shared: bool = False, s: Session = Depends(get
 
 
 # --- events --------------------------------------------------------------------
+
+
+class PlaceOut(BaseModel):
+    country: Optional[str]
+    state: Optional[str]
+    city: Optional[str]
+    count: int
+
+
+@router.get("/places", response_model=list[PlaceOut])
+def places(s: Session = Depends(get_session)):
+    """Every place already used (country, state, city), most used first: suggestions for typing."""
+    rows = s.exec(
+        select(Photo.country, Photo.state, Photo.city, func.count())
+        .where((Photo.country != None) | (Photo.state != None) | (Photo.city != None))  # noqa: E711
+        .group_by(Photo.country, Photo.state, Photo.city)
+    ).all()
+    return sorted((PlaceOut(country=c, state=st, city=ci, count=n) for c, st, ci, n in rows),
+                  key=lambda p: (-p.count, p.country or "", p.state or "", p.city or ""))
 
 
 @router.get("/event-kinds", response_model=list[EventKindOut])
