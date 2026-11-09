@@ -309,6 +309,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .field__label { font-size: 13px; }
   /* No iOS callout / text selection on press-and-hold of pictures that act as buttons. */
   .grid.is-selecting .tile:not(.is-selected) img { opacity: 0.85; }
+
+  /* Photo view */
+  .photo-view__bar { flex-wrap: wrap; row-gap: 6px; }
+  .photo-view__step { min-width: 76px; }
+  .photo-view__images { touch-action: pan-y pinch-zoom; }
+  .photo-view.is-zoomed .photo-view__images { touch-action: auto; }
+  .photo-frame.is-drawing { touch-action: none; }
+  /* Tiny face boxes still get a finger-sized hit area. */
+  .facebox::before {
+    content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: max(100%, 36px); height: max(100%, 36px);
+  }
+  .facelayer__bar, .facelayer__tools { flex-wrap: wrap; }
+  .facelist__row { min-height: 48px; padding-right: 12px; }
+  .facelist__row img { width: 40px; height: 40px; }
+  .facescan__level input[type="range"] { width: 160px; height: 36px; }
   .tile, .face, .facebox, .facelist__row, .photo-frame { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   button, a { -webkit-tap-highlight-color: transparent; }
 }
@@ -357,4 +373,25 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .editor__row .field--actions .btn { width: 100%; min-height: 48px; font-size: 16px; }
   .editor__row--secondary > .btn { flex: 1 1 40%; }
   .pad { padding: 14px 12px; }
+
+  /* Photo view */
+  .photo-view__bar { padding: 6px 10px; gap: 6px; }
+  .photo-view__back-more { display: none; }
+  .photo-view__where { order: 10; flex-basis: 100%; font-size: 12px; }
+  .photo-view__images { padding: 8px 6px; }
+  .photo-view__panel { padding: 12px 12px calc(16px + env(safe-area-inset-bottom)); }
+  .photo-frame { align-self: stretch; }
+  .photo-frame img { width: 100%; max-height: none; }
+  .facezoom__controls { flex-direction: column; }
+
+  /* Face pop-up → bottom sheet. */
+  .facepop {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; max-height: 75dvh; overflow-y: auto;
+    border-radius: 14px 14px 0 0; border-bottom: 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.2);
+    padding: 12px max(12px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    overscroll-behavior: contain;
+  }
+  .facepop__who { flex-basis: 100%; font-size: 16px; }
+  .facepop .field__inline { flex: 1 1 100%; }
+  .facepop .field__inline input { flex: 1; }
 }
