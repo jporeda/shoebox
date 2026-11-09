@@ -1571,6 +1571,56 @@
     }
    }
   },
+  "/api/photos/{photo_id}/scan-faces": {
+   "post": {
+    "summary": "Scan Faces",
+    "description": "Run face detection on this one photo now. Adds faces it finds; never removes or renames any.",
+    "operationId": "scan_faces_api_photos__photo_id__scan_faces_post",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ScanIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ScanOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/faces/{face_id}": {
    "delete": {
     "summary": "Delete Face",
@@ -2548,7 +2598,9 @@
        "export",
        "backup",
        "fixity",
-       "restore"
+       "restore",
+       "accept_guesses",
+       "faces_deep"
       ],
       "title": "Type"
      },
@@ -3416,6 +3468,47 @@
      "faces"
     ],
     "title": "ReviewGroup"
+   },
+   "ScanIn": {
+    "properties": {
+     "level": {
+      "type": "integer",
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Level",
+      "default": 3
+     }
+    },
+    "type": "object",
+    "title": "ScanIn"
+   },
+   "ScanOut": {
+    "properties": {
+     "found": {
+      "type": "integer",
+      "title": "Found"
+     },
+     "added": {
+      "type": "integer",
+      "title": "Added"
+     },
+     "updated": {
+      "type": "integer",
+      "title": "Updated"
+     },
+     "rotated": {
+      "type": "boolean",
+      "title": "Rotated"
+     }
+    },
+    "type": "object",
+    "required": [
+     "found",
+     "added",
+     "updated",
+     "rotated"
+    ],
+    "title": "ScanOut"
    },
    "Stats": {
     "properties": {

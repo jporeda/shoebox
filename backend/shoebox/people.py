@@ -45,8 +45,9 @@ def _display_rgb(p: Photo) -> np.ndarray:
     return np.asarray(img.convert("RGB"))
 
 
-def merge_detections(s: Session, p: Photo, found: list[DetectedFace], run_id: str) -> dict:
-    """Reconcile fresh detections with the photo's existing faces."""
+def merge_detections(s: Session, p: Photo, found: list[DetectedFace], run_id: str, drop_unmatched: bool = True) -> dict:
+    """Reconcile fresh detections with the photo's existing faces. With ``drop_unmatched=False``
+    (a scan a person ran on one photo) existing faces the scan didn't find are all kept."""
     existing = list(s.exec(select(Face).where(Face.photo_id == p.id)).all())
     used: set[int] = set()
     added = updated = 0
@@ -72,7 +73,7 @@ def merge_detections(s: Session, p: Photo, found: list[DetectedFace], run_id: st
             added += 1
     # Unnamed auto faces the detector no longer finds are dropped; anything a person touched stays.
     removed = 0
-    for f in existing:
+    for f in existing if drop_unmatched else []:
         if f.id not in used and f.source == "auto" and f.person_id is None and not f.ignored:
             s.delete(f)
             removed += 1
@@ -115,6 +116,74 @@ def run_faces(ctx: JobContext = NULL_CTX, detector=None) -> dict:
     totals["seconds"] = round(elapsed, 1)
     totals["seconds_per_photo"] = round(elapsed / max(len(ids), 1), 3)
     return totals
+
+
+def run_deep_faces(ctx: JobContext = NULL_CTX, detector=None) -> dict:
+    """Rescan, with the more aggressive detector, every photo the normal pass found no faces in.
+
+    Only photos already through the normal pass and with no face boxes at all (found, drawn or
+    ignored) are scanned. New boxes are ordinary unnamed faces tagged with this run's id."""
+    from .faces import DEEP_LEVEL, SENSITIVITY, detect_deep
+
+    detector = detector or detect_deep
+    run_id = f"faces-deep-{int(time.time())}"
+    with session_scope() as s:
+        has_faces = select(Face.photo_id).distinct()
+        ids = s.exec(
+            select(Photo.id).where(
+                Photo.missing == False, Photo.faces_model_ver >= FACES_VERSION, Photo.id.not_in(has_faces)  # noqa: E712
+            )
+        ).all()
+    totals = {"photos": len(ids), "photos_with_faces": 0, "faces_added": 0, "failed": 0, "run_id": run_id}
+    started = time.monotonic()
+    for i, pid in enumerate(ids):
+        ctx.check_cancel()
+        if i % 5 == 0:
+            ctx.progress(i, len(ids), "deep scan for faces")
+        with session_scope() as s:
+            p = s.get(Photo, pid)
+        try:
+            img = open_display(get_settings().photos_root / p.rel_path, p.rotation, max_size=SENSITIVITY[DEEP_LEVEL].max_edge)
+            found = detector(np.asarray(img.convert("RGB")))
+        except Exception as exc:
+            log.warning("deep face scan failed for %s: %s", p.rel_path, exc)
+            totals["failed"] += 1
+            continue
+        if not found:
+            continue
+        with session_scope() as s:
+            now = s.get(Photo, pid)
+            if now is None or now.rotation != p.rotation:
+                continue  # rotated meanwhile: its boxes would be in the wrong frame
+            result = merge_detections(s, now, found, run_id)
+        totals["faces_added"] += result["added"]
+        totals["photos_with_faces"] += result["added"] > 0
+    elapsed = time.monotonic() - started
+    totals["seconds"] = round(elapsed, 1)
+    totals["seconds_per_photo"] = round(elapsed / max(len(ids), 1), 3)
+    return totals
+
+
+def scan_photo(photo_id: int, level: int, detector=None) -> dict:
+    """Scan one photo for faces at a sensitivity level (1-5), adding any it finds that aren't boxed
+    yet. Never removes or renames a face. Detection runs outside any transaction."""
+    from .faces import SENSITIVITY, detect_at
+
+    if level not in SENSITIVITY:
+        raise ValueError(f"sensitivity must be 1-{max(SENSITIVITY)}, got {level}")
+    with session_scope() as s:
+        p = s.get(Photo, photo_id)
+        if p is None:
+            raise LookupError(photo_id)
+        rel_path, rotation = p.rel_path, p.rotation
+    img = open_display(get_settings().photos_root / rel_path, rotation, max_size=SENSITIVITY[level].max_edge)
+    found = (detector or (lambda rgb: detect_at(rgb, level)))(np.asarray(img.convert("RGB")))
+    with session_scope() as s:
+        p = s.get(Photo, photo_id)
+        if p.rotation != rotation:
+            return {"found": len(found), "added": 0, "updated": 0, "rotated": True}
+        result = merge_detections(s, p, found, f"faces-scan-{int(time.time())}", drop_unmatched=False)
+    return {"found": len(found), "added": result["added"], "updated": result["updated"], "rotated": False}
 
 
 def run_embed_missing(ctx: JobContext = NULL_CTX, embedder=None) -> dict:
@@ -245,7 +314,7 @@ def assign(s: Session, face_ids: list[int], person_id: Optional[int], descriptio
     return editlog.record(s, changes, description)
 
 
-def accept(s: Session, face_ids: list[int]) -> Optional[str]:
+def accept(s: Session, face_ids: list[int], description: str | None = None) -> Optional[str]:
     """Confirm automatic names and suggestions; confirmed faces become exemplars."""
     changes = []
     for f in s.exec(select(Face).where(Face.id.in_(face_ids))).all():
@@ -255,7 +324,26 @@ def accept(s: Session, face_ids: list[int]) -> Optional[str]:
             changes.append((f, "suggested_person_id", None))
             if f.source in ("auto", REVERTED):
                 changes.append((f, "source", "accepted"))
-    return editlog.record(s, changes, f"confirm {len(face_ids)} name(s)")
+    return editlog.record(s, changes, description or f"confirm {len(face_ids)} name(s)")
+
+
+def run_accept_guesses(min_percent: float, ctx: JobContext = NULL_CTX) -> dict:
+    """Confirm every guessed name (automatic name or suggestion) whose match score is at least
+    ``min_percent``, as one undoable batch. Names a person gave are never touched."""
+    if not 0 < min_percent <= 100:
+        raise ValueError(f"threshold must be between 1 and 100 percent, got {min_percent}")
+    threshold = min_percent / 100
+    with session_scope() as s:
+        guesses = s.exec(
+            select(Face).where(
+                Face.ignored == False,  # noqa: E712
+                ((Face.source == "auto") & (Face.person_id != None)) | (Face.suggested_person_id != None),  # noqa: E711
+            )
+        ).all()
+        chosen = [f.id for f in guesses if f.confidence is not None and f.confidence >= threshold]
+        ctx.progress(0, len(chosen), f"accepting guesses ≥{min_percent:g}%")
+        batch = accept(s, chosen, f"confirm {len(chosen)} guess(es) ≥{min_percent:g}%") if chosen else None
+    return {"min_percent": min_percent, "guesses": len(guesses), "accepted": len(chosen), "batch_id": batch}
 
 
 def reject(s: Session, face_ids: list[int]) -> Optional[str]:

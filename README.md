@@ -57,8 +57,11 @@ Anything that identifies your family stays out of git:
      after it in the same album. Measured on a real collection: exact year 92% of the
      time, within one year 96%. Dates you confirm anchor it fully; OCR-read back
      dates anchor it at 70% weight;
-  4. **ages**: a named person with a birth year, and how old their face looks;
-  5. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
+  4. **people nearby**: dated photos within 15 files in the same album that show the same
+     people. Both only count dates you set and names you gave or confirmed; closer photos and
+     more people in common weigh more;
+  5. **ages**: a named person with a birth year, and how old their face looks;
+  6. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
 
   When pieces of evidence agree, confidence goes up; disagreements are shown
   ("… but file name says 1990"). Estimates never overwrite a date you entered and
@@ -103,7 +106,10 @@ Anything that identifies your family stays out of git:
   through the album.
 - Possible duplicates (rescans) are flagged **D**. Tags are shared across a
   duplicate group, and *Keep this one* picks which file is exported.
-- **Export** writes to `BACKUP_ROOT/export/<year>/`.
+- **Export** writes a copy of every photo: dated ones (confirmed or estimated) to
+  `BACKUP_ROOT/export/<year>/`, and photos with no date at all to `BACKUP_ROOT/export/undated/`.
+  Undated copies get no invented date (they keep whatever dates the scan file carries, often the
+  scan date) and the keyword `date:unknown`, so you can find them in your photo app.
 
 ## Where data lives
 
@@ -113,7 +119,7 @@ Anything that identifies your family stays out of git:
 | Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after every job (the newest 10, then one per hour, day, week and month going back a year) and before schema upgrades (never deleted automatically) |
 | Permanent | `BACKUP_ROOT/truth/truth.json` | Everything you entered, keyed by file hash; `history/` keeps older versions |
 | Permanent | `BACKUP_ROOT/manifest-sha256.txt` | Checksums of every original |
-| Output | `BACKUP_ROOT/export/` | Dated copies with embedded metadata |
+| Output | `BACKUP_ROOT/export/` | Copies of every photo with embedded metadata (undated ones in `undated/`) |
 | Output | `BACKUP_ROOT/sidecars/` | `file.jpg.xmp` sidecars mirroring the photo tree |
 
 - `docker compose down -v` **deletes the live volume**, and so does Docker
@@ -162,14 +168,30 @@ docker run --rm -v "$PWD":/app -w /app -e SHOEBOX_DATA_DIR=/tmp/d shoebox:latest
 
 # API types for the UI after changing api.py
 docker run --rm shoebox:latest python -m shoebox.cli openapi > openapi.json && (cd frontend && npm run types)
+
+# regenerating the Python lock: requirements.txt pins every package with hashes (dependencies
+# plus the faces and dev extras, Python 3.12, linux amd64 and arm64). Run after editing
+# pyproject.toml. It keeps the versions already pinned; add --upgrade-package NAME to bump one.
+docker run --rm -v "$PWD":/src -w /src python:3.12 bash -c '
+  pip install -q --root-user-action=ignore uv==0.13.6
+  lock() { uv pip compile pyproject.toml --extra faces --extra dev --python-version 3.12 --generate-hashes \
+    --custom-compile-command "see README.md, Development: regenerating the Python lock" --quiet "$@"; }
+  lock --python-platform x86_64-manylinux_2_36 -o requirements.txt
+  cp requirements.txt /tmp/arm.txt && lock --python-platform aarch64-manylinux_2_36 -o /tmp/arm.txt
+  cmp requirements.txt /tmp/arm.txt && echo "same lock on amd64 and arm64"'
 ```
+
+CI (`.github/workflows/ci.yml`) runs the frontend type check and the test suite on every push and pull request to `main`; it builds the image but never pushes it.
 
 Test images are synthetic, and test file names are made up. Never commit real
 family photos, names or paths.
 
 The server only answers to `localhost` / `127.0.0.1`, and only accepts changes
 (anything but GET) that carry the `X-Shoebox: 1` header, which the UI sends. A web
-page open in another tab can't add that header, so it can't drive the app.
+page open in another tab can't add that header, so it can't drive the app. As a second
+layer, a change whose `Origin` header names any other page (another site, another local
+port, or `null`) is refused. The UI's own origin and the Vite dev server on port 5173 are
+allowed, and so are clients that send no `Origin` at all (scripts, curl).
 
 ## Licensing note
 

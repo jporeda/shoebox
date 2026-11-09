@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { imgUrl, type ListParams, type PhotoSummary } from "./api";
 import { DateEventEditor } from "./Editor";
 import { useAlbums, usePhotos, useUpdatePhotos } from "./hooks";
+import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
 import { backsHref, gridHref, navigate, photoHref } from "./route";
 
@@ -202,7 +203,7 @@ export function Grid({ list }: { list: ListParams }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (isTypingTarget(e)) return;
       if ((e.metaKey || e.ctrlKey) && e.key === "a") {
         e.preventDefault();
         setSelected(new Set(items.map((p) => p.id)));
@@ -210,7 +211,7 @@ export function Grid({ list }: { list: ListParams }) {
         setSelected(new Set());
       } else if (e.key === "Enter" && selectedIds.length) {
         navigate(photoHref(selectedIds[0], list));
-      } else if ((e.key === "r" || e.key === "R") && selectedIds.length && !e.metaKey && !e.ctrlKey) {
+      } else if ((e.key === "r" || e.key === "R") && selectedIds.length && !e.metaKey && !e.ctrlKey && !e.repeat) {
         update.mutate({ ids: selectedIds, rotate_by: e.shiftKey ? 270 : 90 });
       }
     };

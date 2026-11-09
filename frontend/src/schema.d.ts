@@ -539,6 +539,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/scan-faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Faces
+         * @description Run face detection on this one photo now. Adds faces it finds; never removes or renames any.
+         */
+        post: operations["scan_faces_api_photos__photo_id__scan_faces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/faces/{face_id}": {
         parameters: {
             query?: never;
@@ -874,7 +894,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "ingest" | "orient" | "read_backs" | "estimate" | "evaluate" | "claude_backs" | "faces" | "cluster" | "export" | "backup" | "fixity" | "restore";
+            type: "ingest" | "orient" | "read_backs" | "estimate" | "evaluate" | "claude_backs" | "faces" | "cluster" | "export" | "backup" | "fixity" | "restore" | "accept_guesses" | "faces_deep";
             /**
              * Params
              * @default {}
@@ -1124,6 +1144,25 @@ export interface components {
             name: string;
             /** Faces */
             faces: components["schemas"]["FaceOut"][];
+        };
+        /** ScanIn */
+        ScanIn: {
+            /**
+             * Level
+             * @default 3
+             */
+            level?: number;
+        };
+        /** ScanOut */
+        ScanOut: {
+            /** Found */
+            found: number;
+            /** Added */
+            added: number;
+            /** Updated */
+            updated: number;
+            /** Rotated */
+            rotated: boolean;
         };
         /** Stats */
         Stats: {
@@ -2302,6 +2341,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_faces_api_photos__photo_id__scan_faces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanOut"];
                 };
             };
             /** @description Validation Error */

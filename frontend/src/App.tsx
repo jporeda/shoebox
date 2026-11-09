@@ -7,6 +7,7 @@ import { LooseBacks } from "./LooseBacks";
 import { PeoplePage, PersonPage } from "./People";
 import { PhotoView } from "./PhotoView";
 import { useStats, useUndo } from "./hooks";
+import { isTypingTarget } from "./keys";
 import { useRoute } from "./route";
 
 export function App() {
@@ -36,10 +37,12 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
-        e.preventDefault();
-        doUndo();
-      }
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "z" || isTypingTarget(e)) return;
+      e.preventDefault();
+      // Holding ⌘Z, or pressing it again before the last undo answers, must not undo twice
+      // (the Undo button is disabled while pending for the same reason).
+      if (e.repeat || undo.isPending) return;
+      doUndo();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, faceUrl, type Cluster, type Face, type Person, type ReviewGroup } from "./api";
+import { api, ApiError, faceUrl, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
 import { gridHref, navigate, photoHref } from "./route";
 
 export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
@@ -61,18 +61,23 @@ export function FaceThumb({
   dimmed,
   onClick,
   caption,
+  photoList = {},
 }: {
   face: Face;
   selected?: boolean;
   dimmed?: boolean;
   onClick?: (e: React.MouseEvent) => void;
   caption?: string;
+  /** The list Prev/Next walk through when a double-click opens the face's photo. */
+  photoList?: ListParams;
 }) {
+  const who = face.person_name ?? (face.est_age != null ? `age ≈${Math.round(face.est_age)}` : "");
   return (
     <button
       className={`face ${selected ? "is-selected" : ""} ${dimmed ? "is-dimmed" : ""}`}
       onClick={onClick}
-      title={face.person_name ?? (face.est_age != null ? `age ≈${Math.round(face.est_age)}` : "")}
+      onDoubleClick={() => navigate(photoHref(face.photo_id, photoList))}
+      title={`${who ? `${who} · ` : ""}double-click to open the photo`}
     >
       <img src={faceUrl(face.id)} alt="" loading="lazy" />
       {caption !== undefined && <span className="face__cap">{caption}</span>}
@@ -404,20 +409,20 @@ export function PersonPage({ id }: { id: number }) {
       </p>
       <div className="strip">
         {faces.data?.map((f) => (
-          <span key={f.id} onDoubleClick={() => navigate(photoHref(f.photo_id, { person_id: id, order: "chrono" }))}>
-            <FaceThumb
-              face={f}
-              selected={selected.has(f.id)}
-              caption={`${f.source === "auto" ? "? " : ""}${f.year_label || "undated"}`}
-              onClick={() =>
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  next.has(f.id) ? next.delete(f.id) : next.add(f.id);
-                  return next;
-                })
-              }
-            />
-          </span>
+          <FaceThumb
+            key={f.id}
+            face={f}
+            selected={selected.has(f.id)}
+            caption={`${f.source === "auto" ? "? " : ""}${f.year_label || "undated"}`}
+            photoList={{ person_id: id, order: "chrono" }}
+            onClick={() =>
+              setSelected((prev) => {
+                const next = new Set(prev);
+                next.has(f.id) ? next.delete(f.id) : next.add(f.id);
+                return next;
+              })
+            }
+          />
         ))}
       </div>
       {selected.size > 0 && (

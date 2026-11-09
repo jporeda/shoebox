@@ -185,7 +185,7 @@ class BackDate(BaseModel):
 class JobIn(BaseModel):
     type: Literal[
         "ingest", "orient", "read_backs", "estimate", "evaluate", "claude_backs", "faces", "cluster", "export", "backup",
-        "fixity", "restore",
+        "fixity", "restore", "accept_guesses", "faces_deep",
     ]
     params: dict = {}
 

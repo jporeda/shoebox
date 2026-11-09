@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
@@ -336,6 +336,32 @@ def revert_run(run_id: str, s: Session = Depends(get_session)):
         raise HTTPException(422, str(exc))
     s.commit()
     return BatchOut(batch_id=batch)
+
+
+class ScanIn(BaseModel):
+    level: int = Field(3, ge=1, le=5)  # 1 = the normal pass ... 5 = most aggressive
+
+
+class ScanOut(BaseModel):
+    found: int
+    added: int
+    updated: int
+    rotated: bool  # the photo was rotated during the scan, so nothing was saved
+
+
+@router.post("/photos/{photo_id}/scan-faces", response_model=ScanOut)
+def scan_faces(photo_id: int, body: ScanIn):
+    """Run face detection on this one photo now. Adds faces it finds; never removes or renames any."""
+    try:
+        result = people.scan_photo(photo_id, body.level)
+    except LookupError:
+        raise HTTPException(404, "photo not found")
+    except FileNotFoundError:
+        raise HTTPException(409, "the photo's file is missing")
+    if result["added"]:
+        jobs.enqueue("cluster")
+        jobs.enqueue("estimate")  # new faces may match named people
+    return ScanOut(**result)
 
 
 @router.post("/photos/{photo_id}/faces", response_model=FaceOut)

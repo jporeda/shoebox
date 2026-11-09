@@ -245,3 +245,57 @@ def test_evaluation_does_not_read_the_answer_off_the_hidden_photo(album):
             services.bulk_update(s, [pid], date=str(1980 + i), source="back")  # "Use as date"
     result = evaluate_dates(fraction=1.0, seed=0)
     assert "own_back" not in result["by_main_evidence"]
+
+
+def test_shared_people_nearby_date_a_photo():
+    from shoebox.estimate import Anchor, shared_people_evidence
+    from shoebox.models import Face, Person
+
+    people = {1: Person(id=1, name="Sam"), 2: Person(id=2, name="Ann"), 3: Person(id=3, name="Bob")}
+
+    def face(photo_id, person_id, source="manual"):
+        return Face(photo_id=photo_id, person_id=person_id, source=source, x=0, y=0, w=0.1, h=0.1)
+
+    target = Photo(id=100, album_id=1, list_index=50, rel_path="A/x.jpg", sha256="x")
+    faces = {
+        100: [face(100, 1), face(100, 2)],  # Sam and Ann in the undated photo
+        10: [face(10, 1), face(10, 2)],  # 3 files before: both of them, dated 1985
+        11: [face(11, 1)],  # 12 files after: Sam, dated 1986
+        12: [face(12, 3)],  # 2 files after: only Bob, dated 1999 (no one shared)
+        13: [face(13, 1)],  # 16 files away: Sam, dated 2001 (too far)
+        14: [face(14, 2, source="auto")],  # 1 file away: Ann named only by the app, dated 1970
+    }
+    anchors = [
+        Anchor(47, 1985, 1985, 1985, 10, "1985"),
+        Anchor(62, 1986, 1986, 1986, 11, "1986"),
+        Anchor(52, 1999, 1999, 1999, 12, "1999"),
+        Anchor(66, 2001, 2001, 2001, 13, "2001"),
+        Anchor(51, 1970, 1970, 1970, 14, "1970"),
+        Anchor(49, 1960, 1960, 1960, 15, "1960 (ocr)", trust=0.7),  # an OCR reading never counts
+    ]
+    faces[15] = [face(15, 1)]
+    [ev] = shared_people_evidence(target, anchors, faces, people)
+    assert (ev.kind, ev.year, ev.lo, ev.hi) == ("shared_people", 1985, 1985, 1986)
+    assert "Ann, Sam also in 2 dated photos nearby (1985-1986)" == ev.text
+    assert 0.2 <= ev.weight <= 0.7
+
+    # Nobody named in the photo, or nobody shared nearby: no evidence.
+    assert shared_people_evidence(Photo(id=101, album_id=1, list_index=50, rel_path="A/y.jpg", sha256="y"),
+                                  anchors, faces, people) == []
+    faces[102] = [face(102, 3)]
+    alone = Photo(id=102, album_id=1, list_index=20, rel_path="A/z.jpg", sha256="z")
+    assert shared_people_evidence(alone, anchors, faces, people) == []
+
+
+def test_estimate_job_uses_shared_people_and_says_why(album):
+    with session_scope() as s:
+        sam = Person(name="Sam")
+        s.add(sam)
+        s.flush()
+        for idx in (2, 7):
+            s.add(Face(photo_id=album[idx], x=0.1, y=0.1, w=0.2, h=0.2, person_id=sam.id, source="manual"))
+        services.bulk_update(s, [album[2]], date="1985")  # Sam, explicitly dated, 5 files before
+    counts = run_estimates()
+    seven = p(album[7])
+    assert seven.i_year == 1985 and "Sam also in 1 dated photo nearby (1985)" in seven.i_source
+    assert counts["shared_people"] + counts["neighbours"] >= 1

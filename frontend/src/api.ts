@@ -101,6 +101,8 @@ export const api = {
     call<BatchOut>("/faces/ignore", { method: "POST", body: JSON.stringify({ face_ids, ignored }) }),
   drawFace: (photoId: number, box: { x: number; y: number; w: number; h: number; name?: string }) =>
     call<Face>(`/photos/${photoId}/faces`, { method: "POST", body: JSON.stringify(box) }),
+  scanFaces: (photoId: number, level: number) =>
+    call<S["ScanOut"]>(`/photos/${photoId}/scan-faces`, { method: "POST", body: JSON.stringify({ level }) }),
   deleteFace: (id: number) => call<{ deleted: boolean }>(`/faces/${id}`, { method: "DELETE" }),
   faceStats: () =>
     call<{ faces: number; named: number; ignored: number; unnamed_in_clusters: number; unnamed_single: number; people: number; to_review: number }>(
