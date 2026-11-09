@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, ApiError, faceUrl, imgUrl, type Face } from "./api";
+import { useTouch } from "./hooks";
 import { NameInput } from "./People";
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -102,6 +103,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
   const [aspect, setAspect] = useState(1); // photo width / height, for the zoomed crop
   const [error, setError] = useState("");
   const frame = useRef<HTMLDivElement>(null);
+  const touch = useTouch();
 
   const refresh = () => refreshFaces(qc);
   const act = async (fn: () => Promise<unknown>) => {
@@ -115,18 +117,21 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
     }
   };
 
-  const point = (e: React.MouseEvent): [number, number] => {
+  // Box drawing uses pointer events, so a mouse, a finger or a pen all draw. The frame captures the
+  // pointer, so a drag that leaves the photo keeps drawing (clamped to the edge) until released.
+  const point = (e: React.PointerEvent): [number, number] => {
     const r = frame.current!.getBoundingClientRect();
     return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
   };
-  const onDown = (e: React.MouseEvent) => {
-    if (!drawingNow) return;
+  const onDown = (e: React.PointerEvent) => {
+    if (!drawingNow || !e.isPrimary) return;
     e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
     const p = point(e);
     setDrag({ start: p, box: { x: p[0], y: p[1], w: 0, h: 0 } });
   };
-  const onMove = (e: React.MouseEvent) => {
-    if (!drag) return;
+  const onMove = (e: React.PointerEvent) => {
+    if (!drag || !e.isPrimary) return;
     const [x, y] = point(e);
     const [sx, sy] = drag.start;
     setDrag({ ...drag, box: { x: Math.min(x, sx), y: Math.min(y, sy), w: Math.abs(x - sx), h: Math.abs(y - sy) } });
@@ -160,10 +165,10 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
       <div
         ref={frame}
         className={`photo-frame ${drawingNow ? "is-drawing" : ""}`}
-        onMouseDown={onDown}
-        onMouseMove={onMove}
-        onMouseUp={onUp}
-        onMouseLeave={() => setDrag(null)}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={() => setDrag(null)}
       >
         <img
           src={imgUrl(sha, "preview", rotation)}
@@ -274,7 +279,8 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
               </button>
             </>
           )}
-          <NameInput autoFocus onSubmit={(name) => act(() => api.assignFaces([current.id], { name }))} placeholder={current.person_name ? "Rename to…" : "Who is this?"} />
+          {/* On touch, don't pop the keyboard up over Yes / No on every tap of a face. */}
+          <NameInput autoFocus={!touch} onSubmit={(name) => act(() => api.assignFaces([current.id], { name }))} placeholder={current.person_name ? "Rename to…" : "Who is this?"} />
           {current.person_name && current.source !== "auto" && (
             <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
               Not {current.person_name}
@@ -306,10 +312,10 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
               <FaceZoom src={imgUrl(sha, "preview", rotation)} face={current} aspect={aspect} context={zoom} />
               <span className="facezoom__controls">
                 <button className="btn btn--ghost" onClick={() => setZoom((z) => Math.max(1.5, (z ?? 3) / 1.5))} disabled={zoom <= 1.5} title="Closer">
-                  ＋
+                  ＋ Closer
                 </button>
                 <button className="btn btn--ghost" onClick={() => setZoom((z) => Math.min(10, (z ?? 3) * 1.5))} disabled={zoom >= 10} title="Show more of the surroundings">
-                  −
+                  − Wider
                 </button>
               </span>
             </div>
@@ -332,7 +338,8 @@ const SCAN_LEVELS: Record<number, string> = {
   5: "5 · most aggressive (more false boxes)",
 };
 
-const ZOOM_PX = 240;
+/** On-screen size of the face zoom: 240px, or 70% of a narrow screen. */
+const zoomPx = () => Math.min(240, Math.round(window.innerWidth * 0.7));
 
 /** The face and its surroundings, cropped from the photo: `context` face-sizes across, square, with
  *  the face's box outlined. Box coordinates are fractions of the (rotated) photo. */
@@ -344,9 +351,10 @@ function FaceZoom({ src, face, aspect, context }: { src: string; face: Face; asp
   const rh = side;
   const rx = Math.min(Math.max(face.x + face.w / 2 - rw / 2, 0), 1 - rw);
   const ry = Math.min(Math.max(face.y + face.h / 2 - rh / 2, 0), 1 - rh);
-  const scale = ZOOM_PX / side; // screen px per photo-height unit
+  const px = zoomPx();
+  const scale = px / side; // screen px per photo-height unit
   return (
-    <div className="facezoom__view" style={{ width: ZOOM_PX, height: ZOOM_PX }}>
+    <div className="facezoom__view" style={{ width: px, height: px }}>
       <img
         src={src}
         alt=""
@@ -378,7 +386,7 @@ function FaceBox({ face, active, onClick }: { face: Face; active: boolean; onCli
     <button
       className={`facebox ${cls} ${active ? "is-active" : ""}`}
       style={pct(face)}
-      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
         onClick();

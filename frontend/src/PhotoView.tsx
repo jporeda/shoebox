@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, imgUrl, type ListParams } from "./api";
 import { DateEventEditor } from "./Editor";
@@ -32,6 +32,29 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [prev, next, list, id, update]);
 
+  // Swipe left / right on the photo for next / previous (finger only; not while drawing a face box
+  // or while the page is pinch-zoomed, when a sideways drag should pan instead).
+  const zoomed = usePinchZoomed();
+  const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onSwipeDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "mouse") return;
+    if (!e.isPrimary || zoomed || (e.target as Element).closest(".photo-frame.is-drawing")) {
+      swipe.current = null; // a second finger (pinch) cancels the swipe
+      return;
+    }
+    swipe.current = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+  };
+  const onSwipeUp = (e: React.PointerEvent) => {
+    const s = swipe.current;
+    swipe.current = null;
+    if (!s || !e.isPrimary) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy) || e.timeStamp - s.t > 800) return;
+    const to = dx < 0 ? next : prev;
+    if (to) navigate(photoHref(to.id, list));
+  };
+
   // Preload neighbours so arrowing through an album feels instant.
   useEffect(() => {
     for (const n of [prev, next]) if (n) new Image().src = imgUrl(n.sha256, "preview", n.rotation);
@@ -41,25 +64,30 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   if (!p) return <div className="pad muted">Loading…</div>;
 
   return (
-    <div className="photo-view">
+    <div className={`photo-view ${zoomed ? "is-zoomed" : ""}`}>
       <div className="photo-view__bar">
-        <a className="btn btn--ghost" href={gridHref(list)}>
-          ← Back to grid
+        <a className="btn btn--ghost photo-view__back" href={gridHref(list)}>
+          ← Back<span className="photo-view__back-more"> to grid</span>
         </a>
-        <span className="muted">
+        <span className="muted photo-view__where">
           {p.album_name} · #{p.album_index + 1}
           {idx >= 0 && ` · ${idx + 1} of ${items.length}`}
         </span>
         <span className="spacer" />
         <AcceptGuesses photoId={p.id} />
-        <button className="btn btn--ghost" disabled={!prev} onClick={() => prev && navigate(photoHref(prev.id, list))}>
+        <button className="btn btn--ghost photo-view__step" disabled={!prev} onClick={() => prev && navigate(photoHref(prev.id, list))}>
           ‹ Prev
         </button>
-        <button className="btn btn--ghost" disabled={!next} onClick={() => next && navigate(photoHref(next.id, list))}>
+        <button className="btn btn--ghost photo-view__step" disabled={!next} onClick={() => next && navigate(photoHref(next.id, list))}>
           Next ›
         </button>
       </div>
-      <div className={`photo-view__images ${p.back_sha256 ? "has-back" : ""}`}>
+      <div
+        className={`photo-view__images ${p.back_sha256 ? "has-back" : ""}`}
+        onPointerDown={onSwipeDown}
+        onPointerUp={onSwipeUp}
+        onPointerCancel={() => (swipe.current = null)}
+      >
         <figure>
           <FaceLayer photoId={p.id} sha={p.sha256} rotation={p.rotation} alt={p.rel_path} />
           <figcaption>Front · {p.rel_path}</figcaption>
@@ -181,4 +209,18 @@ function CaptionEditor({ id, caption }: { id: number; caption: string }) {
       />
     </label>
   );
+}
+
+/** True while the page is pinch-zoomed in (visual viewport scaled up). */
+function usePinchZoomed(): boolean {
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const on = () => setZoomed(vv.scale > 1.01);
+    on();
+    vv.addEventListener("resize", on);
+    return () => vv.removeEventListener("resize", on);
+  }, []);
+  return zoomed;
 }

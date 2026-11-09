@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, faceUrl, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
+import { useLongPress, useTouch } from "./hooks";
 import { gridHref, navigate, photoHref } from "./route";
 
 export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
@@ -72,11 +73,18 @@ export function FaceThumb({
   photoList?: ListParams;
 }) {
   const who = face.person_name ?? (face.est_age != null ? `age ≈${Math.round(face.est_age)}` : "");
+  const open = () => navigate(photoHref(face.photo_id, photoList));
+  // Finger: tap toggles as with a mouse click; press and hold opens the photo (mouse: double-click).
+  const press = useLongPress(open);
   return (
     <button
       className={`face ${selected ? "is-selected" : ""} ${dimmed ? "is-dimmed" : ""}`}
-      onClick={onClick}
-      onDoubleClick={() => navigate(photoHref(face.photo_id, photoList))}
+      {...press.handlers}
+      onClick={(e) => {
+        if (press.consumeLongPress()) return;
+        onClick?.(e);
+      }}
+      onDoubleClick={open}
       title={`${who ? `${who} · ` : ""}double-click to open the photo`}
     >
       <img src={faceUrl(face.id)} alt="" loading="lazy" />
@@ -114,14 +122,16 @@ export function PeoplePage({ tab }: { tab: "name" | "check" | "people" }) {
 }
 
 function ToName() {
+  const touch = useTouch();
   const clusters = useQuery({ queryKey: ["clusters", false], queryFn: () => api.clusters(false) });
   const [showSingles, setShowSingles] = useState(false);
   if (clusters.isLoading) return <p className="muted">Loading…</p>;
   return (
     <div className="clusters">
       <p className="muted small">
-        Faces that look alike are grouped. Click faces to leave them out, then type a name (or pick a suggestion). Children
-        often split into several groups by age; give each the same name. Undo with ⌘Z.
+        Faces that look alike are grouped. {touch ? "Tap" : "Click"} faces to leave them out, then type a name (or pick a
+        suggestion). Children often split into several groups by age; give each the same name.{" "}
+        {touch ? "Press and hold a face to open its photo. Undo is at the top right." : "Undo with ⌘Z."}
       </p>
       {clusters.data?.length === 0 && <p className="empty">No unnamed groups left.</p>}
       {clusters.data?.map((c) => <ClusterCard key={c.cluster_id} cluster={c} />)}
@@ -134,14 +144,16 @@ function ToName() {
 }
 
 function Check() {
+  const touch = useTouch();
   const review = useQuery({ queryKey: ["faceReview"], queryFn: api.faceReview });
   if (review.isLoading) return <p className="muted">Loading…</p>;
   return (
     <div className="clusters">
       <p className="muted small">
         Faces the app thinks it recognizes, by person, most confident first. <b>?</b> marks names it applied itself;{" "}
-        <i>maybe</i> marks suggestions it wasn't sure enough to apply (and every face that looks under 6). Click the wrong
-        ones, then Confirm: the rest become confirmed and teach the matcher; the clicked ones are remembered as “not them”.
+        <i>maybe</i> marks suggestions it wasn't sure enough to apply (and every face that looks under 6).{" "}
+        {touch ? "Tap" : "Click"} the wrong ones, then Confirm: the rest become confirmed and teach the matcher; the{" "}
+        {touch ? "tapped" : "clicked"} ones are remembered as “not them”.
       </p>
       {review.data?.length === 0 && <p className="empty">Nothing to check. Name more faces, or run “Infer dates & names”.</p>}
       {review.data?.map((g) => <CheckGroup key={g.person_id} group={g} />)}
@@ -333,6 +345,7 @@ export function PersonPage({ id }: { id: number }) {
   const faces = useQuery({ queryKey: ["personFaces", id], queryFn: () => api.personFaces(id) });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
+  const touch = useTouch();
   useEffect(() => setSelected(new Set()), [id]);
 
   const save = async (body: Parameters<typeof api.updatePerson>[1]) => {
@@ -360,6 +373,8 @@ export function PersonPage({ id }: { id: number }) {
       <div className="person-head">
         <input
           className="person-head__name"
+          aria-label="Name"
+          title="Click to rename"
           key={person.name}
           defaultValue={person.name}
           onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== person.name && save({ name: e.target.value.trim() })}
@@ -405,7 +420,8 @@ export function PersonPage({ id }: { id: number }) {
         {error && <span className="error">{error}</span>}
       </div>
       <p className="muted small">
-        Oldest to newest. A face that doesn't belong stands out here; select it and remove it. Double-click opens the photo.
+        Oldest to newest. A face that doesn't belong stands out here; select it and remove it.{" "}
+        {touch ? "Press and hold a face to open its photo." : "Double-click opens the photo."}
       </p>
       <div className="strip">
         {faces.data?.map((f) => (
