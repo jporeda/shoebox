@@ -4,6 +4,7 @@ import { api, imgUrl, type ListParams } from "./api";
 import { DateEventEditor } from "./Editor";
 import { FaceLayer } from "./FaceLayer";
 import { usePhotos, useUpdatePhotos } from "./hooks";
+import { isTypingTarget } from "./keys";
 import { gridHref, navigate, photoHref } from "./route";
 
 export function PhotoView({ id, list }: { id: number; list: ListParams }) {
@@ -19,11 +20,12 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (isTypingTarget(e)) return;
       if (e.key === "ArrowLeft" && prev) navigate(photoHref(prev.id, list));
       else if (e.key === "ArrowRight" && next) navigate(photoHref(next.id, list));
       else if (e.key === "Escape") navigate(gridHref(list));
-      else if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey)
+      // Holding R would otherwise fire a rotate per auto-repeat.
+      else if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.repeat)
         update.mutate({ ids: [id], rotate_by: e.shiftKey ? 270 : 90 });
     };
     window.addEventListener("keydown", onKey);

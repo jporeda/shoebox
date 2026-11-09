@@ -18,7 +18,7 @@ dependencies = [
   "numpy==2.2.1",
   "natsort==8.4.0",
   "pytesseract==0.3.13",
-  "anthropic>=1,<2",
+  "anthropic==1.17.0",
 ]
 
 [project.optional-dependencies]

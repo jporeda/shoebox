@@ -85,16 +85,17 @@ def test_run_faces_and_cluster(photos):
 
 
 def test_naming_flow_via_api(photos):
-    calls = iter([[det(0.1, 0.1, base=A)], [det(0.1, 0.1, base=A), det(0.6, 0.1, base=B)], [det(0.3, 0.2, base=A)], []])
+    calls = iter([[det(0.1, 0.1, base=A)], [det(0.1, 0.1, base=A), det(0.6, 0.1, base=B)], [det(0.3, 0.2, base=A)],
+                  [det(0.5, 0.5, base=A)]])
     run_faces(detector=lambda rgb: next(calls))
     run_cluster()
     with api_client() as client:
         clusters = client.get("/api/clusters").json()
-        assert [c["size"] for c in clusters] == [3]
+        assert [c["size"] for c in clusters] == [4]
         ids = [f["id"] for f in clusters[0]["faces"]]
         res = client.post("/api/faces/assign", json={"face_ids": ids, "name": "Sam"}).json()
         sam = res["person"]
-        assert sam["name"] == "Sam" and sam["face_count"] == 3
+        assert sam["name"] == "Sam" and sam["face_count"] == 4
         assert client.get("/api/clusters").json() == []
         single = client.get("/api/clusters", params={"singles": True}).json()[0]["faces"]
         assert len(single) == 1
@@ -103,8 +104,8 @@ def test_naming_flow_via_api(photos):
         assert client.get("/api/people").json() == []  # undoing the naming removes the person it added
         sam = client.post("/api/faces/assign", json={"face_ids": ids[:2], "name": "Sam"}).json()["person"]
         run_cluster()
-        c = client.get("/api/clusters").json()
-        assert c == [] or c[0]["suggestion"] is None or c[0]["suggestion"]["name"] == "Sam"
+        c = client.get("/api/clusters").json()  # the two A faces still unnamed form a group
+        assert [(g["size"], g["suggestion"] and g["suggestion"]["name"]) for g in c] == [(2, "Sam")]
         # photos filter and person page
         assert client.get("/api/photos", params={"person_id": sam["id"]}).json()["total"] == 2
         assert len(client.get(f"/api/people/{sam['id']}/faces").json()) == 2

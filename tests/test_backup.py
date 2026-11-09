@@ -1,12 +1,11 @@
 import json
-import os
 import subprocess
 
 from sqlmodel import select
 
 import pytest
 
-from conftest import reset_caches
+from conftest import drain, lose_live_volume, reset_caches
 from shoebox import backup, db, jobs, services
 from shoebox.db import get_meta, session_scope
 from shoebox.ingest import run_ingest
@@ -29,18 +28,6 @@ def event_dated_photo():
     with session_scope() as s:
         p = s.exec(select(Photo).order_by(Photo.rel_path)).all()[4]
         return p.t_year, p.t_month, p.t_day, p.t_source
-
-
-def drain():
-    while (job_id := jobs._claim()) is not None:
-        jobs.run_job(job_id)
-
-
-def lose_live_volume(tmp_path, monkeypatch, name="data2"):
-    """New empty data dir; same photos and backup folder."""
-    monkeypatch.setenv("SHOEBOX_DATA_DIR", str(tmp_path / name))
-    reset_caches()
-    db.migrate()
 
 
 def normalized(truth):
@@ -173,14 +160,16 @@ def test_fixity_reports_changed_missing_new(album_tree, env):
 
 
 def test_snapshots_pruned_and_consistent(env, monkeypatch):
+    # Pruning orders snapshots by the time in their file name, so fix that clock. All four
+    # fall in one hour: with the real clock, a run that straddles an hour (or day, week,
+    # month) boundary keeps one more snapshot through the hourly tier.
+    stamps = iter(f"20261028-120000-{i:06d}" for i in range(4))
+    monkeypatch.setattr(backup, "_stamp", lambda: next(stamps))
     monkeypatch.setenv("SHOEBOX_SNAPSHOT_KEEP", "2")
     reset_caches()
-    paths = []
-    for i in range(4):
-        paths.append(backup.snapshot(f"t{i}"))
-        os.utime(paths[-1])
+    paths = [backup.snapshot(f"t{i}") for i in range(4)]
     remaining = sorted((env.backup_dir / "db").glob("shoebox-*.db"))
-    assert len(remaining) == 2
+    assert [p.name for p in remaining] == [p.name for p in paths[2:]]  # the two newest, not just any two
     import sqlite3
 
     conn = sqlite3.connect(remaining[-1])

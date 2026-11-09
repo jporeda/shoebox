@@ -162,6 +162,17 @@ docker run --rm -v "$PWD":/app -w /app -e SHOEBOX_DATA_DIR=/tmp/d shoebox:latest
 
 # API types for the UI after changing api.py
 docker run --rm shoebox:latest python -m shoebox.cli openapi > openapi.json && (cd frontend && npm run types)
+
+# regenerating the Python lock: requirements.txt pins every package with hashes (dependencies
+# plus the faces and dev extras, Python 3.12, linux amd64 and arm64). Run after editing
+# pyproject.toml. It keeps the versions already pinned; add --upgrade-package NAME to bump one.
+docker run --rm -v "$PWD":/src -w /src python:3.12 bash -c '
+  pip install -q --root-user-action=ignore uv==0.13.6
+  lock() { uv pip compile pyproject.toml --extra faces --extra dev --python-version 3.12 --generate-hashes \
+    --custom-compile-command "see README.md, Development: regenerating the Python lock" --quiet "$@"; }
+  lock --python-platform x86_64-manylinux_2_36 -o requirements.txt
+  cp requirements.txt /tmp/arm.txt && lock --python-platform aarch64-manylinux_2_36 -o /tmp/arm.txt
+  cmp requirements.txt /tmp/arm.txt && echo "same lock on amd64 and arm64"'
 ```
 
 Test images are synthetic, and test file names are made up. Never commit real
@@ -169,7 +180,10 @@ family photos, names or paths.
 
 The server only answers to `localhost` / `127.0.0.1`, and only accepts changes
 (anything but GET) that carry the `X-Shoebox: 1` header, which the UI sends. A web
-page open in another tab can't add that header, so it can't drive the app.
+page open in another tab can't add that header, so it can't drive the app. As a second
+layer, a change whose `Origin` header names any other page (another site, another local
+port, or `null`) is refused. The UI's own origin and the Vite dev server on port 5173 are
+allowed, and so are clients that send no `Origin` at all (scripts, curl).
 
 ## Licensing note
 

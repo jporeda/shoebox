@@ -55,6 +55,35 @@ def reset_caches() -> None:
     db.get_engine.cache_clear()
 
 
+def drain() -> None:
+    """Run every queued job in this process, as the worker would, until the queue is empty."""
+    from shoebox import jobs
+
+    while (job_id := jobs._claim()) is not None:
+        jobs.run_job(job_id)
+
+
+def lose_live_volume(tmp_path, monkeypatch, name="data2") -> None:
+    """New empty data dir; same photos and backup folder."""
+    monkeypatch.setenv("SHOEBOX_DATA_DIR", str(tmp_path / name))
+    reset_caches()
+    db.migrate()
+
+
+class SetupError(Exception):
+    """A test's setup didn't reach the state the test is about.
+
+    Deliberately not an AssertionError: a known-bug test marked
+    ``xfail(raises=AssertionError)`` whose setup breaks is then reported as a failure
+    instead of being counted as its bug."""
+
+
+def require(condition, message: str = "") -> None:
+    """Check a precondition (see SetupError); use ``assert`` only for the behaviour under test."""
+    if not condition:
+        raise SetupError(message)
+
+
 @pytest.fixture
 def album_tree(env):
     """Two albums with backs, an orphan back and a back-like front."""

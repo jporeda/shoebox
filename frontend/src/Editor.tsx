@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type ParsedDate } from "./api";
 import { useEventKinds, useUpdatePhotos } from "./hooks";
+import { isTypingTarget } from "./keys";
 
 function useParsedDate(text: string): ParsedDate | null {
   const [parsed, setParsed] = useState<ParsedDate | null>(null);
@@ -46,7 +47,7 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
 
   useEffect(() => {
     const focusDate = (e: KeyboardEvent) => {
-      if (e.key === "y" && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLSelectElement)) {
+      if (e.key === "y" && !isTypingTarget(e)) {
         e.preventDefault();
         dateRef.current?.focus();
       }

@@ -36,7 +36,8 @@ const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[
     type: "restore",
     label: "Restore from truth.json",
     help: "Re-apply backed-up dates, events, captions and rotations onto imported photos.",
-    confirm: "Re-apply backup/truth/truth.json onto the current photos? Existing values are overwritten (undoable).",
+    confirm:
+      "Re-apply backup/truth/truth.json onto the current photos? Existing values are overwritten. This can't be undone in one step: Undo reverses it one photo at a time.",
   },
 ];
 

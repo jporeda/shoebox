@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- web UI ----
-FROM node:20-bookworm-slim AS frontend
+FROM node:22-bookworm-slim AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -14,13 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
     && rm -rf /var/lib/apt/lists/*
 RUN python -m venv /venv
 ENV PATH=/venv/bin:$PATH
-COPY pyproject.toml /tmp/pyproject.toml
-RUN python - <<'PY' > /tmp/requirements.txt
-import tomllib
-p = tomllib.load(open("/tmp/pyproject.toml", "rb"))["project"]
-print("\n".join(p["dependencies"] + p["optional-dependencies"]["faces"] + p["optional-dependencies"]["dev"]))
-PY
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# Hashed lock of dependencies + faces + dev extras (README: "Regenerating the Python lock").
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt
 
 # ---- face models (buffalo_l: non-commercial license; do not publish this image) ----
 FROM python:3.12-slim AS models
