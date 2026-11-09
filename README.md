@@ -175,6 +175,8 @@ docker run --rm -v "$PWD":/src -w /src python:3.12 bash -c '
   cmp requirements.txt /tmp/arm.txt && echo "same lock on amd64 and arm64"'
 ```
 
+CI (`.github/workflows/ci.yml`) runs the frontend type check and the test suite on every push and pull request to `main`; it builds the image but never pushes it.
+
 Test images are synthetic, and test file names are made up. Never commit real
 family photos, names or paths.
 
