@@ -128,6 +128,10 @@ Anything that identifies your family stays out of git:
   that doesn't belong stands out; that page is also where you set a birth year
   and merge duplicates. In photo detail, click a face box to name it, or use
   *＋ Draw face* for a face the detector missed.
+- **Pets:** everyone you name counts as a person until you switch them to *Pet* on their
+  page. Pets are exported under `Pets|Name` keywords and as "Pet" regions (not as people in
+  the image), and their birth year isn't used to date photos. The face detector only finds
+  human faces, so draw boxes around pets by hand.
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as

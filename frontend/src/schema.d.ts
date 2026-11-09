@@ -997,6 +997,8 @@ export interface components {
             birth_year?: number | null;
             /** Notes */
             notes?: string | null;
+            /** Kind */
+            kind?: ("person" | "pet") | null;
         };
         /** PersonOut */
         PersonOut: {
@@ -1008,6 +1010,11 @@ export interface components {
             birth_year: number | null;
             /** Notes */
             notes: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "person" | "pet";
             /** Face Count */
             face_count: number;
             /** Auto Count */
@@ -1641,6 +1648,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                shared?: boolean;
             };
             header?: never;
             path?: never;
@@ -1648,7 +1656,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-                shared?: boolean;
             /** @description Successful Response */
             200: {
                 headers: {

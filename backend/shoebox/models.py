@@ -138,6 +138,7 @@ class Person(SQLModel, table=True):
     name: str = Field(index=True, unique=True)
     birth_year: Optional[int] = None
     notes: Optional[str] = None
+    kind: str = Field(default="person", sa_column_kwargs={"server_default": "person"})  # "person" or "pet"
 
 
 class Face(SQLModel, table=True):

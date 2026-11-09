@@ -101,7 +101,7 @@ export const api = {
   stats: () => call<Stats>("/stats"),
   people: () => call<Person[]>("/people"),
   createPerson: (name: string) => call<Person>("/people", { method: "POST", body: JSON.stringify({ name }) }),
-  updatePerson: (id: number, body: { name?: string; birth_year?: number | null; notes?: string | null }) =>
+  updatePerson: (id: number, body: { name?: string; birth_year?: number | null; notes?: string | null; kind?: "person" | "pet" }) =>
     call<Person>(`/people/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   mergePerson: (id: number, into_id: number) =>
     call<BatchOut>(`/people/${id}/merge`, { method: "POST", body: JSON.stringify({ into_id }) }),

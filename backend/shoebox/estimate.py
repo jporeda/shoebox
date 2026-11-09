@@ -189,7 +189,8 @@ def age_evidence(faces: Iterable[Face], people: dict[int, Person]) -> list[Evide
     out = []
     for f in faces:
         person = people.get(f.person_id) if f.person_id else None
-        if (person is None or person.birth_year is None or f.est_age is None or f.ignored
+        # Pets: the face-age model is for people, so a pet's "age" says nothing about the year.
+        if (person is None or person.kind == "pet" or person.birth_year is None or f.est_age is None or f.ignored
                 or f.source not in TRUSTED_FACE_SOURCES):
             continue
         age = max(0.0, f.est_age)

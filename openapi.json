@@ -2857,6 +2857,21 @@
        }
       ],
       "title": "Notes"
+     },
+     "kind": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "person",
+         "pet"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Kind"
      }
     },
     "type": "object",
@@ -2893,6 +2908,14 @@
        }
       ],
       "title": "Notes"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "person",
+       "pet"
+      ],
+      "title": "Kind"
      },
      "face_count": {
       "type": "integer",
@@ -2942,6 +2965,7 @@
      "name",
      "birth_year",
      "notes",
+     "kind",
      "face_count",
      "auto_count",
      "cover_face_id",

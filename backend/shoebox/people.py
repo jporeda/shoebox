@@ -388,6 +388,8 @@ def merge_people(s: Session, source_id: int, target_id: int) -> Optional[str]:
     changes = [(f, "person_id", target_id) for f in faces]
     if dst.birth_year is None and src.birth_year is not None:
         changes.append((dst, "birth_year", src.birth_year))
+    if src.kind == "pet" and dst.kind != "pet":  # "person" is only the default; "pet" was tagged on purpose
+        changes.append((dst, "kind", "pet"))
     return editlog.record(s, changes, f"merge {src.name} into {dst.name}")
 
 

@@ -343,7 +343,10 @@ function PeopleList() {
       {people.data.map((p) => (
         <a key={p.id} className="person-card" href={`#/people/${p.id}`}>
           {p.cover_face_id ? <img src={faceUrl(p.cover_face_id)} alt="" /> : <span className="person-card__blank" />}
-          <span className="person-card__name">{p.name}</span>
+          <span className="person-card__name">
+            {p.name}
+            {p.kind === "pet" && <span className="badge person-card__pet">pet</span>}
+          </span>
           <span className="muted small">
             {p.face_count - p.auto_count} photos{p.auto_count > 0 && ` (+${p.auto_count} to check)`}
             {p.first_year && ` · ${p.first_year}${p.last_year !== p.first_year ? `–${p.last_year}` : ""}`}
@@ -397,8 +400,25 @@ export function PersonPage({ id }: { id: number }) {
           defaultValue={person.name}
           onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== person.name && save({ name: e.target.value.trim() })}
         />
+        <div className="field">
+          <span className="field__label">Person or pet</span>
+          <div className="segmented segmented--inline" role="group" aria-label="Person or pet">
+            {(["person", "pet"] as const).map((k) => (
+              <button
+                key={k}
+                className={person.kind === k ? "is-active" : ""}
+                aria-pressed={person.kind === k}
+                onClick={() => person.kind !== k && save({ kind: k })}
+              >
+                {k === "person" ? "Person" : "Pet"}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="field">
-          <span className="field__label">Birth year (dates photos from their age)</span>
+          <span className="field__label">
+            {person.kind === "pet" ? "Birth year (not used for dating pets)" : "Birth year (dates photos from their age)"}
+          </span>
           <input
             key={String(person.birth_year)}
             type="number"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -60,6 +60,7 @@ class PersonIn(BaseModel):
     name: Optional[str] = None
     birth_year: Optional[int] = None
     notes: Optional[str] = None
+    kind: Optional[Literal["person", "pet"]] = None
 
 
 class PersonOut(BaseModel):
@@ -67,6 +68,7 @@ class PersonOut(BaseModel):
     name: str
     birth_year: Optional[int]
     notes: Optional[str]
+    kind: Literal["person", "pet"]
     face_count: int
     auto_count: int
     cover_face_id: Optional[int]
@@ -149,7 +151,8 @@ def _person_out(s: Session, person: Person) -> PersonOut:
     years = sorted(y for p in photos if (y := p.t_year if p.t_year is not None else p.i_year) is not None)
     cover = max(faces, key=lambda f: (f.source != "auto", f.w * f.h), default=None)
     return PersonOut(
-        id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, face_count=len(faces),
+        id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, kind=person.kind or "person",
+        face_count=len(faces),
         auto_count=sum(f.source == "auto" for f in faces),
         cover_face_id=cover.id if cover else None, first_year=years[0] if years else None,
         last_year=years[-1] if years else None,
@@ -193,10 +196,12 @@ def update_person(person_id: int, body: PersonIn, s: Session = Depends(get_sessi
         changes.append((person, "birth_year", body.birth_year))
     if "notes" in body.model_fields_set:
         changes.append((person, "notes", body.notes))
+    if body.kind is not None:
+        changes.append((person, "kind", body.kind))
     editlog.record(s, changes, f"edit {person.name}")
     s.commit()
-    if "birth_year" in body.model_fields_set:
-        jobs.enqueue("estimate")  # ages now date this person's photos
+    if "birth_year" in body.model_fields_set or body.kind is not None:
+        jobs.enqueue("estimate")  # ages date this person's photos (pets' don't)
     return _person_out(s, person)
 
 
