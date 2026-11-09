@@ -1071,6 +1071,8 @@ export interface components {
             height: number | null;
             /** Album Name */
             album_name: string;
+            /** Source Folder */
+            source_folder?: string | null;
             /** Back Rel Path */
             back_rel_path: string | null;
             /** Caption */

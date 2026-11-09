@@ -424,3 +424,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 }
 .person-card__pet { margin-left: 6px; vertical-align: middle; }
 .cluster__age { font-weight: 600; color: var(--muted); }
+.photo-view__file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; line-height: 1.4; padding: 6px 16px 0; }
+.photo-view__filename { font-weight: 600; overflow-wrap: anywhere; }
+.photo-view__folder { overflow-wrap: anywhere; min-width: 0; }

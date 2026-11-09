@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -65,6 +67,9 @@ class PhotoSummary(BaseModel):
 
 class PhotoDetail(PhotoSummary):
     album_name: str
+    # The folder holding the original on the Mac (PHOTO_ROOT from private/.env plus the album
+    # path), for pasting into Finder's Go to Folder. None when PHOTO_ROOT isn't known (CLI, tests).
+    source_folder: Optional[str] = None
     back_rel_path: Optional[str]
     caption: Optional[str]
     scan_datetime: Optional[str]
@@ -281,6 +286,13 @@ def _month_label(year: Optional[int], month: Optional[int]) -> str:
     return f"{year:04d}-{month:02d}" if month else f"{year:04d}"
 
 
+def _host_folder(rel_path: str) -> Optional[str]:
+    """The original's folder as the Mac sees it. Inside Docker the photos are at /photos, but
+    compose passes private/.env in, so PHOTO_ROOT still holds the Mac's own path."""
+    root = os.environ.get("PHOTO_ROOT", "").strip()
+    return str(PurePosixPath(root) / PurePosixPath(rel_path).parent) if root else None
+
+
 def _detail(s: Session, p: Photo) -> PhotoDetail:
     base = summarize(p, _labels(s))
     members = (
@@ -289,6 +301,7 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
     return PhotoDetail(
         **base.model_dump(),
         album_name=s.get(Album, p.album_id).name,
+        source_folder=_host_folder(p.rel_path),
         back_rel_path=p.back_rel_path,
         caption=p.caption,
         scan_datetime=p.scan_datetime,

@@ -3124,6 +3124,17 @@
       "type": "string",
       "title": "Album Name"
      },
+     "source_folder": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Folder"
+     },
      "back_rel_path": {
       "anyOf": [
        {

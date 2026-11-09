@@ -53,3 +53,17 @@ def test_other_sites_cannot_make_changes(album_tree, env):
         assert rebound.get("/api/stats").status_code == 400
     with api_client() as ui:
         assert ui.post("/api/jobs", json={"type": "backup"}).status_code == 200
+
+
+def test_photo_detail_shows_the_originals_folder_on_the_mac(album_tree, env, monkeypatch):
+    from conftest import api_client
+    from shoebox.ingest import run_ingest
+
+    run_ingest()
+    with api_client() as c:
+        pid = c.get("/api/photos").json()["items"][0]["id"]
+        assert c.get(f"/api/photos/{pid}").json()["source_folder"] is None  # PHOTO_ROOT unknown
+        monkeypatch.setenv("PHOTO_ROOT", "/Users/you/Pictures/FamilyScans")  # what compose passes in
+        d = c.get(f"/api/photos/{pid}").json()
+    album_dir = d["rel_path"].rsplit("/", 1)[0]
+    assert d["source_folder"] == f"/Users/you/Pictures/FamilyScans/{album_dir}"

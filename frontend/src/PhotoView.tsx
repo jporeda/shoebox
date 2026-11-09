@@ -90,6 +90,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           Next ›
         </button>
       </div>
+      <SourceFile rel={p.rel_path} folder={p.source_folder ?? null} albumId={p.album_id} />
       <div
         className={`photo-view__images ${p.back_sha256 ? "has-back" : ""}`}
         onPointerDown={onSwipeDown}
@@ -231,4 +232,40 @@ function usePinchZoomed(): boolean {
     return () => vv.removeEventListener("resize", on);
   }, []);
   return zoomed;
+}
+
+/** The original's file name, its folder on the Mac (with Copy, for Finder's Go to Folder, ⇧⌘G)
+ *  and a link to that folder's album here. Browsers can't open Finder folders from a web page. */
+function SourceFile({ rel, folder, albumId }: { rel: string; folder: string | null; albumId: number }) {
+  const [copied, setCopied] = useState(false);
+  const name = rel.split("/").pop() ?? rel;
+  const copy = async () => {
+    if (!folder) return;
+    try {
+      await navigator.clipboard.writeText(folder); // only on https or localhost
+    } catch {
+      const t = document.createElement("textarea"); // plain http on the home network
+      t.value = folder;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      t.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="photo-view__file">
+      <span className="photo-view__filename" title={rel}>{name}</span>
+      {folder && (
+        <>
+          <span className="muted small photo-view__folder" title={folder}>{folder}</span>
+          <button className="btn btn--ghost" onClick={copy} title="Copy the folder path; in Finder press ⇧⌘G and paste">
+            {copied ? "Copied" : "Copy folder path"}
+          </button>
+        </>
+      )}
+      <a className="btn btn--ghost" href={gridHref({ album_id: albumId })}>Open album</a>
+    </div>
+  );
 }
