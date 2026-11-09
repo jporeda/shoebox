@@ -423,3 +423,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .people__head .segmented--inline button { padding: 6px 4px; }
 }
 .person-card__pet { margin-left: 6px; vertical-align: middle; }
+.cluster__age { font-weight: 600; color: var(--muted); }

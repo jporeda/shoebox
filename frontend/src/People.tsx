@@ -168,15 +168,23 @@ function Check() {
   return (
     <div className="clusters">
       <p className="muted small">
-        Faces the app thinks it recognizes, by person, most confident first. <b>?</b> marks names it applied itself;{" "}
+        Faces the app thinks it recognizes, by person and best-guess age (5-year brackets, from the birth year where
+        you've set one, otherwise from how old the face looks), most confident first. <b>?</b> marks names it applied itself;{" "}
         <i>maybe</i> marks suggestions it wasn't sure enough to apply (and every face that looks under 6).{" "}
         {touch ? "Tap" : "Click"} the wrong ones, then Confirm: the rest become confirmed and teach the matcher; the{" "}
         {touch ? "tapped" : "clicked"} ones are remembered as “not them”.
       </p>
       {review.data?.length === 0 && <p className="empty">Nothing to check. Name more faces, or run “Infer dates & names”.</p>}
-      {review.data?.map((g) => <CheckGroup key={g.person_id} group={g} />)}
+      {review.data?.map((g) => <CheckGroup key={`${g.person_id}:${g.age_lo ?? "?"}`} group={g} />)}
     </div>
   );
+}
+
+/** "age 5–9", "looks 5–9" or "age unknown": the bracket a Check group covers, and how it was guessed. */
+function ageLabel(group: ReviewGroup): string {
+  if (group.age_lo == null) return "age unknown";
+  const range = `${group.age_lo}–${group.age_lo + 4}`;
+  return group.age_basis === "looks" ? `looks ${range}` : group.age_basis === "mixed" ? `about ${range}` : `age ${range}`;
 }
 
 function CheckGroup({ group }: { group: ReviewGroup }) {
@@ -202,8 +210,10 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
         <a className="person-link" href={`#/people/${group.person_id}`}>
           {group.name}
         </a>
+        <span className="cluster__age">{ageLabel(group)}</span>
         <span className="muted small">
           {group.faces.length - wrong.size} of {group.faces.length} look right
+          {group.person_total > group.faces.length && ` · ${group.person_total} to check in all`}
         </span>
         <button className="btn btn--primary" onClick={() => run.mutate()} disabled={run.isPending}>
           Confirm

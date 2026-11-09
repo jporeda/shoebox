@@ -3499,13 +3499,45 @@
       },
       "type": "array",
       "title": "Faces"
+     },
+     "age_lo": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Age Lo"
+     },
+     "age_basis": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "birth_year",
+         "looks",
+         "mixed"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Age Basis"
+     },
+     "person_total": {
+      "type": "integer",
+      "title": "Person Total"
      }
     },
     "type": "object",
     "required": [
      "person_id",
      "name",
-     "faces"
+     "faces",
+     "person_total"
     ],
     "title": "ReviewGroup"
    },

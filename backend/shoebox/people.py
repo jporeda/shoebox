@@ -315,6 +315,19 @@ def assign(s: Session, face_ids: list[int], person_id: Optional[int], descriptio
     return editlog.record(s, changes, description)
 
 
+def best_guess_age(face: Face, photo: Optional[Photo], person: Optional[Person]) -> tuple[Optional[float], Optional[str]]:
+    """How old this person probably is in this photo, and how that was worked out.
+
+    Prefers the photo's year (entered or estimated) minus the person's birth year; otherwise the
+    face's apparent age from the detector, which is only meaningful for people, not pets."""
+    year = None if photo is None else photo.t_year if photo.t_year is not None else photo.i_year
+    if person is not None and person.birth_year is not None and year is not None:
+        return float(max(0, year - person.birth_year)), "birth_year"
+    if face.est_age is not None and (person is None or person.kind != "pet"):
+        return max(0.0, face.est_age), "looks"
+    return None, None
+
+
 def accept(s: Session, face_ids: list[int], description: str | None = None) -> Optional[str]:
     """Confirm automatic names and suggestions; confirmed faces become exemplars."""
     changes = []

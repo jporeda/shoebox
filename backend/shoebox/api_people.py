@@ -108,6 +108,12 @@ class ReviewGroup(BaseModel):
     person_id: int
     name: str
     faces: list[FaceOut]
+    # Best-guess age bracket for these faces (age_lo..age_lo+4), None if no guess is possible.
+    age_lo: Optional[int] = None
+    # How the ages were guessed: "birth_year" (photo year minus birth year), "looks" (the face's
+    # apparent age), or "mixed".
+    age_basis: Optional[Literal["birth_year", "looks", "mixed"]] = None
+    person_total: int  # this person's faces to check across all brackets
 
 
 class BatchOut(BaseModel):
@@ -324,13 +330,26 @@ def review_faces(s: Session = Depends(get_session)):
         )
     ).all())
     names = _names(s)
-    groups: dict[int, list[Face]] = {}
+    persons = {p.id: p for p in s.exec(select(Person)).all()}
+    photos = {p.id: p for p in s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()}
+    by_person: dict[int, list[Face]] = {}
     for f in faces:
-        groups.setdefault(f.person_id or f.suggested_person_id, []).append(f)
+        by_person.setdefault(f.person_id or f.suggested_person_id, []).append(f)
     out = []
-    for pid, members in sorted(groups.items(), key=lambda kv: -len(kv[1])):
-        members.sort(key=lambda f: -(f.confidence or 0))
-        out.append(ReviewGroup(person_id=pid, name=names[pid], faces=_faces_out(s, members)))
+    # People with the most to check first; within a person, youngest bracket first, unknown ages last.
+    for pid, members in sorted(by_person.items(), key=lambda kv: -len(kv[1])):
+        brackets: dict[Optional[int], list[tuple[Face, str]]] = {}
+        for f in members:
+            age, basis = people.best_guess_age(f, photos.get(f.photo_id), persons.get(pid))
+            brackets.setdefault(None if age is None else int(age // 5) * 5, []).append((f, basis))
+        for lo in sorted(brackets, key=lambda b: (b is None, b or 0)):
+            group = sorted(brackets[lo], key=lambda fb: -(fb[0].confidence or 0))
+            bases = {b for _, b in group if b}
+            out.append(ReviewGroup(
+                person_id=pid, name=names[pid], faces=_faces_out(s, [f for f, _ in group]), age_lo=lo,
+                age_basis=None if not bases else bases.pop() if len(bases) == 1 else "mixed",
+                person_total=len(members),
+            ))
     return out
 
 

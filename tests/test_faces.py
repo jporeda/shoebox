@@ -339,3 +339,27 @@ def test_people_are_people_by_default_and_can_be_tagged_as_pets(photos, env, tmp
     with api_client() as c:  # undoable like any other edit
         c.post("/api/undo", json={})
         assert {p["name"]: p["kind"] for p in c.get("/api/people").json()} == {"Sam": "person", "Rex": "person"}
+
+
+def test_check_page_groups_a_persons_guesses_by_five_year_age_bracket(photos):
+    """250 guesses for one person are easier to check a few years at a time."""
+    calls = iter([[det(0.1, 0.1)], [det(0.1, 0.1)], [det(0.1, 0.1)], [det(0.1, 0.1)]])
+    run_faces(detector=lambda rgb: next(calls))
+    with session_scope() as s:
+        sam = Person(name="Sam", birth_year=1980)
+        rex = Person(name="Rex")  # no birth year: falls back to how old the face looks
+        s.add_all([sam, rex])
+        s.flush()
+        ps = {p.id: p for p in s.exec(select(Photo)).all()}
+        for pid, year in zip(photos, (1982, 1984, 1991, None)):
+            ps[pid].t_year = year
+        faces = {f.photo_id: f for f in s.exec(select(Face)).all()}
+        for pid, (person, age) in zip(photos, ((sam, 30), (sam, 30), (sam, 30), (rex, 7.6))):
+            f = faces[pid]
+            f.person_id, f.source, f.confidence, f.est_age = person.id, "auto", 0.6, age
+        sam_id, rex_id = sam.id, rex.id
+    with api_client() as c:
+        groups = [(g["person_id"], g["age_lo"], g["age_basis"], len(g["faces"]), g["person_total"])
+                  for g in c.get("/api/faces/review").json()]
+    # Sam (3 to check): 1982 and 1984 → ages 2 and 4 → 0–4; 1991 → 11 → 10–14. Rex: looks 7.6 → 5–9.
+    assert groups == [(sam_id, 0, "birth_year", 2, 3), (sam_id, 10, "birth_year", 1, 3), (rex_id, 5, "looks", 1, 1)]
