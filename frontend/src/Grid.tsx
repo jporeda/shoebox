@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { imgUrl, type ListParams, type PhotoSummary } from "./api";
+import { FiltersButton, SidebarDrawer } from "./Drawer";
 import { DateEventEditor } from "./Editor";
-import { useAlbums, usePhotos, useUpdatePhotos } from "./hooks";
+import { useAlbums, useDrawer, usePhotos, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
 import { backsHref, gridHref, navigate, photoHref } from "./route";
@@ -13,13 +14,13 @@ const STATUS_FILTERS: { value: ListParams["status"]; label: string }[] = [
   { value: "reviewed", label: "Confirmed" },
 ];
 
-function Sidebar({ list }: { list: ListParams }) {
+function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onClose: () => void }) {
   const albums = useAlbums();
   const people = usePeople();
   const person = people.data?.find((p) => p.id === list.person_id);
   const go = (patch: Partial<ListParams>) => navigate(gridHref({ ...list, ...patch }));
   return (
-    <aside className="sidebar">
+    <SidebarDrawer open={open} onClose={onClose}>
       {person && (
         <section>
           <h3 className="sidebar__heading">Person</h3>
@@ -114,7 +115,7 @@ function Sidebar({ list }: { list: ListParams }) {
         Click to select · Shift-click for a range · ⌘-click to add · Double-click to open · <kbd>Y</kbd> date ·{" "}
         <kbd>R</kbd> rotate · <kbd>⌘Z</kbd> undo
       </section>
-    </aside>
+    </SidebarDrawer>
   );
 }
 
@@ -173,6 +174,7 @@ export function Grid({ list }: { list: ListParams }) {
   const anchor = useRef<number | null>(null);
   const update = useUpdatePhotos();
   const listKey = JSON.stringify(list);
+  const [drawerOpen, setDrawerOpen] = useDrawer();
 
   useEffect(() => {
     setSelected(new Set());
@@ -221,9 +223,10 @@ export function Grid({ list }: { list: ListParams }) {
 
   return (
     <div className="layout">
-      <Sidebar list={list} />
+      <Sidebar list={list} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <main className="main">
         <div className="main__head">
+          <FiltersButton onClick={() => setDrawerOpen(true)} />
           <span className="muted">
             {photos.isLoading ? "Loading…" : `${photos.data?.total ?? 0} photos`}
             {selectedIds.length > 0 && ` · ${selectedIds.length} selected`}

@@ -83,12 +83,13 @@ export function App() {
         )}
         <span className="spacer" />
         <button
-          className="btn btn--ghost"
+          className="btn btn--ghost topbar__undo"
           onClick={doUndo}
           disabled={!lastUndoable || undo.isPending}
           title={lastUndoable ? `Undo: ${lastUndoable.description} (⌘Z)` : "Nothing to undo"}
+          aria-label={lastUndoable ? `Undo: ${lastUndoable.description}` : "Undo"}
         >
-          ↶ Undo{lastUndoable ? `: ${lastUndoable.description}` : ""}
+          ↶<span className="topbar__undo-label"> Undo{lastUndoable ? `: ${lastUndoable.description}` : ""}</span>
         </button>
       </header>
       {route.view === "grid" && <Grid list={route.list} />}

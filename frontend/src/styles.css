@@ -77,9 +77,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .check { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 
 /* top bar */
-.app { display: flex; flex-direction: column; height: 100%; }
+.app { display: flex; flex-direction: column; height: 100%; height: 100dvh; }
 .topbar {
-  display: flex; align-items: center; gap: 18px; padding: 8px 16px;
+  display: flex; align-items: center; gap: 18px;
+  padding: calc(8px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
   border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap;
 }
 .brand { font-weight: 700; color: var(--text); }
@@ -138,7 +139,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .badge--warn { color: var(--warn); }
 
 .bulkbar {
-  position: absolute; left: 16px; right: 16px; bottom: 16px; padding: 12px 14px;
+  position: absolute; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); padding: 12px 14px;
   border-radius: 10px; border: 1px solid var(--border); background: var(--panel);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
 }
@@ -185,7 +186,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .job pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--border); font-size: 12px; overflow-x: auto; max-height: 400px; }
 
 .toast {
-  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 16px;
+  position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); padding: 10px 16px;
   border-radius: 8px; background: var(--text); color: var(--bg); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); z-index: 10;
 }
 
@@ -287,3 +288,51 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .facescan { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; line-height: 1.4; }
 .facescan__level { display: flex; align-items: center; gap: 6px; }
 .facescan__level input { width: 120px; }
+
+/* ---- touch & small screens ----
+   Pointer type decides sizing (pointer: coarse = phones and tablets); width decides layout:
+   phone ≤600px, tablet 601–1100px. Desktop (fine pointer, wide) never matches anything below. */
+.filters-btn, .drawer-head, .drawer-scrim { display: none; }
+
+@media (pointer: coarse) {
+  .btn, .chip, .segmented button, .topbar nav a, .nav-list a, .linkish { min-height: 44px; }
+  .btn { padding: 8px 14px; }
+  a.btn:not(.btn--block), .topbar nav a { display: inline-flex; align-items: center; }
+  .btn--block { padding-top: 11px; padding-bottom: 11px; }
+  .chip { padding: 8px 14px; font-size: 14px; }
+  .linkish { padding: 0 10px; }
+  .segmented button { font-size: 14px; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: 16px; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select { min-height: 44px; }
+  input[type="checkbox"] { width: 22px; height: 22px; }
+  .check { min-height: 44px; margin-top: 4px; }
+  .field__label { font-size: 13px; }
+  /* No iOS callout / text selection on press-and-hold of pictures that act as buttons. */
+  .tile, .face, .facebox, .facelist__row, .photo-frame { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  button, a { -webkit-tap-highlight-color: transparent; }
+}
+
+@media (max-width: 600px) {
+  .topbar { gap: 6px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); flex-wrap: nowrap; }
+  .topbar .stats, .topbar__undo-label { display: none; }
+  .topbar nav { gap: 0; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+  .topbar nav a { padding: 4px 8px; }
+  .topbar .spacer { display: none; }
+  .topbar .topbar__undo { margin-left: auto; min-width: 44px; padding: 6px 10px; font-size: 18px; }
+
+  /* Sidebar → slide-in drawer. */
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 30; width: min(320px, 86vw); max-height: none;
+    border-right: 1px solid var(--border); border-bottom: 0; visibility: hidden; transform: translateX(-105%);
+    transition: transform 0.2s ease, visibility 0.2s;
+    padding: calc(10px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    overscroll-behavior: contain;
+  }
+  .sidebar.is-open { visibility: visible; transform: none; box-shadow: 4px 0 30px rgba(0, 0, 0, 0.25); }
+  .drawer-scrim { display: block; position: fixed; inset: 0; z-index: 29; background: rgba(0, 0, 0, 0.35); }
+  .drawer-head { display: flex; align-items: center; justify-content: space-between; }
+  .filters-btn { display: inline-flex; align-items: center; }
+  .main__head { padding: 6px 10px; gap: 8px; flex-wrap: wrap; }
+  .grid { padding: 4px 10px 220px; gap: 8px; }
+  .pad { padding: 14px 12px; }
+}
