@@ -292,7 +292,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 /* ---- touch & small screens ----
    Pointer type decides sizing (pointer: coarse = phones and tablets); width decides layout:
    phone ≤600px, tablet 601–1100px. Desktop (fine pointer, wide) never matches anything below. */
-.filters-btn, .drawer-head, .drawer-scrim { display: none; }
+.filters-btn, .drawer-head, .drawer-scrim, .bulkbar__handle { display: none; }
 
 @media (pointer: coarse) {
   .btn, .chip, .segmented button, .topbar nav a, .nav-list a, .linkish { min-height: 44px; }
@@ -308,6 +308,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .check { min-height: 44px; margin-top: 4px; }
   .field__label { font-size: 13px; }
   /* No iOS callout / text selection on press-and-hold of pictures that act as buttons. */
+  .grid.is-selecting .tile:not(.is-selected) img { opacity: 0.85; }
   .tile, .face, .facebox, .facelist__row, .photo-frame { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   button, a { -webkit-tap-highlight-color: transparent; }
 }
@@ -334,5 +335,26 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .filters-btn { display: inline-flex; align-items: center; }
   .main__head { padding: 6px 10px; gap: 8px; flex-wrap: wrap; }
   .grid { padding: 4px 10px 220px; gap: 8px; }
+  .grid.has-sheet { padding-bottom: 75dvh; }
+
+  /* Bulk date / event editor → bottom sheet. */
+  .bulkbar--sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; max-height: 75dvh; overflow-y: auto;
+    padding: 0 max(12px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    border-radius: 14px 14px 0 0; border-bottom: 0; overscroll-behavior: contain;
+  }
+  .bulkbar__handle {
+    display: block; width: 100%; min-height: 44px; border: 0; background: none; padding: 0;
+    font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+  }
+  .bulkbar--sheet.is-collapsed .bulkbar__body { display: none; }
+
+  /* The date / event editor (bulk sheet and photo view), stacked for a narrow screen. */
+  .editor__row { gap: 8px; }
+  .editor__row:not(.editor__row--secondary) > .field { flex: 1 1 100%; }
+  .editor__row .field__inline select { flex: 1; }
+  .editor__row .field--actions > .field__label, .editor__row .field--actions > .field__hint { display: none; }
+  .editor__row .field--actions .btn { width: 100%; min-height: 48px; font-size: 16px; }
+  .editor__row--secondary > .btn { flex: 1 1 40%; }
   .pad { padding: 14px 12px; }
 }
