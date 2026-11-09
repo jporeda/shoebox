@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -65,8 +67,14 @@ class PhotoSummary(BaseModel):
 
 class PhotoDetail(PhotoSummary):
     album_name: str
+    # The folder holding the original on the Mac (PHOTO_ROOT from private/.env plus the album
+    # path), for pasting into Finder's Go to Folder. None when PHOTO_ROOT isn't known (CLI, tests).
+    source_folder: Optional[str] = None
     back_rel_path: Optional[str]
     caption: Optional[str]
+    country: Optional[str]
+    state: Optional[str]
+    city: Optional[str]
     scan_datetime: Optional[str]
     trusted_label: str
     inferred_label: str
@@ -95,6 +103,10 @@ class BulkUpdate(BaseModel):
     event_instance_id: Optional[int] = None
     clear_event: bool = False
     caption: Optional[str] = None
+    # Place: omit to leave a field alone, "" to clear it.
+    country: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
     rotate_by: Optional[int] = None
     date_source: Literal["manual", "back", "accepted"] = "manual"
 
@@ -125,6 +137,7 @@ class EditBatchOut(BaseModel):
     description: str
     actor: str
     undone: bool
+    edits: int = 0  # changes an undo would revert (bookkeeping fields not counted)
 
 
 class EventKindIn(BaseModel):
@@ -280,6 +293,13 @@ def _month_label(year: Optional[int], month: Optional[int]) -> str:
     return f"{year:04d}-{month:02d}" if month else f"{year:04d}"
 
 
+def _host_folder(rel_path: str) -> Optional[str]:
+    """The original's folder as the Mac sees it. Inside Docker the photos are at /photos, but
+    compose passes private/.env in, so PHOTO_ROOT still holds the Mac's own path."""
+    root = os.environ.get("PHOTO_ROOT", "").strip()
+    return str(PurePosixPath(root) / PurePosixPath(rel_path).parent) if root else None
+
+
 def _detail(s: Session, p: Photo) -> PhotoDetail:
     base = summarize(p, _labels(s))
     members = (
@@ -288,8 +308,12 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
     return PhotoDetail(
         **base.model_dump(),
         album_name=s.get(Album, p.album_id).name,
+        source_folder=_host_folder(p.rel_path),
         back_rel_path=p.back_rel_path,
         caption=p.caption,
+        country=p.country,
+        state=p.state,
+        city=p.city,
         scan_datetime=p.scan_datetime,
         trusted_label=format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max),
         inferred_label=format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max),
@@ -571,7 +595,7 @@ def set_loose_back_date(loose_id: int, body: BackDate, s: Session = Depends(get_
 
 @router.post("/undo", response_model=UndoResult)
 def undo(body: UndoRequest, s: Session = Depends(get_session)):
-    result = editlog.undo(s, body.batch_id, skip=body.skip)
+    result = editlog.undo(s, body.batch_id, skip=body.skip, actor=editlog.CURRENT_ACTOR.get())
     rotated: list[int] = []
     if result["undone"] and not result.get("skipped"):
         rotated = list(s.exec(select(Edit.entity_id).where(
@@ -590,12 +614,40 @@ def undo(body: UndoRequest, s: Session = Depends(get_session)):
 
 
 @router.get("/edits", response_model=list[EditBatchOut])
-def recent_edits(limit: int = 30, s: Session = Depends(get_session)):
-    rows = s.exec(select(EditBatch).order_by(EditBatch.ts.desc()).limit(limit)).all()
-    return [EditBatchOut(**r.model_dump()) for r in rows]
+def recent_edits(limit: int = 30, shared: bool = False, s: Session = Depends(get_session)):
+    """Newest first. By default the batches the Undo button takes back (from a browser: its own).
+    With ``shared=true``, the batches no device owns (jobs, restore, CLI, older edits), which any
+    device may undo by passing their id to /undo."""
+    who = editlog.shared_batches() if shared else editlog.undoable(editlog.CURRENT_ACTOR.get())
+    rows = s.exec(select(EditBatch).where(who).order_by(EditBatch.ts.desc()).limit(limit)).all()
+    counts = dict(s.exec(
+        select(Edit.batch_id, func.count())
+        .where(col(Edit.batch_id).in_([r.id for r in rows]), col(Edit.field).not_in(editlog.STAGE_FIELDS))
+        .group_by(Edit.batch_id)
+    ).all()) if rows else {}
+    return [EditBatchOut(**r.model_dump(), edits=counts.get(r.id, 0)) for r in rows]
 
 
 # --- events --------------------------------------------------------------------
+
+
+class PlaceOut(BaseModel):
+    country: Optional[str]
+    state: Optional[str]
+    city: Optional[str]
+    count: int
+
+
+@router.get("/places", response_model=list[PlaceOut])
+def places(s: Session = Depends(get_session)):
+    """Every place already used (country, state, city), most used first: suggestions for typing."""
+    rows = s.exec(
+        select(Photo.country, Photo.state, Photo.city, func.count())
+        .where((Photo.country != None) | (Photo.state != None) | (Photo.city != None))  # noqa: E711
+        .group_by(Photo.country, Photo.state, Photo.city)
+    ).all()
+    return sorted((PlaceOut(country=c, state=st, city=ci, count=n) for c, st, ci, n in rows),
+                  key=lambda p: (-p.count, p.country or "", p.state or "", p.city or ""))
 
 
 @router.get("/event-kinds", response_model=list[EventKindOut])

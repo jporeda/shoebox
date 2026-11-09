@@ -307,3 +307,59 @@ def test_scan_one_photo_adds_faces_and_keeps_existing_ones(photos, monkeypatch):
         assert c.post(f"/api/photos/{pid}/scan-faces", json={"level": 6}).status_code == 422
         assert c.post("/api/photos/9999/scan-faces", json={"level": 3}).status_code == 404
     assert levels == [2]
+
+
+def test_people_are_people_by_default_and_can_be_tagged_as_pets(photos, env, tmp_path, monkeypatch):
+    calls = iter([[det(0.1, 0.1), det(0.6, 0.1, base=B)], [], [], []])
+    run_faces(detector=lambda rgb: next(calls))
+    with session_scope() as s:
+        a, b = s.exec(select(Face).where(Face.photo_id == photos[0]).order_by(Face.x)).all()
+        a_id, b_id = a.id, b.id
+    with api_client() as c:
+        sam = c.post("/api/faces/assign", json={"face_ids": [a_id], "name": "Sam"}).json()["person"]
+        rex = c.post("/api/faces/assign", json={"face_ids": [b_id], "name": "Rex"}).json()["person"]
+        assert sam["kind"] == rex["kind"] == "person"  # the default
+        assert c.patch("/api/photos", json={"ids": [photos[0]], "date": "1987"}).status_code == 200
+        assert c.patch(f"/api/people/{rex['id']}", json={"kind": "pet"}).json()["kind"] == "pet"
+        assert c.patch(f"/api/people/{rex['id']}", json={"kind": "dog"}).status_code == 422
+
+    run_export()
+    t = json.loads(subprocess.run(
+        ["exiftool", "-j", "-struct", "-XMP-iptcExt:PersonInImage", "-XMP-lr:HierarchicalSubject", "-RegionInfo",
+         str(next((env.backup_dir / "export").rglob("1987-*.jpg")))],
+        check=True, capture_output=True, text=True).stdout)[0]
+    assert t["PersonInImage"] in ("Sam", ["Sam"])  # Rex is not a person in the image
+    assert "Pets|Rex" in t["HierarchicalSubject"] and "People|Sam" in t["HierarchicalSubject"]
+    types = {r["Name"]: r["Type"] for r in t["RegionInfo"]["RegionList"]}
+    assert types == {"Sam": "Face", "Rex": "Pet"}
+
+    truth = backup.build_truth()
+    assert {p["name"]: p["kind"] for p in truth["people"]} == {"Sam": "person", "Rex": "pet"}
+
+    with api_client() as c:  # undoable like any other edit
+        c.post("/api/undo", json={})
+        assert {p["name"]: p["kind"] for p in c.get("/api/people").json()} == {"Sam": "person", "Rex": "person"}
+
+
+def test_check_page_groups_a_persons_guesses_by_five_year_age_bracket(photos):
+    """250 guesses for one person are easier to check a few years at a time."""
+    calls = iter([[det(0.1, 0.1)], [det(0.1, 0.1)], [det(0.1, 0.1)], [det(0.1, 0.1)]])
+    run_faces(detector=lambda rgb: next(calls))
+    with session_scope() as s:
+        sam = Person(name="Sam", birth_year=1980)
+        rex = Person(name="Rex")  # no birth year: falls back to how old the face looks
+        s.add_all([sam, rex])
+        s.flush()
+        ps = {p.id: p for p in s.exec(select(Photo)).all()}
+        for pid, year in zip(photos, (1982, 1984, 1991, None)):
+            ps[pid].t_year = year
+        faces = {f.photo_id: f for f in s.exec(select(Face)).all()}
+        for pid, (person, age) in zip(photos, ((sam, 30), (sam, 30), (sam, 30), (rex, 7.6))):
+            f = faces[pid]
+            f.person_id, f.source, f.confidence, f.est_age = person.id, "auto", 0.6, age
+        sam_id, rex_id = sam.id, rex.id
+    with api_client() as c:
+        groups = [(g["person_id"], g["age_lo"], g["age_basis"], len(g["faces"]), g["person_total"])
+                  for g in c.get("/api/faces/review").json()]
+    # Sam (3 to check): 1982 and 1984 → ages 2 and 4 → 0–4; 1991 → 11 → 10–14. Rex: looks 7.6 → 5–9.
+    assert groups == [(sam_id, 0, "birth_year", 2, 3), (sam_id, 10, "birth_year", 1, 3), (rex_id, 5, "looks", 1, 1)]

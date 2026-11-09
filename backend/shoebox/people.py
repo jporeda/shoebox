@@ -14,6 +14,7 @@ from typing import Iterable, Optional
 
 import numpy as np
 from PIL import Image
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from . import editlog
@@ -279,7 +280,7 @@ def suggest(embs: list[np.ndarray], centroids: dict[int, np.ndarray]) -> Optiona
 
 def get_or_create_person(s: Session, name: str) -> Person:
     name = name.strip()
-    person = s.exec(select(Person).where(Person.name == name)).first()
+    person = s.exec(select(Person).where(func.lower(Person.name) == name.lower())).first()  # "grandma" is Grandma
     if person is None:
         person = Person(name=name)
         s.add(person)
@@ -291,7 +292,7 @@ def person_for_name(s: Session, name: str) -> tuple[Person, list]:
     """The person with this name, plus the edit-log change that adds them if they're new
     (so undoing the naming also removes the person it created)."""
     name = name.strip()
-    person = s.exec(select(Person).where(Person.name == name)).first()
+    person = s.exec(select(Person).where(func.lower(Person.name) == name.lower())).first()  # "grandma" is Grandma
     if person is not None:
         return person, []
     person = Person(name=name)
@@ -312,6 +313,19 @@ def assign(s: Session, face_ids: list[int], person_id: Optional[int], descriptio
         who = s.get(Person, person_id).name if person_id else "nobody"
         description = f"{len(faces)} face(s) → {who}"
     return editlog.record(s, changes, description)
+
+
+def best_guess_age(face: Face, photo: Optional[Photo], person: Optional[Person]) -> tuple[Optional[float], Optional[str]]:
+    """How old this person probably is in this photo, and how that was worked out.
+
+    Prefers the photo's year (entered or estimated) minus the person's birth year; otherwise the
+    face's apparent age from the detector, which is only meaningful for people, not pets."""
+    year = None if photo is None else photo.t_year if photo.t_year is not None else photo.i_year
+    if person is not None and person.birth_year is not None and year is not None:
+        return float(max(0, year - person.birth_year)), "birth_year"
+    if face.est_age is not None and (person is None or person.kind != "pet"):
+        return max(0.0, face.est_age), "looks"
+    return None, None
 
 
 def accept(s: Session, face_ids: list[int], description: str | None = None) -> Optional[str]:
@@ -387,6 +401,8 @@ def merge_people(s: Session, source_id: int, target_id: int) -> Optional[str]:
     changes = [(f, "person_id", target_id) for f in faces]
     if dst.birth_year is None and src.birth_year is not None:
         changes.append((dst, "birth_year", src.birth_year))
+    if src.kind == "pet" and dst.kind != "pet":  # "person" is only the default; "pet" was tagged on purpose
+        changes.append((dst, "kind", "pet"))
     return editlog.record(s, changes, f"merge {src.name} into {dst.name}")
 
 

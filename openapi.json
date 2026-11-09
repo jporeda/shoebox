@@ -643,6 +643,7 @@
   "/api/edits": {
    "get": {
     "summary": "Recent Edits",
+    "description": "Newest first. By default the batches the Undo button takes back (from a browser: its own).\nWith ``shared=true``, the batches no device owns (jobs, restore, CLI, older edits), which any\ndevice may undo by passing their id to /undo.",
     "operationId": "recent_edits_api_edits_get",
     "parameters": [
      {
@@ -653,6 +654,16 @@
        "type": "integer",
        "default": 30,
        "title": "Limit"
+      }
+     },
+     {
+      "name": "shared",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Shared"
       }
      }
     ],
@@ -677,6 +688,29 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/places": {
+   "get": {
+    "summary": "Places",
+    "description": "Every place already used (country, state, city), most used first: suggestions for typing.",
+    "operationId": "places_api_places_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/PlaceOut"
+         },
+         "type": "array",
+         "title": "Response Places Api Places Get"
         }
        }
       }
@@ -2065,6 +2099,39 @@
       ],
       "title": "Caption"
      },
+     "country": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "city": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "City"
+     },
      "rotate_by": {
       "anyOf": [
        {
@@ -2253,6 +2320,11 @@
      "undone": {
       "type": "boolean",
       "title": "Undone"
+     },
+     "edits": {
+      "type": "integer",
+      "title": "Edits",
+      "default": 0
      }
     },
     "type": "object",
@@ -2841,6 +2913,21 @@
        }
       ],
       "title": "Notes"
+     },
+     "kind": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "person",
+         "pet"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Kind"
      }
     },
     "type": "object",
@@ -2877,6 +2964,14 @@
        }
       ],
       "title": "Notes"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "person",
+       "pet"
+      ],
+      "title": "Kind"
      },
      "face_count": {
       "type": "integer",
@@ -2926,6 +3021,7 @@
      "name",
      "birth_year",
      "notes",
+     "kind",
      "face_count",
      "auto_count",
      "cover_face_id",
@@ -3084,6 +3180,17 @@
       "type": "string",
       "title": "Album Name"
      },
+     "source_folder": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Folder"
+     },
      "back_rel_path": {
       "anyOf": [
        {
@@ -3105,6 +3212,39 @@
        }
       ],
       "title": "Caption"
+     },
+     "country": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "city": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "City"
      },
      "scan_datetime": {
       "anyOf": [
@@ -3236,6 +3376,9 @@
      "album_name",
      "back_rel_path",
      "caption",
+     "country",
+     "state",
+     "city",
      "scan_datetime",
      "trusted_label",
      "inferred_label",
@@ -3443,6 +3586,55 @@
     ],
     "title": "PhotoSummary"
    },
+   "PlaceOut": {
+    "properties": {
+     "country": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "city": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "City"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "country",
+     "state",
+     "city",
+     "count"
+    ],
+    "title": "PlaceOut"
+   },
    "ReviewGroup": {
     "properties": {
      "person_id": {
@@ -3459,13 +3651,45 @@
       },
       "type": "array",
       "title": "Faces"
+     },
+     "age_lo": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Age Lo"
+     },
+     "age_basis": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "birth_year",
+         "looks",
+         "mixed"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Age Basis"
+     },
+     "person_total": {
+      "type": "integer",
+      "title": "Person Total"
      }
     },
     "type": "object",
     "required": [
      "person_id",
      "name",
-     "faces"
+     "faces",
+     "person_total"
     ],
     "title": "ReviewGroup"
    },

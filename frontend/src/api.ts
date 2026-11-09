@@ -11,6 +11,7 @@ export type UndoResult = S["UndoResult"];
 export type EditBatch = S["EditBatchOut"];
 export type EventKind = S["EventKindOut"];
 export type EventInstance = S["EventInstanceOut"];
+export type Place = S["PlaceOut"];
 export type ParsedDate = S["ParsedDate"];
 export type Job = S["JobOut"];
 export type JobType = S["JobIn"]["type"];
@@ -34,11 +35,29 @@ export type ListParams = {
 
 export class ApiError extends Error {}
 
+/** A random id for this browser, so Undo takes back this device's own edits, not another's. */
+const CLIENT_ID = (() => {
+  const make = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join("");
+  try {
+    const saved = localStorage.getItem("shoebox.clientId");
+    if (saved) return saved;
+    const id = make();
+    localStorage.setItem("shoebox.clientId", id);
+    return id;
+  } catch {
+    return make(); // storage blocked: still per device for this page's lifetime
+  }
+})();
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
     // The server refuses changes without X-Shoebox, so other sites can't make them.
-    headers: { "X-Shoebox": "1", ...(init?.body ? { "Content-Type": "application/json" } : {}) },
+    headers: {
+      "X-Shoebox": "1",
+      "X-Shoebox-Client": CLIENT_ID,
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
   });
   if (!res.ok) {
     let detail = res.statusText;
@@ -73,6 +92,7 @@ export const api = {
     call<UndoResult>("/undo", { method: "POST", body: JSON.stringify({ batch_id, skip }) }),
   edits: () => call<EditBatch[]>("/edits"),
   eventKinds: () => call<EventKind[]>("/event-kinds"),
+  places: () => call<Place[]>("/places"),
   addEventKind: (name: string) =>
     call<EventKind>("/event-kinds", { method: "POST", body: JSON.stringify({ name }) }),
   eventInstances: () => call<EventInstance[]>("/event-instances"),
@@ -83,7 +103,7 @@ export const api = {
   stats: () => call<Stats>("/stats"),
   people: () => call<Person[]>("/people"),
   createPerson: (name: string) => call<Person>("/people", { method: "POST", body: JSON.stringify({ name }) }),
-  updatePerson: (id: number, body: { name?: string; birth_year?: number | null; notes?: string | null }) =>
+  updatePerson: (id: number, body: { name?: string; birth_year?: number | null; notes?: string | null; kind?: "person" | "pet" }) =>
     call<Person>(`/people/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   mergePerson: (id: number, into_id: number) =>
     call<BatchOut>(`/people/${id}/merge`, { method: "POST", body: JSON.stringify({ into_id }) }),

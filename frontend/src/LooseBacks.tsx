@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, imgUrl, type Back, type BackKind } from "./api";
-import { useAlbums } from "./hooks";
+import { FiltersButton, SidebarDrawer } from "./Drawer";
+import { useAlbums, useDrawer } from "./hooks";
 import { backsHref, navigate, photoHref } from "./route";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -14,6 +15,7 @@ const pretty = (label: string) => {
 /** Review page: each back next to the front(s) it dates. */
 export function LooseBacks({ kind, albumId, undated }: { kind: BackKind; albumId?: number; undated: boolean }) {
   const albums = useAlbums();
+  const [drawerOpen, setDrawerOpen] = useDrawer();
   const backs = useQuery({
     queryKey: ["backs", kind, albumId, undated],
     queryFn: () => api.backs(kind, { album_id: albumId, undated }),
@@ -31,7 +33,7 @@ export function LooseBacks({ kind, albumId, undated }: { kind: BackKind; albumId
 
   return (
     <div className="layout">
-      <aside className="sidebar">
+      <SidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Backs">
         <section>
           <div className="segmented">
             <button className={kind === "loose" ? "is-active" : ""} onClick={() => navigate(backsHref(albumId, undated, "loose"))}>
@@ -72,9 +74,10 @@ export function LooseBacks({ kind, albumId, undated }: { kind: BackKind; albumId
             ))}
           </ul>
         </section>
-      </aside>
+      </SidebarDrawer>
       <main className="main backs">
         <div className="main__head muted">
+          <FiltersButton onClick={() => setDrawerOpen(true)} label="Albums" />
           {backs.isLoading ? "Loading…" : `${backs.data?.length ?? 0} ${kind} backs`}
         </div>
         {!backs.isLoading && backs.data?.length === 0 && (

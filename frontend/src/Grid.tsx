@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { imgUrl, type ListParams, type PhotoSummary } from "./api";
-import { DateEventEditor } from "./Editor";
-import { useAlbums, usePhotos, useUpdatePhotos } from "./hooks";
+import { FiltersButton, SidebarDrawer } from "./Drawer";
+import { DateEventEditor, PlaceEditor } from "./Editor";
+import { useAlbums, useDrawer, useLongPress, usePhotos, useTouch, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
-import { backsHref, gridHref, navigate, photoHref } from "./route";
+import { backsHref, gridHref, listQuery, navigate, photoHref, takeLastPhoto } from "./route";
 
 const STATUS_FILTERS: { value: ListParams["status"]; label: string }[] = [
   { value: undefined, label: "All" },
@@ -13,13 +14,14 @@ const STATUS_FILTERS: { value: ListParams["status"]; label: string }[] = [
   { value: "reviewed", label: "Confirmed" },
 ];
 
-function Sidebar({ list }: { list: ListParams }) {
+function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onClose: () => void }) {
   const albums = useAlbums();
   const people = usePeople();
+  const touch = useTouch();
   const person = people.data?.find((p) => p.id === list.person_id);
   const go = (patch: Partial<ListParams>) => navigate(gridHref({ ...list, ...patch }));
   return (
-    <aside className="sidebar">
+    <SidebarDrawer open={open} onClose={onClose}>
       {person && (
         <section>
           <h3 className="sidebar__heading">Person</h3>
@@ -110,11 +112,18 @@ function Sidebar({ list }: { list: ListParams }) {
           </button>
         </div>
       </section>
-      <section className="sidebar__help muted">
-        Click to select · Shift-click for a range · ⌘-click to add · Double-click to open · <kbd>Y</kbd> date ·{" "}
-        <kbd>R</kbd> rotate · <kbd>⌘Z</kbd> undo
-      </section>
-    </aside>
+      {touch ? (
+        <section className="sidebar__help muted">
+          Tap to open · Press and hold to select · Then tap to add or remove, or press and hold another photo to select
+          everything between
+        </section>
+      ) : (
+        <section className="sidebar__help muted">
+          Click to select · Shift-click for a range · ⌘-click to add · Double-click to open · <kbd>Y</kbd> date ·{" "}
+          <kbd>R</kbd> rotate · <kbd>⌘Z</kbd> undo
+        </section>
+      )}
+    </SidebarDrawer>
   );
 }
 
@@ -132,16 +141,30 @@ function Tile({
   selected,
   onClick,
   onOpen,
+  onTap,
+  onLongPress,
 }: {
   p: PhotoSummary;
   selected: boolean;
+  /** Mouse click: select (with shift / ⌘ for ranges and adding). */
   onClick: (e: React.MouseEvent) => void;
+  /** Mouse double-click. */
   onOpen: () => void;
+  /** Finger tap. */
+  onTap: () => void;
+  /** Finger press and hold. */
+  onLongPress: () => void;
 }) {
+  const press = useLongPress(onLongPress);
   return (
     <button
       className={`tile ${selected ? "is-selected" : ""} tile--${p.status}`}
-      onClick={onClick}
+      {...press.handlers}
+      onClick={(e) => {
+        if (press.consumeLongPress()) return;
+        if (press.wasTouch()) onTap();
+        else onClick(e);
+      }}
       onDoubleClick={onOpen}
       data-id={p.id}
     >
@@ -166,6 +189,9 @@ function Tile({
   );
 }
 
+// Scroll position of each grid list (by its URL query), so coming back from a photo returns to it.
+const scrollMemory = new Map<string, number>();
+
 export function Grid({ list }: { list: ListParams }) {
   const photos = usePhotos(list);
   const items = photos.data?.items ?? [];
@@ -173,11 +199,40 @@ export function Grid({ list }: { list: ListParams }) {
   const anchor = useRef<number | null>(null);
   const update = useUpdatePhotos();
   const listKey = JSON.stringify(list);
+  const [drawerOpen, setDrawerOpen] = useDrawer();
+  const touch = useTouch();
+  // Touch "Select mode": entered by a long press (or the Select button); taps then toggle tiles.
+  const [selectMode, setSelectMode] = useState(false);
+  // The phone bottom sheet with the date / event editor can be folded away to see the grid.
+  const [sheetOpen, setSheetOpen] = useState(true);
 
   useEffect(() => {
     setSelected(new Set());
+    setSelectMode(false);
     anchor.current = null;
   }, [listKey]);
+
+  // Back from a photo: restore this list's scroll position once its tiles are rendered, then make
+  // sure the photo last viewed (possibly several swipes on) is on screen.
+  const gridEl = useRef<HTMLDivElement>(null);
+  const scrollKey = listQuery(list);
+  // Once per visit to the grid: switching filters inside the grid keeps today's behaviour.
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    const el = gridEl.current;
+    // Wait for this list's own data (not the previous list's placeholder) before restoring.
+    if (!el || restored.current || !photos.data || photos.isPlaceholderData) return;
+    restored.current = true;
+    const saved = scrollMemory.get(scrollKey);
+    if (saved !== undefined) el.scrollTop = saved;
+    const last = takeLastPhoto(list);
+    const tile = last !== null ? el.querySelector<HTMLElement>(`.tile[data-id="${last}"]`) : null;
+    if (tile) {
+      const t = tile.getBoundingClientRect();
+      const g = el.getBoundingClientRect();
+      if (t.top < g.top || t.bottom > g.bottom) tile.scrollIntoView({ block: "center" });
+    }
+  }, [scrollKey, list, photos.data, photos.isPlaceholderData]);
 
   const indexOf = useMemo(() => new Map(items.map((p, i) => [p.id, i])), [items]);
   const selectedIds = useMemo(() => items.filter((p) => selected.has(p.id)).map((p) => p.id), [items, selected]);
@@ -201,6 +256,42 @@ export function Grid({ list }: { list: ListParams }) {
     anchor.current = i;
   };
 
+  const toggle = (p: PhotoSummary) => {
+    const next = new Set(selected);
+    next.has(p.id) ? next.delete(p.id) : next.add(p.id);
+    setSelected(next);
+    anchor.current = indexOf.get(p.id)!;
+  };
+
+  const onTileTap = (p: PhotoSummary) => {
+    if (selectMode) toggle(p);
+    else navigate(photoHref(p.id, list));
+  };
+
+  const onTileLongPress = (p: PhotoSummary) => {
+    const i = indexOf.get(p.id)!;
+    if (!selectMode) {
+      setSelectMode(true);
+      setSheetOpen(true);
+      setSelected(new Set([p.id]));
+      anchor.current = i;
+      return;
+    }
+    if (anchor.current === null) return toggle(p);
+    // A second long press selects everything from the last tile touched to this one.
+    const [a, b] = [anchor.current, i].sort((x, y) => x - y);
+    const next = new Set(selected);
+    for (let k = a; k <= b; k++) next.add(items[k].id);
+    setSelected(next);
+    anchor.current = i;
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+    anchor.current = null;
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e)) return;
@@ -221,17 +312,49 @@ export function Grid({ list }: { list: ListParams }) {
 
   return (
     <div className="layout">
-      <Sidebar list={list} />
+      <Sidebar list={list} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <main className="main">
         <div className="main__head">
+          <FiltersButton onClick={() => setDrawerOpen(true)} />
           <span className="muted">
             {photos.isLoading ? "Loading…" : `${photos.data?.total ?? 0} photos`}
             {selectedIds.length > 0 && ` · ${selectedIds.length} selected`}
           </span>
-          {selectedIds.length > 0 && (
-            <button className="btn btn--ghost" onClick={() => setSelected(new Set())}>
-              Clear selection
-            </button>
+          {selectMode ? (
+            <>
+              <span className="spacer" />
+              <button className="btn btn--ghost" onClick={() => setSelected(new Set(items.map((p) => p.id)))}>
+                Select all
+              </button>
+              <button className="btn btn--ghost" onClick={() => setSelected(new Set())} disabled={!selectedIds.length}>
+                Clear
+              </button>
+              <button className="btn btn--primary" onClick={exitSelectMode}>
+                Done
+              </button>
+            </>
+          ) : (
+            <>
+              {selectedIds.length > 0 && (
+                <button className="btn btn--ghost" onClick={() => setSelected(new Set())}>
+                  Clear selection
+                </button>
+              )}
+              {touch && items.length > 0 && (
+                <>
+                  <span className="spacer" />
+                  <button
+                    className="btn btn--ghost"
+                    onClick={() => {
+                      setSelectMode(true);
+                      setSheetOpen(true);
+                    }}
+                  >
+                    Select
+                  </button>
+                </>
+              )}
+            </>
           )}
         </div>
         {photos.isError && <div className="error">{String(photos.error)}</div>}
@@ -240,7 +363,11 @@ export function Grid({ list }: { list: ListParams }) {
             No photos here yet. Run <a href="#/jobs">Import</a> to scan the photo folder.
           </div>
         )}
-        <div className="grid">
+        <div
+          ref={gridEl}
+          className={`grid ${selectMode ? "is-selecting" : ""} ${selectedIds.length ? "has-sheet" : ""}`}
+          onScroll={(e) => scrollMemory.set(scrollKey, e.currentTarget.scrollTop)}
+        >
           {items.map((p) => (
             <Tile
               key={p.id}
@@ -248,12 +375,20 @@ export function Grid({ list }: { list: ListParams }) {
               selected={selected.has(p.id)}
               onClick={(e) => onTileClick(p, e)}
               onOpen={() => navigate(photoHref(p.id, list))}
+              onTap={() => onTileTap(p)}
+              onLongPress={() => onTileLongPress(p)}
             />
           ))}
         </div>
         {selectedIds.length > 0 && (
-          <div className="bulkbar">
-            <DateEventEditor ids={selectedIds} compact />
+          <div className={`bulkbar bulkbar--sheet ${sheetOpen ? "" : "is-collapsed"}`}>
+            <button className="bulkbar__handle" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen}>
+              {sheetOpen ? "▾ Hide" : `▴ Date & event · ${selectedIds.length} selected`}
+            </button>
+            <div className="bulkbar__body">
+              <DateEventEditor ids={selectedIds} compact />
+              <PlaceEditor ids={selectedIds} compact />
+            </div>
           </div>
         )}
       </main>

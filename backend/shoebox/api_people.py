@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -60,6 +60,7 @@ class PersonIn(BaseModel):
     name: Optional[str] = None
     birth_year: Optional[int] = None
     notes: Optional[str] = None
+    kind: Optional[Literal["person", "pet"]] = None
 
 
 class PersonOut(BaseModel):
@@ -67,6 +68,7 @@ class PersonOut(BaseModel):
     name: str
     birth_year: Optional[int]
     notes: Optional[str]
+    kind: Literal["person", "pet"]
     face_count: int
     auto_count: int
     cover_face_id: Optional[int]
@@ -106,6 +108,12 @@ class ReviewGroup(BaseModel):
     person_id: int
     name: str
     faces: list[FaceOut]
+    # Best-guess age bracket for these faces (age_lo..age_lo+4), None if no guess is possible.
+    age_lo: Optional[int] = None
+    # How the ages were guessed: "birth_year" (photo year minus birth year), "looks" (the face's
+    # apparent age), or "mixed".
+    age_basis: Optional[Literal["birth_year", "looks", "mixed"]] = None
+    person_total: int  # this person's faces to check across all brackets
 
 
 class BatchOut(BaseModel):
@@ -149,7 +157,8 @@ def _person_out(s: Session, person: Person) -> PersonOut:
     years = sorted(y for p in photos if (y := p.t_year if p.t_year is not None else p.i_year) is not None)
     cover = max(faces, key=lambda f: (f.source != "auto", f.w * f.h), default=None)
     return PersonOut(
-        id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, face_count=len(faces),
+        id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, kind=person.kind or "person",
+        face_count=len(faces),
         auto_count=sum(f.source == "auto" for f in faces),
         cover_face_id=cover.id if cover else None, first_year=years[0] if years else None,
         last_year=years[-1] if years else None,
@@ -183,7 +192,8 @@ def update_person(person_id: int, body: PersonIn, s: Session = Depends(get_sessi
         raise HTTPException(404, "person not found")
     changes = []
     if body.name is not None and body.name.strip() and body.name.strip() != person.name:
-        if s.exec(select(Person).where(Person.name == body.name.strip())).first():
+        taken = select(Person).where(func.lower(Person.name) == body.name.strip().lower(), Person.id != person.id)
+        if s.exec(taken).first():
             raise HTTPException(409, f"{body.name.strip()} already exists; merge instead")
         changes.append((person, "name", body.name.strip()))
     if "birth_year" in body.model_fields_set:
@@ -192,10 +202,12 @@ def update_person(person_id: int, body: PersonIn, s: Session = Depends(get_sessi
         changes.append((person, "birth_year", body.birth_year))
     if "notes" in body.model_fields_set:
         changes.append((person, "notes", body.notes))
+    if body.kind is not None:
+        changes.append((person, "kind", body.kind))
     editlog.record(s, changes, f"edit {person.name}")
     s.commit()
-    if "birth_year" in body.model_fields_set:
-        jobs.enqueue("estimate")  # ages now date this person's photos
+    if "birth_year" in body.model_fields_set or body.kind is not None:
+        jobs.enqueue("estimate")  # ages date this person's photos (pets' don't)
     return _person_out(s, person)
 
 
@@ -318,13 +330,26 @@ def review_faces(s: Session = Depends(get_session)):
         )
     ).all())
     names = _names(s)
-    groups: dict[int, list[Face]] = {}
+    persons = {p.id: p for p in s.exec(select(Person)).all()}
+    photos = {p.id: p for p in s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()}
+    by_person: dict[int, list[Face]] = {}
     for f in faces:
-        groups.setdefault(f.person_id or f.suggested_person_id, []).append(f)
+        by_person.setdefault(f.person_id or f.suggested_person_id, []).append(f)
     out = []
-    for pid, members in sorted(groups.items(), key=lambda kv: -len(kv[1])):
-        members.sort(key=lambda f: -(f.confidence or 0))
-        out.append(ReviewGroup(person_id=pid, name=names[pid], faces=_faces_out(s, members)))
+    # People with the most to check first; within a person, youngest bracket first, unknown ages last.
+    for pid, members in sorted(by_person.items(), key=lambda kv: -len(kv[1])):
+        brackets: dict[Optional[int], list[tuple[Face, str]]] = {}
+        for f in members:
+            age, basis = people.best_guess_age(f, photos.get(f.photo_id), persons.get(pid))
+            brackets.setdefault(None if age is None else int(age // 5) * 5, []).append((f, basis))
+        for lo in sorted(brackets, key=lambda b: (b is None, b or 0)):
+            group = sorted(brackets[lo], key=lambda fb: -(fb[0].confidence or 0))
+            bases = {b for _, b in group if b}
+            out.append(ReviewGroup(
+                person_id=pid, name=names[pid], faces=_faces_out(s, [f for f, _ in group]), age_lo=lo,
+                age_basis=None if not bases else bases.pop() if len(bases) == 1 else "mixed",
+                person_total=len(members),
+            ))
     return out
 
 

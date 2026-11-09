@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, ApiError } from "./api";
 import { Grid } from "./Grid";
 import { Jobs } from "./Jobs";
 import { LooseBacks } from "./LooseBacks";
@@ -9,6 +9,9 @@ import { PhotoView } from "./PhotoView";
 import { useStats, useUndo } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { useRoute } from "./route";
+
+/** Undoing more changes than this asks for confirmation first. */
+const UNDO_CONFIRM_ABOVE = 20;
 
 export function App() {
   const route = useRoute();
@@ -22,7 +25,20 @@ export function App() {
   const [blocked, setBlocked] = useState<string | null>(null);
 
   const doUndo = async () => {
-    const r = await undo.mutateAsync({ skip: blocked !== null && blocked === lastUndoable?.id });
+    // Skip names the blocked batch, so the server skips exactly that one (not whatever is newest now).
+    const skip = blocked !== null && blocked === lastUndoable?.id;
+    // A big undo (one that reverts more than about 20 changes) asks first; covers the button and ⌘Z.
+    const n = lastUndoable?.edits ?? 0;
+    if (!skip && lastUndoable && n > UNDO_CONFIRM_ABOVE && !window.confirm(`Undo “${lastUndoable.description}”? It changes ${n} items.`))
+      return;
+    let r;
+    try {
+      // Undo exactly the batch shown (and confirmed); the server checks it's this device's.
+      r = await undo.mutateAsync(skip ? { batchId: blocked, skip: true } : { batchId: lastUndoable?.id });
+    } catch (e) {
+      setToast(`Couldn't undo: ${e instanceof ApiError ? e.message : String(e)}`);
+      return;
+    }
     setBlocked(r.blocked ? (r.batch_id ?? null) : null);
     setToast(
       r.blocked
@@ -83,12 +99,14 @@ export function App() {
         )}
         <span className="spacer" />
         <button
-          className="btn btn--ghost"
+          className="btn btn--ghost topbar__undo"
           onClick={doUndo}
           disabled={!lastUndoable || undo.isPending}
           title={lastUndoable ? `Undo: ${lastUndoable.description} (⌘Z)` : "Nothing to undo"}
+          aria-label={lastUndoable ? `Undo: ${lastUndoable.description}` : "Undo"}
         >
-          ↶ Undo{lastUndoable ? `: ${lastUndoable.description}` : ""}
+          ↶<span className="topbar__undo-word"> Undo</span>
+          {lastUndoable && <span className="topbar__undo-label">: {lastUndoable.description}</span>}
         </button>
       </header>
       {route.view === "grid" && <Grid list={route.list} />}

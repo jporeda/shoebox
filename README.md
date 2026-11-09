@@ -24,6 +24,48 @@ Status: **milestones 1–3** (dating workbench, back reading, faces and people, 
 5. On the **Jobs** page, click **Import**. It queues *Read backs* (OCR),
    *Estimate dates* and *Auto-rotate* to run after it.
 
+### Using it from phones and tablets (optional)
+
+By default only this Mac can open Shoebox. To use it from other devices on your home Wi-Fi:
+
+1. In `private/.env`, set `SHOEBOX_BIND=0.0.0.0`, then run `docker compose up -d --build`.
+2. Find this Mac's local name in *System Settings → General → Sharing* (under "Local
+   hostname", e.g. `Family-Mac.local`).
+3. On the phone or tablet, open `http://Family-Mac.local:8000`. If macOS asks whether
+   Docker may accept incoming connections, allow it. Many Android phones can't open
+   `.local` names: use the Mac's IP address instead, e.g. `http://192.168.1.20:8000`
+   (*System Settings → Wi-Fi → Details* shows it).
+4. The Mac has to be awake, with Docker Desktop running, for other devices to reach it.
+   *System Settings → Battery → Options* can keep it from sleeping on power, and Docker
+   Desktop's *Start Docker Desktop when you sign in* setting brings Shoebox back after a restart.
+
+Browsers show "Not Secure" in the address bar because this is plain `http` on your own
+network; that's expected.
+
+**If it doesn't connect:**
+- The phone must be on the same Wi-Fi as the Mac, not a guest network.
+- Check Docker Desktop is running and the Mac is awake.
+- If you clicked *Don't Allow* on the firewall prompt: *System Settings → Network → Firewall →
+  Options*, find Docker and set it to allow incoming connections.
+- "Invalid host header" means the address isn't one Shoebox answers to: use the exact
+  `.local` name or the IP address. Other names (say one your router gives the Mac) can be
+  added to `SHOEBOX_HOSTS` in `private/.env`.
+- `SHOEBOX_BIND` only takes effect from `private/.env` followed by `docker compose up -d`.
+
+**There is no login.** Anyone on the same Wi-Fi can view every photo and change anything,
+including Restore and Export. Put guests and smart-home devices on a separate guest network,
+never forward port 8000 on your router, and set `SHOEBOX_BIND` back to `127.0.0.1` before
+taking a laptop onto someone else's Wi-Fi (a café, a hotel).
+
+**Undo on phones and tablets.** The Undo button on each browser takes back that browser's own
+edits only, so it never undoes something done on another device, and it asks first when an
+undo would change more than about 20 things. A job such as *Accept guesses* is undone from the
+Jobs page instead; anything another device has edited since is left alone and reported.
+Restore can't be undone in one step: to go back, copy an earlier snapshot from
+`BACKUP_ROOT/db/` (see "Where data lives"). Undo history belongs to one browser at one
+address: the same phone opening the `.local` name and the IP address, a private window, or a
+Home Screen icon each start their own history.
+
 ## Personal data
 
 Anything that identifies your family stays out of git:
@@ -86,6 +128,10 @@ Anything that identifies your family stays out of git:
   that doesn't belong stands out; that page is also where you set a birth year
   and merge duplicates. In photo detail, click a face box to name it, or use
   *＋ Draw face* for a face the detector missed.
+- **Pets:** everyone you name counts as a person until you switch them to *Pet* on their
+  page. Pets are exported under `Pets|Name` keywords and as "Pet" regions (not as people in
+  the image), and their birth year isn't used to date photos. The face detector only finds
+  human faces, so draw boxes around pets by hand.
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as
@@ -186,11 +232,13 @@ CI (`.github/workflows/ci.yml`) runs the frontend type check and the test suite 
 Test images are synthetic, and test file names are made up. Never commit real
 family photos, names or paths.
 
-The server only answers to `localhost` / `127.0.0.1`, and only accepts changes
+The server answers to `localhost` / `127.0.0.1`; with `SHOEBOX_BIND=0.0.0.0` it also answers
+to `.local` names, private IP addresses and any names in `SHOEBOX_HOSTS`, but never to other
+names, so a page using DNS rebinding still gets nothing. It only accepts changes
 (anything but GET) that carry the `X-Shoebox: 1` header, which the UI sends. A web
 page open in another tab can't add that header, so it can't drive the app. As a second
 layer, a change whose `Origin` header names any other page (another site, another local
-port, or `null`) is refused. The UI's own origin and the Vite dev server on port 5173 are
+port, or `null`) is refused. The UI's own origin (on an allowed name) and the Vite dev server on port 5173 are
 allowed, and so are clients that send no `Origin` at all (scripts, curl).
 
 ## Licensing note

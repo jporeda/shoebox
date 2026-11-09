@@ -199,8 +199,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Recent Edits */
+        /**
+         * Recent Edits
+         * @description Newest first. By default the batches the Undo button takes back (from a browser: its own).
+         *     With ``shared=true``, the batches no device owns (jobs, restore, CLI, older edits), which any
+         *     device may undo by passing their id to /undo.
+         */
         get: operations["recent_edits_api_edits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Places
+         * @description Every place already used (country, state, city), most used first: suggestions for typing.
+         */
+        get: operations["places_api_places_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -725,6 +750,12 @@ export interface components {
             clear_event?: boolean;
             /** Caption */
             caption?: string | null;
+            /** Country */
+            country?: string | null;
+            /** State */
+            state?: string | null;
+            /** City */
+            city?: string | null;
             /** Rotate By */
             rotate_by?: number | null;
             /**
@@ -793,6 +824,11 @@ export interface components {
             actor: string;
             /** Undone */
             undone: boolean;
+            /**
+             * Edits
+             * @default 0
+             */
+            edits?: number;
         };
         /** EventInstanceOut */
         EventInstanceOut: {
@@ -987,6 +1023,8 @@ export interface components {
             birth_year?: number | null;
             /** Notes */
             notes?: string | null;
+            /** Kind */
+            kind?: ("person" | "pet") | null;
         };
         /** PersonOut */
         PersonOut: {
@@ -998,6 +1036,11 @@ export interface components {
             birth_year: number | null;
             /** Notes */
             notes: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "person" | "pet";
             /** Face Count */
             face_count: number;
             /** Auto Count */
@@ -1054,10 +1097,18 @@ export interface components {
             height: number | null;
             /** Album Name */
             album_name: string;
+            /** Source Folder */
+            source_folder?: string | null;
             /** Back Rel Path */
             back_rel_path: string | null;
             /** Caption */
             caption: string | null;
+            /** Country */
+            country: string | null;
+            /** State */
+            state: string | null;
+            /** City */
+            city: string | null;
             /** Scan Datetime */
             scan_datetime: string | null;
             /** Trusted Label */
@@ -1136,6 +1187,17 @@ export interface components {
             /** Height */
             height: number | null;
         };
+        /** PlaceOut */
+        PlaceOut: {
+            /** Country */
+            country: string | null;
+            /** State */
+            state: string | null;
+            /** City */
+            city: string | null;
+            /** Count */
+            count: number;
+        };
         /** ReviewGroup */
         ReviewGroup: {
             /** Person Id */
@@ -1144,6 +1206,12 @@ export interface components {
             name: string;
             /** Faces */
             faces: components["schemas"]["FaceOut"][];
+            /** Age Lo */
+            age_lo?: number | null;
+            /** Age Basis */
+            age_basis?: ("birth_year" | "looks" | "mixed") | null;
+            /** Person Total */
+            person_total: number;
         };
         /** ScanIn */
         ScanIn: {
@@ -1631,6 +1699,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                shared?: boolean;
             };
             header?: never;
             path?: never;
@@ -1654,6 +1723,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    places_api_places_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceOut"][];
                 };
             };
         };

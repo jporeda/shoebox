@@ -73,3 +73,27 @@ export function useRoute(): Route {
 export const navigate = (href: string) => {
   window.location.hash = href.replace(/^#/, "");
 };
+
+/** Like `navigate`, but replaces the current history entry instead of adding one (stepping
+ *  between photos), so Back leaves the photo view instead of walking back through every photo. */
+export const navigateReplace = (href: string) => {
+  const hash = `#${href.replace(/^#/, "")}`;
+  if (hash === window.location.hash) return;
+  const oldURL = window.location.href;
+  history.replaceState(history.state, "", hash);
+  // replaceState doesn't fire hashchange; useRoute (and the drawer) listen for it.
+  window.dispatchEvent(new HashChangeEvent("hashchange", { oldURL, newURL: window.location.href }));
+};
+
+// The photo last opened, and the list it was opened from, so the grid can scroll back to it.
+let lastPhoto: { listKey: string; id: number } | null = null;
+export const rememberPhoto = (list: ListParams, id: number) => {
+  lastPhoto = { listKey: listQuery(list), id };
+};
+/** The id of the photo last viewed from this list (once; later calls return null). */
+export const takeLastPhoto = (list: ListParams): number | null => {
+  const p = lastPhoto;
+  if (!p || p.listKey !== listQuery(list)) return null;
+  lastPhoto = null;
+  return p.id;
+};

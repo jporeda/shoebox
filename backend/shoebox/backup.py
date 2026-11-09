@@ -127,6 +127,8 @@ def build_truth() -> dict:
                 entry["event"] = {"kind": kinds[inst.kind_id].name, "label": inst.label}
             if p.caption:
                 entry["caption"] = p.caption
+            if p.country or p.state or p.city:
+                entry["place"] = {"country": p.country, "state": p.state, "city": p.city}
             if p.rotation_source == "manual":
                 entry["rotation"] = p.rotation
             if p.is_dup_keeper:
@@ -170,7 +172,8 @@ def build_truth() -> dict:
             "generated_at": utcnow().isoformat(),
             "db_id": get_meta(s, "db_id"),
             "people": [
-                {"name": p.name, "birth_year": p.birth_year, "notes": p.notes} for p in people.values()
+                {"name": p.name, "birth_year": p.birth_year, "notes": p.notes, "kind": p.kind or "person"}
+                for p in people.values()
             ],
             "event_kinds": [
                 {"name": k.name, "month": k.month, "day": k.day} for k in kinds.values() if not k.builtin
@@ -382,6 +385,7 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
                 s.flush()
             for f in ("birth_year", "notes"):
                 changes.append((existing, f, person.get(f)))
+            changes.append((existing, "kind", person.get("kind") or "person"))  # older truth files: a person
             editlog.record(s, changes, f"restore person {person['name']}", actor="restore")
         for k in truth.get("event_kinds", []):
             if not s.exec(select(EventKind).where(EventKind.name == k["name"])).first():
@@ -414,6 +418,8 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
                     changes += date_changes(p, ev, "event")
             if "caption" in e:
                 changes.append((p, "caption", e["caption"]))
+            if "place" in e:
+                changes += [(p, f, e["place"].get(f)) for f in ("country", "state", "city")]
             if "rotation" in e:
                 changes += [(p, "rotation", e["rotation"]), (p, "rotation_source", "manual")]
             if e.get("dup_keeper"):
