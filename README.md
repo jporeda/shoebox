@@ -24,6 +24,22 @@ Status: **milestones 1–3** (dating workbench, back reading, faces and people, 
 5. On the **Jobs** page, click **Import**. It queues *Read backs* (OCR),
    *Estimate dates* and *Auto-rotate* to run after it.
 
+### Using it from phones and tablets (optional)
+
+By default only this Mac can open Shoebox. To use it from other devices on your home Wi-Fi:
+
+1. In `private/.env`, set `SHOEBOX_BIND=0.0.0.0`, then run `docker compose up -d --build`.
+2. Find this Mac's local name in *System Settings → General → Sharing* (under "Local
+   hostname", e.g. `Family-Mac.local`).
+3. On the phone or tablet, open `http://Family-Mac.local:8000`. If macOS asks whether
+   Docker may accept incoming connections, allow it.
+4. The Mac has to be awake for other devices to reach it.
+
+**There is no login.** Anyone on the same Wi-Fi can view every photo and change anything,
+including Restore and Export. Put guests and smart-home devices on a separate guest network,
+and never forward port 8000 on your router. Undo on each device takes back that device's own
+edits (jobs and older edits are shared). Set `SHOEBOX_BIND` back to `127.0.0.1` to turn it off.
+
 ## Personal data
 
 Anything that identifies your family stays out of git:
@@ -186,11 +202,13 @@ CI (`.github/workflows/ci.yml`) runs the frontend type check and the test suite 
 Test images are synthetic, and test file names are made up. Never commit real
 family photos, names or paths.
 
-The server only answers to `localhost` / `127.0.0.1`, and only accepts changes
+The server answers to `localhost` / `127.0.0.1`; with `SHOEBOX_BIND=0.0.0.0` it also answers
+to `.local` names, private IP addresses and any names in `SHOEBOX_HOSTS`, but never to other
+names, so a page using DNS rebinding still gets nothing. It only accepts changes
 (anything but GET) that carry the `X-Shoebox: 1` header, which the UI sends. A web
 page open in another tab can't add that header, so it can't drive the app. As a second
 layer, a change whose `Origin` header names any other page (another site, another local
-port, or `null`) is refused. The UI's own origin and the Vite dev server on port 5173 are
+port, or `null`) is refused. The UI's own origin (on an allowed name) and the Vite dev server on port 5173 are
 allowed, and so are clients that send no `Origin` at all (scripts, curl).
 
 ## Licensing note

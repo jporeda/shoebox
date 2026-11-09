@@ -44,6 +44,11 @@ class Settings:
     orient_min_score: float = 0.6
     orient_margin: float = 0.25
     model_dir: Path = Path("/models")
+    # Address the server is published on (SHOEBOX_BIND, also used by compose). Anything other than
+    # loopback means other devices on the home network may connect: see app._is_allowed_host.
+    bind: str = "127.0.0.1"
+    # Extra host names the server answers to on the network, comma-separated (SHOEBOX_HOSTS).
+    hosts: str = ""
     extra: dict = field(default_factory=dict)
 
     @property

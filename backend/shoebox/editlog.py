@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import base64
 import uuid
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Any, Iterable
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, or_, true
 from sqlmodel import Session, SQLModel, select
 
 from .models import EditBatch, Edit, EventInstance, Face, LooseBack, Person, Photo, utcnow
@@ -28,6 +29,20 @@ ENTITIES: dict[str, type[SQLModel]] = {
 # Progress markers the app updates on its own. Older batches recorded some of them;
 # undo neither checks nor restores them.
 STAGE_FIELDS = {"faces_model_ver", "orient_ver", "thumb_ver", "back_ocr_ver", "ocr_ver", "vision_ver"}
+
+
+# Who made the edits in this request: "client:<id>" for a browser (its X-Shoebox-Client header, set
+# by the app's middleware), else "user". Undo from a browser only takes back that browser's own
+# batches, plus shared ones (jobs, the CLI, edits from before per-device undo).
+CURRENT_ACTOR: ContextVar[str] = ContextVar("shoebox_actor", default="user")
+CLIENT_PREFIX = "client:"
+
+
+def mine(actor: str):
+    """SQL filter: batches this actor may undo (its own, plus shared ones)."""
+    if not actor.startswith(CLIENT_PREFIX):
+        return true()
+    return or_(EditBatch.actor == actor, ~EditBatch.actor.startswith(CLIENT_PREFIX))
 
 
 # Pseudo-fields for whole rows, used as (obj, CREATED, True) / (obj, DELETED, True) changes.
@@ -79,9 +94,10 @@ def record(
     session: Session,
     changes: Iterable[tuple[SQLModel, str, Any]],
     description: str,
-    actor: str = "user",
+    actor: str | None = None,
 ) -> str | None:
     """Apply (obj, field, new_value) changes and log them. Returns the batch id."""
+    actor = actor or CURRENT_ACTOR.get()
     batch_id = uuid.uuid4().hex
     edits: list[Edit] = []
     for obj, field, new in changes:
@@ -122,8 +138,8 @@ def record(
     return batch_id
 
 
-def undo(session: Session, batch_id: str | None = None, skip: bool = False) -> dict:
-    """Revert a batch (default: the latest one not yet undone).
+def undo(session: Session, batch_id: str | None = None, skip: bool = False, actor: str = "user") -> dict:
+    """Revert a batch (default: the latest one not yet undone that ``actor`` may undo).
 
     A field is only reverted if it still holds the value this batch wrote;
     otherwise it's reported as a conflict and left alone. If nothing at all can be
@@ -132,7 +148,7 @@ def undo(session: Session, batch_id: str | None = None, skip: bool = False) -> d
     """
     if batch_id is None:
         batch = session.exec(
-            select(EditBatch).where(EditBatch.undone == False).order_by(EditBatch.ts.desc())  # noqa: E712
+            select(EditBatch).where(EditBatch.undone == False, mine(actor)).order_by(EditBatch.ts.desc())  # noqa: E712
         ).first()
     else:
         batch = session.get(EditBatch, batch_id)

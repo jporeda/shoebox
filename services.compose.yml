@@ -15,7 +15,9 @@ services:
     build: .
     command: ["python", "-m", "shoebox.cli", "serve"]
     ports:
-      - "127.0.0.1:8000:8000"
+      # Only this Mac by default. SHOEBOX_BIND=0.0.0.0 in private/.env opens it to the home
+      # network (the app reads the same setting and then accepts .local names and private IPs).
+      - "${SHOEBOX_BIND:-127.0.0.1}:8000:8000"
 
   worker:
     <<: *common

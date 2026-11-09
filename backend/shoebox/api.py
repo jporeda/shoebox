@@ -571,7 +571,7 @@ def set_loose_back_date(loose_id: int, body: BackDate, s: Session = Depends(get_
 
 @router.post("/undo", response_model=UndoResult)
 def undo(body: UndoRequest, s: Session = Depends(get_session)):
-    result = editlog.undo(s, body.batch_id, skip=body.skip)
+    result = editlog.undo(s, body.batch_id, skip=body.skip, actor=editlog.CURRENT_ACTOR.get())
     rotated: list[int] = []
     if result["undone"] and not result.get("skipped"):
         rotated = list(s.exec(select(Edit.entity_id).where(
@@ -591,7 +591,9 @@ def undo(body: UndoRequest, s: Session = Depends(get_session)):
 
 @router.get("/edits", response_model=list[EditBatchOut])
 def recent_edits(limit: int = 30, s: Session = Depends(get_session)):
-    rows = s.exec(select(EditBatch).order_by(EditBatch.ts.desc()).limit(limit)).all()
+    # This device's own edits plus shared ones: the ones its Undo button can take back.
+    mine = editlog.mine(editlog.CURRENT_ACTOR.get())
+    rows = s.exec(select(EditBatch).where(mine).order_by(EditBatch.ts.desc()).limit(limit)).all()
     return [EditBatchOut(**r.model_dump()) for r in rows]
 
 
