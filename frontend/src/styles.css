@@ -325,6 +325,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .facelist__row { min-height: 48px; padding-right: 12px; }
   .facelist__row img { width: 40px; height: 40px; }
   .facescan__level input[type="range"] { width: 160px; height: 36px; }
+
+  /* People: the name is editable without hover to discover it. */
+  .person-head__name { border-color: var(--border); background: var(--panel); }
+  .bulkbar--static { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .face { width: 104px; }
   .tile, .face, .facebox, .facelist__row, .photo-frame { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   button, a { -webkit-tap-highlight-color: transparent; }
 }
@@ -394,4 +399,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .facepop__who { flex-basis: 100%; font-size: 16px; }
   .facepop .field__inline { flex: 1 1 100%; }
   .facepop .field__inline input { flex: 1; }
+
+  /* People */
+  .cluster { padding: 10px; }
+  .cluster__actions .field__inline, .bulkbar--static .field__inline { flex: 1 1 100%; }
+  .cluster__actions .field__inline input, .bulkbar--static .field__inline input { flex: 1; }
+  .cluster__actions .chip { flex: 1 1 100%; text-align: left; }
+  .cluster__faces { gap: 6px; }
+  .face { width: calc((100% - 12px) / 3); }
+  .bulkbar--static { bottom: 0; margin: 0 -12px; border-radius: 14px 14px 0 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .person-head { align-items: stretch; flex-direction: column; gap: 10px; }
+  .person-head__name { width: 100%; }
+  .people__head .segmented--inline { display: flex; width: 100%; }
+  .people__head .segmented--inline button { padding: 6px 4px; }
 }
