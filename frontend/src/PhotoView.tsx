@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, imgUrl, type ListParams } from "./api";
 import { DateEventEditor } from "./Editor";
-import { FaceLayer } from "./FaceLayer";
+import { AcceptGuesses, FaceLayer } from "./FaceLayer";
 import { usePhotos, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { gridHref, navigate, photoHref } from "./route";
@@ -51,6 +51,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           {idx >= 0 && ` · ${idx + 1} of ${items.length}`}
         </span>
         <span className="spacer" />
+        <AcceptGuesses photoId={p.id} />
         <button className="btn btn--ghost" disabled={!prev} onClick={() => prev && navigate(photoHref(prev.id, list))}>
           ‹ Prev
         </button>

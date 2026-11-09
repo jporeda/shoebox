@@ -168,6 +168,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .action { padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
 .action p { margin: 8px 0 0; font-size: 13px; }
+.action__row { display: flex; align-items: center; gap: 6px; }
+.action__pct { width: 4.5em; text-align: right; }
 .job-list { display: flex; flex-direction: column; gap: 6px; }
 .job { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
 .job summary { display: flex; align-items: center; gap: 12px; padding: 8px 12px; cursor: pointer; flex-wrap: wrap; }
@@ -262,13 +264,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .facebox__label { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; padding: 1px 5px; border-radius: 4px; background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 11px; line-height: 1.4; white-space: nowrap; }
 .photo-frame.is-drawing .facebox { pointer-events: none; }
 .facelayer__bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; line-height: 1.4; }
+.facelayer__tools { display: flex; gap: 6px; }
 .btn.is-on { background: var(--accent); color: var(--accent-text); }
 .linkish { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0 0 0 8px; }
 .facepop { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); line-height: 1.4; }
 .facepop__who { font-weight: 600; }
-.facelist { display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; }
-.facelist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
-.facelist > .btn { flex: none; }
+.facelist { line-height: 1.4; }
+.facelist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .facelist__row { display: flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
 .facelist__row.is-active { border-color: var(--accent); }
 .facelist__row img { width: 36px; height: 36px; object-fit: cover; border-radius: 5px; }
@@ -277,3 +279,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .facebox.is-guess { border-color: var(--ok); border-style: dashed; }
 .person-link { font-weight: 700; color: var(--text); }
 .job__revert { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.facezoom { flex-basis: 100%; display: flex; align-items: flex-start; gap: 8px; }
+.facezoom__view { position: relative; overflow: hidden; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-2); flex: none; }
+.facezoom__view img { position: absolute; max-width: none; }
+.facezoom__box { position: absolute; border: 2px solid var(--accent); border-radius: 3px; pointer-events: none; }
+.facezoom__controls { display: flex; flex-direction: column; gap: 4px; }
+.facescan { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; line-height: 1.4; }
+.facescan__level { display: flex; align-items: center; gap: 6px; }
+.facescan__level input { width: 120px; }

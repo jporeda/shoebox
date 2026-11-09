@@ -214,3 +214,96 @@ def test_drawn_faces_and_new_people_can_be_undone(album_tree, env):
         assert state() == ([], [])
         c.post("/api/undo", json={})
         assert state() == ([(0.1, None)], [])
+
+
+def test_accept_guesses_job_confirms_only_guesses_at_or_above_threshold(photos):
+    from shoebox import jobs
+    from shoebox.people import run_accept_guesses
+
+    run_faces(detector=lambda rgb: [det(0.1, 0.1), det(0.4, 0.1), det(0.7, 0.1), det(0.1, 0.6)])
+    with session_scope() as s:
+        sam = Person(name="Sam")
+        s.add(sam)
+        s.flush()
+        f = s.exec(select(Face).where(Face.photo_id == photos[0]).order_by(Face.id)).all()[:4]
+        f[0].person_id, f[0].source = sam.id, "manual"  # a name the user gave
+        f[1].person_id, f[1].source, f[1].confidence = sam.id, "auto", 0.62  # automatic name, 62%
+        f[2].suggested_person_id, f[2].confidence = sam.id, 0.40  # suggestion, 40%
+        f[3].person_id, f[3].source, f[3].confidence, f[3].ignored = sam.id, "auto", 0.90, True  # ignored
+        ids = [x.id for x in f]
+
+    def state():
+        with session_scope() as s:
+            return [(x.source, x.person_id is not None, x.suggested_person_id is not None) for x in (s.get(Face, i) for i in ids)]
+
+    before = state()
+    with pytest.raises(ValueError):
+        run_accept_guesses(0)
+    assert run_accept_guesses(60)["accepted"] == 1
+    assert state() == [before[0], ("accepted", True, False), before[2], before[3]]
+
+    with api_client() as c:
+        c.post("/api/undo", json={})  # one undo step reverses the whole run
+        assert state() == before
+
+        job = c.post("/api/jobs", json={"type": "accept_guesses", "params": {"min_percent": 40}}).json()
+        assert job["type"] == "accept_guesses"
+    assert jobs._claim() == job["id"]
+    jobs.run_job(job["id"])
+    assert state() == [before[0], ("accepted", True, False), ("accepted", True, False), before[3]]
+
+
+def test_deep_scan_only_rescans_photos_with_no_faces(photos):
+    from shoebox.people import run_deep_faces
+
+    # Normal pass: faces in every photo but the first.
+    calls = iter([[], [det(0.1, 0.1)], [det(0.1, 0.1)], [det(0.1, 0.1)]])
+    run_faces(detector=lambda rgb: next(calls))
+    with session_scope() as s:
+        counts = {pid: len(s.exec(select(Face).where(Face.photo_id == pid)).all()) for pid in photos}
+    assert [counts[p] for p in photos] == [0, 1, 1, 1]
+
+    seen = []
+
+    def deep(rgb):
+        seen.append(rgb.shape)
+        return [det(0.5, 0.5, w=0.05, h=0.06)]  # a small face the normal pass missed
+
+    result = run_deep_faces(detector=deep)
+    assert (result["photos"], result["faces_added"], result["photos_with_faces"]) == (1, 1, 1)
+    assert len(seen) == 1  # only the photo with no faces was rescanned
+    with session_scope() as s:
+        new = s.exec(select(Face).where(Face.photo_id == photos[0])).all()
+    assert len(new) == 1 and new[0].source == "auto" and new[0].run_id.startswith("faces-deep-")
+
+    # Nothing left without faces: a second run scans nothing.
+    assert run_deep_faces(detector=deep)["photos"] == 0
+
+
+def test_scan_one_photo_adds_faces_and_keeps_existing_ones(photos, monkeypatch):
+    from shoebox import faces as faces_mod
+    from shoebox.people import scan_photo
+
+    pid = photos[0]
+    calls = iter([[det(0.1, 0.1)], [], [], []])
+    run_faces(detector=lambda rgb: next(calls))  # one unnamed face on the first photo
+
+    # A scan that misses the existing face and finds a new one: the old one stays.
+    r = scan_photo(pid, 5, detector=lambda rgb: [det(0.6, 0.6, w=0.08, h=0.1)])
+    assert (r["found"], r["added"], r["updated"], r["rotated"]) == (1, 1, 0, False)
+    with session_scope() as s:
+        boxes = sorted(round(f.x, 1) for f in s.exec(select(Face).where(Face.photo_id == pid)).all())
+    assert boxes == [0.1, 0.6]
+
+    with pytest.raises(ValueError):
+        scan_photo(pid, 9)
+
+    # Through the API, at the chosen level.
+    levels = []
+    monkeypatch.setattr(faces_mod, "detect_at", lambda rgb, level: levels.append(level) or [det(0.6, 0.6, w=0.08, h=0.1)])
+    with api_client() as c:
+        res = c.post(f"/api/photos/{pid}/scan-faces", json={"level": 2}).json()
+        assert (res["found"], res["added"], res["updated"]) == (1, 0, 1)  # same face again: matched, not duplicated
+        assert c.post(f"/api/photos/{pid}/scan-faces", json={"level": 6}).status_code == 422
+        assert c.post("/api/photos/9999/scan-faces", json={"level": 3}).status_code == 404
+    assert levels == [2]

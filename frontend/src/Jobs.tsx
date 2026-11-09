@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Job, type JobType } from "./api";
 
@@ -15,6 +15,11 @@ const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[
     help: "Detect faces in photos not scanned yet (and embed boxes you drew). Runs after auto-rotate.",
   },
   {
+    type: "faces_deep",
+    label: "Deep face scan",
+    help: "Look again, more thoroughly, at photos where Find faces found no one: smaller and fainter faces. Slower, and may box a few things that aren't faces (Ignore those).",
+  },
+  {
     type: "cluster",
     label: "Group faces",
     help: "Regroup unnamed faces that look alike, for naming on the People page.",
@@ -29,7 +34,11 @@ const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[
     label: "Measure accuracy",
     help: "Hide 20% of your confirmed dates and names, predict them, and report how close the app gets. Changes nothing.",
   },
-  { type: "export", label: "Export", help: "Write dated copies with embedded metadata to backup/export, plus XMP sidecars." },
+  {
+    type: "export",
+    label: "Export",
+    help: "Write copies of every photo with embedded metadata to backup/export (dated ones by year, the rest in export/undated), plus XMP sidecars.",
+  },
   { type: "backup", label: "Back up now", help: "Database snapshot, truth.json and checksum manifest to the backup folder." },
   { type: "fixity", label: "Verify originals", help: "Re-hash every original and back scan and report anything changed or missing." },
   {
@@ -41,7 +50,7 @@ const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[
   },
 ];
 
-const LABEL: Record<string, string> = { faces: "Find faces", cluster: "Group faces", claude_backs: "Claude: read backs", ingest: "Import", orient: "Auto-rotate", read_backs: "Read backs", estimate: "Infer dates & names", evaluate: "Measure accuracy", export: "Export", backup: "Backup", fixity: "Verify originals", restore: "Restore" };
+const LABEL: Record<string, string> = { faces: "Find faces", cluster: "Group faces", claude_backs: "Claude: read backs", ingest: "Import", orient: "Auto-rotate", read_backs: "Read backs", estimate: "Infer dates & names", evaluate: "Measure accuracy", export: "Export", backup: "Backup", fixity: "Verify originals", restore: "Restore", accept_guesses: "Accept guesses", faces_deep: "Deep face scan" };
 
 export function Jobs() {
   const qc = useQueryClient();
@@ -84,12 +93,50 @@ export function Jobs() {
             <p className="muted">{a.help}</p>
           </div>
         ))}
+        <AcceptGuessesAction
+          disabled={active.has("accept_guesses") || start.isPending}
+          onStart={(min_percent) => start.mutate({ type: "accept_guesses", params: { min_percent } })}
+        />
       </div>
       <h2>Recent jobs</h2>
       <div className="job-list">
         {jobs.data?.map((j) => <JobRow key={j.id} job={j} />)}
         {jobs.data?.length === 0 && <p className="muted">No jobs yet.</p>}
       </div>
+    </div>
+  );
+}
+
+/** Confirm every guessed name whose match is at least X%: the threshold is typed in. */
+function AcceptGuessesAction({ disabled, onStart }: { disabled: boolean; onStart: (minPercent: number) => void }) {
+  const [text, setText] = useState("90");
+  const value = Number(text.trim().replace(/%$/, ""));
+  const valid = text.trim() !== "" && Number.isFinite(value) && value > 0 && value <= 100;
+  const run = () => {
+    if (!valid) return;
+    if (window.confirm(`Confirm every guessed name with a match of ${value}% or higher? One Undo reverses the whole run.`)) onStart(value);
+  };
+  return (
+    <div className="action">
+      <span className="action__row">
+        <button className="btn btn--primary" disabled={disabled || !valid} onClick={run}>
+          Accept guesses ≥
+        </button>
+        <input
+          className="action__pct"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && run()}
+          inputMode="decimal"
+          aria-label="Minimum match percent"
+          aria-invalid={!valid}
+        />
+        %
+      </span>
+      <p className="muted">
+        Confirm every automatic name and suggestion whose match is at least this sure (1–100). Names you gave are never changed.
+        {!valid && <span className="error"> Enter a number from 1 to 100.</span>}
+      </p>
     </div>
   );
 }
@@ -137,7 +184,9 @@ function summary(job: Job): string {
         ? `${r.fronts_seen} photos, ${r.new} new, ${r.backs_paired} paired backs, ${r.loose_backs ?? len("orphan_backs")} loose backs, ${r.duplicate_groups} dup groups, ${len("unreadable")} unreadable`
         : "";
     case "export":
-      return r.planned !== undefined ? `${r.written} written, ${r.unchanged} unchanged, ${len("failed")} failed` : "";
+      return r.planned !== undefined
+        ? `${r.written} written, ${r.unchanged} unchanged, ${len("failed")} failed${r.undated ? ` · ${r.undated} undated (in export/undated)` : ""}`
+        : "";
     case "fixity":
       return r.checked !== undefined ? `${r.ok}/${r.checked} ok, ${len("changed")} changed, ${len("missing")} missing, ${len("new_files")} new` : "";
     case "claude_backs":
@@ -147,6 +196,10 @@ function summary(job: Job): string {
     case "faces":
       return r.photos !== undefined
         ? `${r.faces_added} faces in ${r.photos} photos (${r.seconds_per_photo}s/photo)${r.failed ? `, ${r.failed} failed` : ""}`
+        : "";
+    case "faces_deep":
+      return r.photos !== undefined
+        ? `${r.faces_added} faces found in ${r.photos_with_faces} of ${r.photos} photos with none${r.failed ? `, ${r.failed} failed` : ""}`
         : "";
     case "cluster":
       return r.clusters !== undefined ? `${r.faces} unnamed faces → ${r.clusters} groups, ${r.singletons} single` : "";
@@ -168,6 +221,8 @@ function summary(job: Job): string {
     }
     case "orient":
       return r.checked !== undefined ? `${r.rotated} of ${r.checked} rotated` : "";
+    case "accept_guesses":
+      return r.accepted !== undefined ? `${r.accepted} of ${r.guesses} guesses accepted (≥${r.min_percent}%)` : "";
     case "restore":
       return r.matched !== undefined ? `${r.matched} restored from ${r.file}, ${len("unmatched")} not found` : "";
     default:

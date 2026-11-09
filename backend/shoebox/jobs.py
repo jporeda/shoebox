@@ -57,6 +57,16 @@ def _faces(ctx: JobContext, params: dict) -> dict:
     return result
 
 
+def _faces_deep(ctx: JobContext, params: dict) -> dict:
+    from .people import run_deep_faces
+
+    result = run_deep_faces(ctx)
+    if result["faces_added"]:
+        enqueue("cluster")
+        enqueue("estimate")  # new faces may match named people
+    return result
+
+
 def _cluster(ctx: JobContext, params: dict) -> dict:
     from .people import run_cluster
 
@@ -85,6 +95,15 @@ def _estimate(ctx: JobContext, params: dict) -> dict:
     names = run_matching(ctx)
     dates = run_estimates(ctx)
     return {**dates, "names": names}
+
+
+def _accept_guesses(ctx: JobContext, params: dict) -> dict:
+    from .people import run_accept_guesses
+
+    result = run_accept_guesses(float(params["min_percent"]), ctx)
+    if result["accepted"]:
+        enqueue("estimate")  # confirmed faces are new exemplars: refresh the other suggestions
+    return result
 
 
 def _evaluate(ctx: JobContext, params: dict) -> dict:
@@ -124,7 +143,9 @@ HANDLERS: dict[str, Callable[[JobContext, dict], dict]] = {
     "read_backs": _read_backs,
     "faces": _faces,
     "cluster": _cluster,
+    "faces_deep": _faces_deep,
     "estimate": _estimate,
+    "accept_guesses": _accept_guesses,
     "evaluate": _evaluate,
     "claude_backs": _claude_backs,
     "export": _export,

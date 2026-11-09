@@ -103,7 +103,10 @@ Anything that identifies your family stays out of git:
   through the album.
 - Possible duplicates (rescans) are flagged **D**. Tags are shared across a
   duplicate group, and *Keep this one* picks which file is exported.
-- **Export** writes to `BACKUP_ROOT/export/<year>/`.
+- **Export** writes a copy of every photo: dated ones (confirmed or estimated) to
+  `BACKUP_ROOT/export/<year>/`, and photos with no date at all to `BACKUP_ROOT/export/undated/`.
+  Undated copies get no invented date (they keep whatever dates the scan file carries, often the
+  scan date) and the keyword `date:unknown`, so you can find them in your photo app.
 
 ## Where data lives
 
@@ -113,7 +116,7 @@ Anything that identifies your family stays out of git:
 | Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after every job (the newest 10, then one per hour, day, week and month going back a year) and before schema upgrades (never deleted automatically) |
 | Permanent | `BACKUP_ROOT/truth/truth.json` | Everything you entered, keyed by file hash; `history/` keeps older versions |
 | Permanent | `BACKUP_ROOT/manifest-sha256.txt` | Checksums of every original |
-| Output | `BACKUP_ROOT/export/` | Dated copies with embedded metadata |
+| Output | `BACKUP_ROOT/export/` | Copies of every photo with embedded metadata (undated ones in `undated/`) |
 | Output | `BACKUP_ROOT/sidecars/` | `file.jpg.xmp` sidecars mirroring the photo tree |
 
 - `docker compose down -v` **deletes the live volume**, and so does Docker

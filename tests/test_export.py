@@ -37,7 +37,7 @@ def test_partial_date_and_ordering_across_albums(album_tree, env):
     with session_scope() as s:
         services.bulk_update(s, [a, b, c], date="1987")
     result = run_export()
-    assert result["written"] == 3 and not result["failed"]
+    assert result["written"] == 6 and result["undated"] == 3 and not result["failed"]  # undated photos go too
 
     t = tags(exported(env, a), "XMP-photoshop:DateCreated", "ExifIFD:DateTimeOriginal", "ExifIFD:OffsetTimeOriginal",
              "XMP-shoebox:all", "XMP-dc:Subject")
@@ -114,7 +114,7 @@ def test_reexport_skips_unchanged_and_removes_stale(album_tree, env):
         services.bulk_update(s, [a], date="1987")
     run_export()
     first = exported(env, a)
-    assert run_export()["unchanged"] == 1
+    assert run_export()["unchanged"] == 6  # every front, dated or not
     with session_scope() as s:
         services.bulk_update(s, [a], date="1988")
     result = run_export()
@@ -129,7 +129,7 @@ def test_changed_original_is_not_exported(album_tree, env):
         services.bulk_update(s, [a], date="1987")
     make_image(album_tree / "Album 1980s/IMG_0001.jpg", 999)  # tampered after import
     result = run_export()
-    assert result["written"] == 0
+    assert result["written"] == result["planned"] - 1  # every photo but the tampered one
     assert result["failed"][0]["error"] == "original failed fixity check"
 
 
@@ -155,3 +155,26 @@ def test_failed_re_export_keeps_the_last_good_copy(album_tree, env, monkeypatch)
     monkeypatch.undo()
     assert run_export()["written"] == 1  # retried once the problem is gone
     assert not good.exists() and "1990" in str(exported(env, a))
+
+
+def test_undated_photos_are_exported_without_an_invented_date(album_tree, env):
+    run_ingest()
+    a = pid("Album 1980s/IMG_0002.jpg")
+    with session_scope() as s:
+        services.bulk_update(s, [a], caption="On the porch")
+    result = run_export()
+    assert result["undated"] == result["planned"] == 6 and not result["failed"]
+
+    copy = exported(env, a)
+    assert copy.relative_to(env.backup_dir / "export").as_posix() == "undated/Album-1980s_0002_IMG-0002.jpg"
+    t = tags(copy, "ExifIFD:DateTimeOriginal", "XMP-photoshop:DateCreated", "XMP-dc:Subject", "XMP-dc:Description",
+             "XMP-shoebox:DatePrecision")
+    assert "ExifIFD:DateTimeOriginal" not in t and "XMP-photoshop:DateCreated" not in t  # no date made up
+    assert "date:unknown" in t["XMP-dc:Subject"] and t["XMP-dc:Description"] == "On the porch"
+    assert t["XMP-shoebox:DatePrecision"] == "unknown"
+
+    with session_scope() as s:
+        services.bulk_update(s, [a], date="1987")
+    result = run_export()
+    assert result["written"] == 1 and result["removed_stale"] == 1
+    assert not copy.exists() and exported(env, a).name.startswith("1987")  # moved out of undated/

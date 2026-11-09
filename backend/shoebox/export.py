@@ -47,7 +47,7 @@ class ExportItem:
     album_name: str
     album_order: int
     album_index: int
-    year: int
+    year: int | None  # None: no date entered or estimated (exported to undated/, its own dates untouched)
     month: int | None
     day: int | None
     precision: str | None
@@ -76,10 +76,16 @@ class ExportItem:
         secs = min(FIRST_TIME + self.ordinal, 24 * 3600 - 1)
         return time(secs // 3600, secs % 3600 // 60, secs % 60)
 
+    @property
+    def dated(self) -> bool:
+        return self.year is not None
+
     def export_name(self) -> str:
         y, m, d = self.cal
         stem = Path(self.rel_path).stem
         ext = Path(self.rel_path).suffix.lower()
+        if not self.dated:
+            return f"undated/{_slug(self.album_name)}_{self.album_index + 1:04d}_{_slug(stem)}{ext}"
         return f"{y:04d}/{y:04d}-{m:02d}-{d:02d}_{self.ordinal:04d}_{_slug(self.album_name)}_{_slug(stem)}{ext}"
 
     def signature(self) -> str:
@@ -122,8 +128,6 @@ def build_plan(session: Session) -> list[ExportItem]:
             continue
         inferred = p.t_year is None
         year = p.i_year if inferred else p.t_year
-        if year is None:
-            continue
         album = albums[p.album_id]
         inst = instances.get(p.event_instance_id) if p.event_instance_id else None
         kind = kinds[inst.kind_id] if inst else None
@@ -140,8 +144,8 @@ def build_plan(session: Session) -> list[ExportItem]:
             day=None if inferred else p.t_day,
             precision=p.i_precision if inferred else p.t_precision,
             inferred=inferred,
-            date_source="inferred" if inferred else p.t_source,
-            confidence=p.i_confidence if inferred else 1.0,
+            date_source=None if year is None else "inferred" if inferred else p.t_source,
+            confidence=None if year is None else p.i_confidence if inferred else 1.0,
             run_id=p.i_run_id if inferred else None,
             exif_orientation=p.exif_orientation,
             rotation=p.rotation,
@@ -150,7 +154,8 @@ def build_plan(session: Session) -> list[ExportItem]:
             event_kind=kind.name if kind else None,
             event_label=inst.label if inst else None,
         )
-        it.cal = export_calendar_date(it.year, it.month, it.day, it.precision)
+        if it.dated:
+            it.cal = export_calendar_date(it.year, it.month, it.day, it.precision)
         kw, hier = [], []
         if kind:
             kw.append(kind.name)
@@ -165,15 +170,21 @@ def build_plan(session: Session) -> list[ExportItem]:
         hier += [f"People|{name}" for name in it.people]
         kw.append(f"Album: {album.name}")
         hier.append(f"Albums|{album.name}")
-        if inferred or it.precision in ("range", "decade"):
+        if not it.dated:
+            kw.append("date:unknown")
+            hier.append("Dates|Unknown")
+        elif inferred or it.precision in ("range", "decade"):
             kw.append("date:estimated")
             hier.append("Dates|Estimated")
         it.keywords, it.hierarchical = kw, hier
         items.append(it)
 
-    items.sort(key=lambda i: (i.cal, i.album_order, i.album_index, i.photo_id))
+    # Dated photos first, chronologically; undated ones after, in album order.
+    items.sort(key=lambda i: (not i.dated, i.cal, i.album_order, i.album_index, i.photo_id))
     prev, n = None, 0
     for it in items:
+        if not it.dated:
+            break  # undated copies keep their own dates, so no clock ordinal
         n = n + 1 if it.cal == prev else 0
         it.ordinal, prev = n, it.cal
     return items
@@ -205,15 +216,20 @@ def _dims(it: ExportItem, rot: int) -> tuple[int, int]:
 
 
 def tag_args(it: ExportItem, tz: str, ext: str) -> list[str]:
-    y, m, d = it.cal
-    c = it.clock
-    stamp = f"{y:04d}:{m:02d}:{d:02d} {c.hour:02d}:{c.minute:02d}:{c.second:02d}"
-    args = [
-        f"-EXIF:DateTimeOriginal={stamp}",
-        f"-EXIF:OffsetTimeOriginal={tz}",
-        f"-XMP-exif:DateTimeOriginal={stamp}{tz}",
-        f"-XMP-xmp:CreateDate={stamp}{tz}",
-        f"-FileModifyDate={stamp}{tz}",
+    args = []
+    if it.dated:
+        y, m, d = it.cal
+        c = it.clock
+        stamp = f"{y:04d}:{m:02d}:{d:02d} {c.hour:02d}:{c.minute:02d}:{c.second:02d}"
+        args += [
+            f"-EXIF:DateTimeOriginal={stamp}",
+            f"-EXIF:OffsetTimeOriginal={tz}",
+            f"-XMP-exif:DateTimeOriginal={stamp}{tz}",
+            f"-XMP-xmp:CreateDate={stamp}{tz}",
+            f"-FileModifyDate={stamp}{tz}",
+        ]
+    # Undated: no date is invented; the copy keeps whatever dates the scan file itself carries.
+    args += [
         "-XMP-dc:Subject=",
         "-XMP-lr:HierarchicalSubject=",
         "-XMP-iptcExt:Event=",
@@ -240,7 +256,7 @@ def tag_args(it: ExportItem, tz: str, ext: str) -> list[str]:
         f"-XMP-shoebox:OriginalSHA256={it.sha256}",
         f"-XMP-shoebox:OriginalPath={escape(it.rel_path)}",
         f"-XMP-shoebox:DateSource={it.date_source or ''}",
-        f"-XMP-shoebox:DatePrecision={it.precision or 'year'}",
+        f"-XMP-shoebox:DatePrecision={(it.precision or 'year') if it.dated else 'unknown'}",
     ]
     if it.image_data_hash:
         args.append(f"-XMP-shoebox:ImageDataHash={it.image_data_hash}")
@@ -249,7 +265,8 @@ def tag_args(it: ExportItem, tz: str, ext: str) -> list[str]:
     if it.run_id:
         args.append(f"-XMP-shoebox:RunID={it.run_id}")
     # Written last so nothing else overwrites the partial date.
-    args.append(f"-XMP-photoshop:DateCreated#={xmp_partial(it.year, it.month, it.day, it.precision)}")
+    if it.dated:
+        args.append(f"-XMP-photoshop:DateCreated#={xmp_partial(it.year, it.month, it.day, it.precision)}")
     return args
 
 
@@ -357,6 +374,7 @@ def run_export(ctx: JobContext = NULL_CTX, sidecars: bool = True) -> dict:
     atomic_write(index_path, json.dumps(new_index, indent=1, sort_keys=True))
     return {
         "planned": len(plan),
+        "undated": sum(not it.dated for it in plan),
         "written": written,
         "unchanged": skipped_same,
         "removed_stale": removed,
