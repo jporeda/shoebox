@@ -112,6 +112,24 @@
       }
      },
      {
+      "name": "ids",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "only these photos: comma-separated ids (e.g. one Check group)",
+       "title": "Ids"
+      },
+      "description": "only these photos: comma-separated ids (e.g. one Check group)"
+     },
+     {
       "name": "order",
       "in": "query",
       "required": false,

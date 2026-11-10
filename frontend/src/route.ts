@@ -18,6 +18,7 @@ export function parseHash(hash: string): Route {
     status: (q.get("status") as ListParams["status"]) || undefined,
     duplicates: q.get("dups") === "1" || undefined,
     order: (q.get("order") as ListParams["order"]) || "album",
+    ids: q.get("ids") || undefined,
   };
   const m = path.match(/^\/photo\/(\d+)/);
   if (m) return { view: "photo", id: Number(m[1]), list };
@@ -45,6 +46,7 @@ export function listQuery(list: ListParams): string {
   if (list.status) q.set("status", list.status);
   if (list.duplicates) q.set("dups", "1");
   if (list.order && list.order !== "album") q.set("order", list.order);
+  if (list.ids) q.set("ids", list.ids);
   const s = q.toString();
   return s ? `?${s}` : "";
 }

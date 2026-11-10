@@ -83,3 +83,16 @@ def test_photo_detail_offers_the_nearest_dated_photos_before_and_after(album_tre
         near = c.get(f"/api/photos/{middle}").json()["nearby_dates"]
     assert [(n["photo_id"], n["offset"] < 0, n["label"], n["year"]) for n in near] == [
         (first, True, "1987-06-14", 1987), (last, False, "1988", 1988)]
+
+
+def test_photo_list_can_be_limited_to_given_ids(album_tree, env):
+    from conftest import api_client
+    from shoebox.ingest import run_ingest
+
+    run_ingest()
+    with api_client() as c:
+        all_ids = [p["id"] for p in c.get("/api/photos").json()["items"]]
+        pick = all_ids[1:3]
+        got = c.get("/api/photos", params={"ids": ",".join(map(str, pick))}).json()
+        assert got["total"] == 2 and sorted(p["id"] for p in got["items"]) == sorted(pick)
+        assert c.get("/api/photos", params={"ids": "1,x"}).status_code == 422

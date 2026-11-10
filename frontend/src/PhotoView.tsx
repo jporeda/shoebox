@@ -28,7 +28,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
       if (isTypingTarget(e)) return;
       if (e.key === "ArrowLeft" && prev) step(prev);
       else if (e.key === "ArrowRight" && next) step(next);
-      else if (e.key === "Escape") navigate(gridHref(list));
+      else if (e.key === "Escape") navigate(backHref(list));
       // Holding R would otherwise fire a rotate per auto-repeat.
       else if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.repeat)
         update.mutate({ ids: [id], rotate_by: e.shiftKey ? 270 : 90 });
@@ -74,8 +74,8 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   return (
     <div className={`photo-view ${zoomed ? "is-zoomed" : ""}`}>
       <div className="photo-view__bar">
-        <a className="btn btn--ghost photo-view__back" href={gridHref(list)}>
-          ← Back<span className="photo-view__back-more"> to grid</span>
+        <a className="btn btn--ghost photo-view__back" href={backHref(list)}>
+          ← Back<span className="photo-view__back-more"> to {list.ids ? "Check" : "grid"}</span>
         </a>
         <span className="muted photo-view__where">
           {p.album_name} · #{p.album_index + 1}
@@ -313,4 +313,9 @@ function NearbyDateChoices({ nearby, busy, onPick }: { nearby: NearbyDate[]; bus
       </button>
     </div>
   );
+}
+
+/** Where Back goes: a list of picked photos (opened from a People › Check group) returns there. */
+function backHref(list: ListParams): string {
+  return list.ids ? "#/people?tab=check" : gridHref(list);
 }

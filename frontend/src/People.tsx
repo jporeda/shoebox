@@ -187,6 +187,18 @@ function ageLabel(group: ReviewGroup): string {
   return "undated";
 }
 
+/** Opens the photo page on these faces' photos; Prev / Next then step through just those photos,
+ *  where each face can be checked with the rest of the photo in view (Accept all guesses, Yes/No). */
+function ViewPhotos({ faces }: { faces: Face[] }) {
+  const ids = [...new Set(faces.map((f) => f.photo_id))];
+  if (!ids.length) return null;
+  return (
+    <a className="btn btn--ghost" href={photoHref(ids[0], { ids: ids.join(",") })} title="Step through these photos on the photo page">
+      View {ids.length === 1 ? "photo" : `${ids.length} photos`}
+    </a>
+  );
+}
+
 function CheckGroup({ group }: { group: ReviewGroup }) {
   const invalidate = useInvalidateFaces();
   const qc = useQueryClient();
@@ -218,6 +230,7 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
         <button className="btn btn--primary" onClick={() => run.mutate()} disabled={run.isPending}>
           Confirm
         </button>
+        <ViewPhotos faces={group.faces} />
       </div>
       <div className="cluster__faces">
         {group.faces.map((f) => (

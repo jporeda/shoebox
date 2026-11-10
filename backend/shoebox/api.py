@@ -398,6 +398,7 @@ def list_photos(
     status: Optional[Status] = None,
     duplicates: bool = False,
     event_instance_id: Optional[int] = None,
+    ids: Optional[str] = Query(None, description="only these photos: comma-separated ids (e.g. one Check group)"),
     order: Literal["album", "chrono", "confidence"] = "album",
     offset: int = 0,
     limit: int = Query(20000, le=50000),
@@ -416,6 +417,12 @@ def list_photos(
         q = q.where(Photo.dup_group_id != None)  # noqa: E711
     if event_instance_id is not None:
         q = q.where(Photo.event_instance_id == event_instance_id)
+    if ids is not None:
+        try:
+            wanted = {int(i) for i in ids.split(",") if i.strip()}
+        except ValueError:
+            raise HTTPException(422, "ids must be comma-separated numbers")
+        q = q.where(Photo.id.in_(wanted))
     if person_id is not None:
         from .models import Face
 

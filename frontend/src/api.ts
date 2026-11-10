@@ -32,6 +32,8 @@ export type ListParams = {
   status?: "untagged" | "inferred" | "reviewed";
   duplicates?: boolean;
   order?: "album" | "chrono" | "confidence";
+  /** Only these photos, comma-separated ids (e.g. the photos of one Check group). */
+  ids?: string;
 };
 
 export class ApiError extends Error {}

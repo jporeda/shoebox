@@ -1352,6 +1352,8 @@ export interface operations {
                 status?: ("untagged" | "inferred" | "reviewed") | null;
                 duplicates?: boolean;
                 event_instance_id?: number | null;
+                /** @description only these photos: comma-separated ids (e.g. one Check group) */
+                ids?: string | null;
                 order?: "album" | "chrono" | "confidence";
                 offset?: number;
                 limit?: number;
