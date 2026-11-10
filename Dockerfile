@@ -25,6 +25,13 @@ ADD https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.
 RUN echo "${BUFFALO_SHA256}  /tmp/buffalo_l.zip" | sha256sum -c - \
     && mkdir -p /models/models/buffalo_l \
     && python -c "import zipfile; z=zipfile.ZipFile('/tmp/buffalo_l.zip'); [z.extract(n, '/models/models/buffalo_l') for n in ('det_10g.onnx','w600k_r50.onnx','genderage.onnx')]"
+# Face ages: ViT trained on FairFace (dima806/fairface_age_image_detection, Apache-2.0), ONNX export
+# by onnx-community, pinned to one revision and checksum. See faces.AGE_MODEL.
+ARG FAIRFACE_REV=fd04cddf04982f6acc1ac76fb1a31b44c9285596
+ARG FAIRFACE_SHA256=7f28fc7e890b4c21bf48f65d9985cefaea3430c28df1391e4f91293c0d89555a
+ADD https://huggingface.co/onnx-community/fairface_age_image_detection-ONNX/resolve/${FAIRFACE_REV}/onnx/model.onnx /tmp/fairface.onnx
+RUN echo "${FAIRFACE_SHA256}  /tmp/fairface.onnx" | sha256sum -c - \
+    && mkdir -p /models/fairface && mv /tmp/fairface.onnx /models/fairface/model.onnx
 
 # ---- runtime ----
 FROM python:3.12-slim

@@ -10,9 +10,9 @@ Evidence (each with a year range and a weight):
 
 Anchors for album-neighbour dating are dates a person entered or accepted, back dates
 a person typed, and — at reduced weight (``OCR_ANCHOR_TRUST``) — back dates read by
-OCR, which measured ~95% correct on these albums. How old a face *looks* is not used: the
-face-age model read young children as ~25-30 on real scans (measured against known ages), so it
-would date their photos decades late. Estimates are outputs only — never inputs — so one wrong guess can't spread. Estimates live in the ``i_*`` fields, never touch a
+OCR, which measured ~95% correct on these albums. How old a face *looks* is not used:
+InsightFace's age read young children as ~25-30 on real scans, and even the FairFace model
+(faces.estimate_age) only places a face within an age group, too coarse to date by. Estimates are outputs only — never inputs — so one wrong guess can't spread. Estimates live in the ``i_*`` fields, never touch a
 date a person entered, show as "≈" in the UI, and export with ``date:estimated``.
 """
 

@@ -103,8 +103,8 @@ def match(emb: np.ndarray, year: Optional[int], ex: Exemplars, rejected: set[int
 
 def decide(m: Optional[Match], est_age: Optional[float], age: Optional[int] = None) -> str:
     """'auto' (apply), 'suggest', or 'none'. Young children are only ever suggested: ``age`` is the
-    candidate's real age in the photo (from their birth year). A face the age model reads as young
-    also counts: that model reads children as *older*, so when it says "young" it's usually right."""
+    candidate's real age in the photo (from their birth year). Without one, the face's estimated age
+    (faces.estimate_age, FairFace) decides: it put 83% of known-age faces in the right age group."""
     if m is None or m.score < SUGGEST_SIMILARITY:
         return "none"
     young = (age is not None and age < MIN_AUTO_AGE) or (est_age is not None and est_age < MIN_AUTO_AGE)

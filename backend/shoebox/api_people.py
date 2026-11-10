@@ -384,9 +384,8 @@ def scan_faces(photo_id: int, body: ScanIn):
         raise HTTPException(404, "photo not found")
     except FileNotFoundError:
         raise HTTPException(409, "the photo's file is missing")
-    if result["added"]:
-        jobs.enqueue("cluster")
-        jobs.enqueue("estimate")  # new faces may match named people
+    if result["added"] or result["updated"]:
+        jobs.enqueue("faces")  # estimates the new faces' ages, then regroups and re-suggests names
     return ScanOut(**result)
 
 

@@ -104,8 +104,13 @@ Anything that identifies your family stays out of git:
      more people in common weigh more;
   5. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
 
-  How old a face *looks* is never used: the face-age model read young children as 25–30 on
-  real scans. Ages come only from birth years, so set them on people's pages where you know them.
+  How old a face *looks* doesn't date photos: even a good face-age model is only right to within
+  an age group (see *Face ages* below). Dating uses birth years, so set them on people's pages
+  where you know them.
+- **Face ages:** each face gets an age group (0–2, 3–9, 10–19, … 70+) from a model trained on
+  the FairFace dataset; on faces with a known age it put 83% in the right group. It's used to keep
+  young children's names as suggestions rather than applied automatically. After upgrading,
+  the worker re-estimates every face once (about 0.2 s per face).
 
   When pieces of evidence agree, confidence goes up; disagreements are shown
   ("… but file name says 1990"). Estimates never overwrite a date you entered and
@@ -248,3 +253,9 @@ allowed, and so are clients that send no `Origin` at all (scripts, curl).
 The InsightFace `buffalo_l` models baked into the image are licensed for
 **non-commercial use only**. That's fine for personal use, but don't push this
 image to a public registry.
+
+The face-age model is
+[dima806/fairface_age_image_detection](https://huggingface.co/dima806/fairface_age_image_detection)
+(Apache-2.0), trained on the [FairFace](https://github.com/dchen236/FairFace) dataset (CC BY 4.0), in
+the ONNX export by [onnx-community](https://huggingface.co/onnx-community/fairface_age_image_detection-ONNX).
+The Dockerfile downloads it at a pinned revision and checks its SHA-256 (about 340 MB).

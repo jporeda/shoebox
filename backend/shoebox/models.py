@@ -161,7 +161,9 @@ class Face(SQLModel, table=True):
     source: str = "auto"  # auto | manual | drawn | accepted
     ignored: bool = False
     confidence: Optional[float] = None
-    est_age: Optional[float] = None
+    est_age: Optional[float] = None  # apparent age (FairFace's expected age once age_ver is current)
+    age_group: Optional[int] = None  # FairFace age group index, see faces.AGE_GROUPS
+    age_ver: int = Field(default=0, sa_column_kwargs={"server_default": "0"})  # faces.AGE_VERSION when estimated
     run_id: Optional[str] = None
     cluster_id: Optional[int] = Field(default=None, index=True)
     # Name suggested by matching but not applied (too unsure, or the face looks under 6).

@@ -50,8 +50,11 @@ def _orient(ctx: JobContext, params: dict) -> dict:
 def _faces(ctx: JobContext, params: dict) -> dict:
     from .people import run_embed_missing, run_faces
 
+    from .people import run_face_ages
+
     result = run_faces(ctx)
     result["drawn"] = run_embed_missing(ctx)
+    result["ages"] = run_face_ages(ctx)  # new faces, moved boxes, and any never estimated by FairFace
     enqueue("cluster")
     enqueue("estimate")  # new faces may match named people
     return result
@@ -60,7 +63,10 @@ def _faces(ctx: JobContext, params: dict) -> dict:
 def _faces_deep(ctx: JobContext, params: dict) -> dict:
     from .people import run_deep_faces
 
+    from .people import run_face_ages
+
     result = run_deep_faces(ctx)
+    result["ages"] = run_face_ages(ctx)
     if result["faces_added"]:
         enqueue("cluster")
         enqueue("estimate")  # new faces may match named people
@@ -261,10 +267,27 @@ def _maybe_schedule_fixity() -> None:
         enqueue("fixity", {"scheduled": True})
 
 
+def _maybe_queue_age_backfill() -> None:
+    """After an upgrade that brings a new age model, re-estimate existing faces once (the faces
+    job does it, alongside anything else it finds)."""
+    from .faces import AGE_VERSION, age_model_available
+    from .models import Face
+
+    if not age_model_available():
+        return
+    with session_scope() as s:
+        stale = s.exec(select(Face.id).where(Face.age_ver < AGE_VERSION).limit(1)).first()
+        queued = s.exec(select(Job.id).where(Job.type == "faces", Job.state.in_(("queued", "running")))).first()
+    if stale is not None and queued is None:
+        log.info("faces with ages from an older model: queueing the faces job")
+        enqueue("faces")
+
+
 def worker_loop() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     migrate()
     log.info("worker started; requeued %d interrupted job(s)", recover_interrupted())
+    _maybe_queue_age_backfill()
     last_schedule_check = datetime.min.replace(tzinfo=timezone.utc)
     while True:
         job_id = _claim()

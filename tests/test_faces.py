@@ -365,3 +365,41 @@ def test_check_page_groups_a_persons_guesses_by_five_year_age_bracket(photos):
     # Sam (3 to check): 1982 and 1984 → ages 2 and 4 → 0–4; 1991 → 11 → 10–14 (est_age 30 ignored).
     # Rex has no birth year: his 1983 photo goes in the 1980–84 group, whatever his face "looks".
     assert groups == [(sam_id, 0, None, 2, 3), (sam_id, 10, None, 1, 3), (rex_id, None, 1980, 1, 1)]
+
+
+def test_face_ages_come_from_the_age_model_once_per_face_and_redo_when_a_box_moves(photos):
+    from shoebox.faces import AGE_VERSION
+    from shoebox.people import run_face_ages
+
+    calls = iter([[det(0.1, 0.1), det(0.6, 0.6)], [], [], []])
+    run_faces(detector=lambda rgb: next(calls))  # the detector's own age (30) is a placeholder
+    seen = []
+
+    def ager(img, box):
+        seen.append(round(box[0], 1))
+        return (1, 6.2) if box[0] < 0.5 else (4, 34.8)  # "3-9" and "30-39"
+
+    assert run_face_ages(ager=ager) == {"faces": 2, "estimated": 2, "failed": 0}
+    with session_scope() as s:
+        got = sorted((round(f.x, 1), f.est_age, f.age_group, f.age_ver) for f in s.exec(select(Face)).all())
+    assert got == [(0.1, 6.2, 1, AGE_VERSION), (0.6, 34.8, 4, AGE_VERSION)]
+
+    assert run_face_ages(ager=ager)["faces"] == 0  # nothing left to do
+    with session_scope() as s:  # a re-detection moves one box: only that face is estimated again
+        f = s.exec(select(Face).where(Face.x < 0.5)).one()
+        f.x, f.age_ver = 0.12, 0
+    seen.clear()
+    assert run_face_ages(ager=ager)["estimated"] == 1 and seen == [0.1]
+
+
+def test_without_the_age_model_the_age_step_is_skipped(photos, tmp_path, monkeypatch):
+    from shoebox import faces
+    from shoebox.people import run_face_ages
+
+    monkeypatch.setenv("SHOEBOX_MODEL_DIR", str(tmp_path))  # an image built without the model
+    reset_caches()
+    faces._age_session.cache_clear()
+    try:
+        assert run_face_ages() == {"skipped": "age model not installed"}
+    finally:
+        faces._age_session.cache_clear()

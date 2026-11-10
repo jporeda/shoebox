@@ -157,6 +157,51 @@ def embed_region(rgb: np.ndarray, box: tuple[float, float, float, float]) -> Det
                         float(f.age) if getattr(f, "age", None) is not None else None)
 
 
+# --- age ----------------------------------------------------------------------------
+# InsightFace's age output read young children as ~25-30 on real scans. Ages come instead from a
+# ViT age classifier trained on the FairFace dataset (dima806/fairface_age_image_detection,
+# Apache-2.0; ONNX export by onnx-community), which got 83% of known-age faces in the right group.
+
+AGE_MODEL = "fairface/model.onnx"  # under Settings.model_dir; downloaded by the Dockerfile
+AGE_VERSION = 1
+AGE_GROUPS = [(0, 2), (3, 9), (10, 19), (20, 29), (30, 39), (40, 49), (50, 59), (60, 69), (70, None)]
+_AGE_MIDPOINTS = np.array([1, 6, 15, 25, 35, 45, 55, 65, 75], np.float32)
+AGE_MARGIN = 0.25  # context around the face box, per side, as FairFace's own crops have
+
+
+@lru_cache
+def _age_session():
+    import onnxruntime as ort
+
+    path = get_settings().model_dir / AGE_MODEL
+    if not path.is_file():
+        return None
+    return ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+
+
+def age_model_available() -> bool:
+    return _age_session() is not None
+
+
+def estimate_age(img, box: tuple[float, float, float, float]) -> tuple[int, float]:
+    """(age group index, expected age in years) for the face in ``box`` (normalized, in the frame
+    of ``img`` as displayed). ``img`` is a PIL image."""
+    from PIL import Image
+
+    W, H = img.size
+    x, y, w, h = box
+    cx, cy = (x + w / 2) * W, (y + h / 2) * H
+    side = max(w * W, h * H) * (1 + 2 * AGE_MARGIN)
+    crop = img.crop((int(cx - side / 2), int(cy - side / 2), int(cx + side / 2), int(cy + side / 2))).convert("RGB")
+    a = np.asarray(crop.resize((224, 224), Image.BILINEAR), np.float32) / 255.0
+    a = ((a - 0.5) / 0.5).transpose(2, 0, 1)[None]
+    session = _age_session()
+    logits = session.run(None, {session.get_inputs()[0].name: a})[0][0]
+    p = np.exp(logits - logits.max())
+    p /= p.sum()
+    return int(p.argmax()), float(p @ _AGE_MIDPOINTS)
+
+
 # --- geometry ---------------------------------------------------------------------
 
 

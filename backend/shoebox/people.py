@@ -65,6 +65,7 @@ def merge_detections(s: Session, p: Photo, found: list[DetectedFace], run_id: st
             used.add(best.id)
             best.x, best.y, best.w, best.h, best.frame_rotation = *box, p.rotation
             best.embedding, best.det_score, best.est_age, best.detector_ver = to_blob(d.embedding), d.det_score, d.age, DETECTOR_VERSION
+            best.age_ver = 0  # the box moved: estimate its age again
             s.add(best)
             updated += 1
         else:
@@ -185,6 +186,57 @@ def scan_photo(photo_id: int, level: int, detector=None) -> dict:
             return {"found": len(found), "added": 0, "updated": 0, "rotated": True}
         result = merge_detections(s, p, found, f"faces-scan-{int(time.time())}", drop_unmatched=False)
     return {"found": len(found), "added": result["added"], "updated": result["updated"], "rotated": False}
+
+
+def run_face_ages(ctx: JobContext = NULL_CTX, photo_ids: Optional[Iterable[int]] = None, ager=None) -> dict:
+    """Estimate each face's age with the FairFace model (faces.estimate_age), for faces whose age
+    was estimated by an older model or not at all. Model work happens outside any transaction; a
+    face moved or re-estimated meanwhile is left alone."""
+    from .faces import AGE_VERSION, age_model_available, estimate_age
+
+    if ager is None:
+        if not age_model_available():
+            return {"skipped": "age model not installed"}
+        ager = estimate_age
+    with session_scope() as s:
+        q = select(Face).where(Face.age_ver < AGE_VERSION)
+        if photo_ids is not None:
+            q = q.where(Face.photo_id.in_(list(photo_ids)))
+        by_photo: dict[int, list[Face]] = {}
+        for f in s.exec(q).all():
+            by_photo.setdefault(f.photo_id, []).append(f)
+        photos = {p.id: p for p in s.exec(select(Photo).where(Photo.id.in_(list(by_photo)))).all()}
+    totals = {"faces": sum(len(v) for v in by_photo.values()), "estimated": 0, "failed": 0}
+    done = 0
+    for pid, faces in by_photo.items():
+        ctx.check_cancel()
+        ctx.progress(done, totals["faces"], "estimating ages")
+        p = photos.get(pid)
+        if p is None or p.missing:
+            continue
+        try:
+            img = open_display(get_settings().photos_root / p.rel_path, p.rotation, max_size=DETECT_EDGE)
+        except Exception as exc:
+            log.warning("age estimate: can't open %s: %s", p.rel_path, exc)
+            totals["failed"] += len(faces)
+            continue
+        results = []
+        for f in faces:
+            try:
+                group, age = ager(img, rotate_box((f.x, f.y, f.w, f.h), f.frame_rotation, p.rotation))
+            except Exception as exc:
+                log.warning("age estimate failed for face %s: %s", f.id, exc)
+                totals["failed"] += 1
+                continue
+            results.append((f, group, age))
+        with session_scope() as s:
+            for f, group, age in results:
+                if update_if(s, Face, f.id, Face.age_ver == f.age_ver, Face.x == f.x, Face.y == f.y,
+                             Face.frame_rotation == f.frame_rotation,
+                             est_age=round(age, 1), age_group=group, age_ver=AGE_VERSION):
+                    totals["estimated"] += 1
+        done += len(faces)
+    return totals
 
 
 def run_embed_missing(ctx: JobContext = NULL_CTX, embedder=None) -> dict:
@@ -323,8 +375,8 @@ def photo_year(photo: Optional[Photo]) -> Optional[int]:
 def known_age(photo: Optional[Photo], person: Optional[Person]) -> Optional[int]:
     """This person's age in this photo: the photo's year minus their birth year, or None.
 
-    How old a face *looks* (Face.est_age) is deliberately not used: the face-age model read
-    young children as ~25-30 on real scans, measured against known ages."""
+    How old a face *looks* (Face.est_age) is deliberately not used here: it's only an age group
+    estimate (faces.estimate_age), while a birth year gives the age exactly."""
     year = photo_year(photo)
     if person is None or person.birth_year is None or year is None:
         return None
