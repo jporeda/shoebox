@@ -428,3 +428,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .photo-view__filename { font-weight: 600; overflow-wrap: anywhere; }
 .photo-view__folder { overflow-wrap: anywhere; min-width: 0; }
 .photo-view__rotate { display: flex; gap: 6px; }
+.nearby-dates { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

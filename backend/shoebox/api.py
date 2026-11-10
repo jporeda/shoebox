@@ -65,8 +65,18 @@ class PhotoSummary(BaseModel):
     height: Optional[int]
 
 
+class NearbyDate(BaseModel):
+    photo_id: int
+    offset: int  # files away in the album folder: negative = before this photo, positive = after
+    label: str  # the date someone set on that photo, e.g. "1987-06-14", "1987-06", "1987"
+    year: int
+
+
 class PhotoDetail(PhotoSummary):
     album_name: str
+    # The nearest photo before and after this one in its album (within estimate.SURROUNDING
+    # files) that has a date someone set: offered as "same date as" / "similar date" choices.
+    nearby_dates: list[NearbyDate]
     # The folder holding the original on the Mac (PHOTO_ROOT from private/.env plus the album
     # path), for pasting into Finder's Go to Folder. None when PHOTO_ROOT isn't known (CLI, tests).
     source_folder: Optional[str] = None
@@ -300,6 +310,25 @@ def _host_folder(rel_path: str) -> Optional[str]:
     return str(PurePosixPath(root) / PurePosixPath(rel_path).parent) if root else None
 
 
+def _nearby_dates(s: Session, p: Photo) -> list[NearbyDate]:
+    from .estimate import SURROUNDING
+
+    rows = s.exec(
+        select(Photo).where(
+            Photo.album_id == p.album_id, Photo.id != p.id, Photo.missing == False,  # noqa: E712
+            Photo.t_year != None,  # noqa: E711
+            Photo.list_index >= p.list_index - SURROUNDING, Photo.list_index <= p.list_index + SURROUNDING,
+        )
+    ).all()
+    before = max((r for r in rows if r.list_index < p.list_index), key=lambda r: r.list_index, default=None)
+    after = min((r for r in rows if r.list_index > p.list_index), key=lambda r: r.list_index, default=None)
+    return [
+        NearbyDate(photo_id=r.id, offset=r.list_index - p.list_index, year=r.t_year,
+                   label=format_partial(r.t_year, r.t_month, r.t_day, r.t_precision, r.t_min, r.t_max))
+        for r in (before, after) if r is not None
+    ]
+
+
 def _detail(s: Session, p: Photo) -> PhotoDetail:
     base = summarize(p, _labels(s))
     members = (
@@ -309,6 +338,7 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
         **base.model_dump(),
         album_name=s.get(Album, p.album_id).name,
         source_folder=_host_folder(p.rel_path),
+        nearby_dates=_nearby_dates(s, p),
         back_rel_path=p.back_rel_path,
         caption=p.caption,
         country=p.country,

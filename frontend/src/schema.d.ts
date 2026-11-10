@@ -978,6 +978,17 @@ export interface components {
             /** Into Id */
             into_id: number;
         };
+        /** NearbyDate */
+        NearbyDate: {
+            /** Photo Id */
+            photo_id: number;
+            /** Offset */
+            offset: number;
+            /** Label */
+            label: string;
+            /** Year */
+            year: number;
+        };
         /** NeighbourOut */
         NeighbourOut: {
             /** Id */
@@ -1097,6 +1108,8 @@ export interface components {
             height: number | null;
             /** Album Name */
             album_name: string;
+            /** Nearby Dates */
+            nearby_dates: components["schemas"]["NearbyDate"][];
             /** Source Folder */
             source_folder?: string | null;
             /** Back Rel Path */

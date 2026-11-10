@@ -12,6 +12,7 @@ export type EditBatch = S["EditBatchOut"];
 export type EventKind = S["EventKindOut"];
 export type EventInstance = S["EventInstanceOut"];
 export type Place = S["PlaceOut"];
+export type NearbyDate = S["NearbyDate"];
 export type ParsedDate = S["ParsedDate"];
 export type Job = S["JobOut"];
 export type JobType = S["JobIn"]["type"];

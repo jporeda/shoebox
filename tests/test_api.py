@@ -67,3 +67,19 @@ def test_photo_detail_shows_the_originals_folder_on_the_mac(album_tree, env, mon
         d = c.get(f"/api/photos/{pid}").json()
     album_dir = d["rel_path"].rsplit("/", 1)[0]
     assert d["source_folder"] == f"/Users/you/Pictures/FamilyScans/{album_dir}"
+
+
+def test_photo_detail_offers_the_nearest_dated_photos_before_and_after(album_tree, env):
+    from conftest import api_client
+    from shoebox.ingest import run_ingest
+
+    run_ingest()
+    with api_client() as c:
+        items = c.get("/api/photos", params={"order": "album"}).json()["items"]
+        album = [p for p in items if p["album_id"] == items[0]["album_id"]]
+        first, middle, last = album[0]["id"], album[1]["id"], album[2]["id"]
+        c.patch("/api/photos", json={"ids": [first], "date": "1987-06-14"})
+        c.patch("/api/photos", json={"ids": [last], "date": "1988"})
+        near = c.get(f"/api/photos/{middle}").json()["nearby_dates"]
+    assert [(n["photo_id"], n["offset"] < 0, n["label"], n["year"]) for n in near] == [
+        (first, True, "1987-06-14", 1987), (last, False, "1988", 1988)]

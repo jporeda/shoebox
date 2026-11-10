@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, imgUrl, type ListParams } from "./api";
+import { api, imgUrl, type ListParams, type NearbyDate } from "./api";
 import { DateEventEditor, PlaceEditor } from "./Editor";
 import { AcceptGuesses, FaceLayer } from "./FaceLayer";
 import { usePhotos, useUpdatePhotos } from "./hooks";
@@ -145,6 +145,13 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
               )}
             </div>
           )}
+          {p.status === "inferred" && p.nearby_dates.length > 0 && (
+            <NearbyDateChoices
+              nearby={p.nearby_dates}
+              busy={update.isPending}
+              onPick={(date) => update.mutate({ ids: [p.id], date, date_source: "accepted" })}
+            />
+          )}
           {p.back_transcription && (
             <div>
               <span className="facts__k">Back reads</span>
@@ -283,6 +290,27 @@ function SourceFile({ rel, folder, albumId, children }: { rel: string; folder: s
       )}
       <a className="btn btn--ghost" href={gridHref({ album_id: albumId })}>Open album</a>
       {children}
+    </div>
+  );
+}
+
+/** Dates set on the nearest photos before and after this one in its album: take one exactly, or a
+ *  similar date (about that year, ±2 years). Shown while this photo's date is still an estimate. */
+function NearbyDateChoices({ nearby, busy, onPick }: { nearby: NearbyDate[]; busy: boolean; onPick: (date: string) => void }) {
+  const closest = [...nearby].sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset))[0];
+  const exact = nearby.filter((n, i) => nearby.findIndex((m) => m.label === n.label) === i); // one button per distinct date
+  const where = (n: NearbyDate) => `${Math.abs(n.offset)} photo${Math.abs(n.offset) === 1 ? "" : "s"} ${n.offset < 0 ? "before" : "after"}`;
+  return (
+    <div className="nearby-dates">
+      <span className="facts__k">Nearby</span>
+      {exact.map((n) => (
+        <button key={n.photo_id} className="btn btn--ghost" disabled={busy} onClick={() => onPick(n.label)} title={`The date set on the photo ${where(n)}`}>
+          Same date: {n.label} <span className="muted small">({where(n)})</span>
+        </button>
+      ))}
+      <button className="btn btn--ghost" disabled={busy} onClick={() => onPick(`~${closest.year}`)} title={`About ${closest.year}, give or take 2 years`}>
+        Similar date: ~{closest.year}
+      </button>
     </div>
   );
 }

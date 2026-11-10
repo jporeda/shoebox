@@ -2796,6 +2796,34 @@
     ],
     "title": "MergeIn"
    },
+   "NearbyDate": {
+    "properties": {
+     "photo_id": {
+      "type": "integer",
+      "title": "Photo Id"
+     },
+     "offset": {
+      "type": "integer",
+      "title": "Offset"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     }
+    },
+    "type": "object",
+    "required": [
+     "photo_id",
+     "offset",
+     "label",
+     "year"
+    ],
+    "title": "NearbyDate"
+   },
    "NeighbourOut": {
     "properties": {
      "id": {
@@ -3180,6 +3208,13 @@
       "type": "string",
       "title": "Album Name"
      },
+     "nearby_dates": {
+      "items": {
+       "$ref": "#/components/schemas/NearbyDate"
+      },
+      "type": "array",
+      "title": "Nearby Dates"
+     },
      "source_folder": {
       "anyOf": [
        {
@@ -3374,6 +3409,7 @@
      "width",
      "height",
      "album_name",
+     "nearby_dates",
      "back_rel_path",
      "caption",
      "country",
