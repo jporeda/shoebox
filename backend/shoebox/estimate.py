@@ -6,13 +6,13 @@ Evidence (each with a year range and a weight):
   neighbours  confirmed dates earlier/later in the same album, interpolated by position
   shared_people  dated photos within ``SURROUNDING`` files in the same album that show the same
               named people (the same people nearby in an album were usually photographed together)
-  age         a named person with a birth year and an estimated age in the photo
   file_name   years in the file name (e.g. Album3_1984_1986_0161 -> 1984-1986)
 
 Anchors for album-neighbour dating are dates a person entered or accepted, back dates
 a person typed, and — at reduced weight (``OCR_ANCHOR_TRUST``) — back dates read by
-OCR, which measured ~95% correct on these albums. Only faces a person named count for
-ages. Estimates are outputs only — never inputs — so one wrong guess can't spread. Estimates live in the ``i_*`` fields, never touch a
+OCR, which measured ~95% correct on these albums. How old a face *looks* is not used: the
+face-age model read young children as ~25-30 on real scans (measured against known ages), so it
+would date their photos decades late. Estimates are outputs only — never inputs — so one wrong guess can't spread. Estimates live in the ``i_*`` fields, never touch a
 date a person entered, show as "≈" in the UI, and export with ``date:estimated``.
 """
 
@@ -185,23 +185,6 @@ def _trusted_people(faces: Iterable[Face]) -> set[int]:
     return {f.person_id for f in faces if f.person_id and not f.ignored and f.source in TRUSTED_FACE_SOURCES}
 
 
-def age_evidence(faces: Iterable[Face], people: dict[int, Person]) -> list[Evidence]:
-    out = []
-    for f in faces:
-        person = people.get(f.person_id) if f.person_id else None
-        # Pets: the face-age model is for people, so a pet's "age" says nothing about the year.
-        if (person is None or person.kind == "pet" or person.birth_year is None or f.est_age is None or f.ignored
-                or f.source not in TRUSTED_FACE_SOURCES):
-            continue
-        age = max(0.0, f.est_age)
-        year = person.birth_year + round(age)
-        u = max(2, round(0.3 * age))  # face age estimates are much tighter for children
-        w = 0.6 if age < 10 else 0.45 if age < 20 else 0.3
-        out.append(Evidence("age", year, None, year - u, year + u, w,
-                            f"{person.name} looks about {round(age)} (born {person.birth_year})"))
-    return out
-
-
 def file_name_evidence(p: Photo) -> list[Evidence]:
     if p.name_year_min is None:
         return []
@@ -312,7 +295,6 @@ def estimate_for(p: Photo, world: World, window: int, own_back: bool = True) -> 
         + loose_back_evidence(p, world.loose_by_album.get(p.album_id, []), window)
         + neighbour_evidence(p, world.anchors_by_album.get(p.album_id, []), window)
         + shared_people_evidence(p, world.anchors_by_album.get(p.album_id, []), world.faces_by_photo, world.people)
-        + age_evidence(world.faces_by_photo.get(p.id, []), world.people)
         + file_name_evidence(p)
     )
     return combine(evidence)
@@ -325,7 +307,7 @@ def compute_estimates(world: World) -> dict[int, Optional[Estimate]]:
 
 def run_estimates(ctx: JobContext = NULL_CTX, album_id: Optional[int] = None) -> dict:
     run_id = f"est-{uuid.uuid4().hex[:8]}"
-    counts = {"own_back": 0, "loose_back": 0, "neighbours": 0, "shared_people": 0, "age": 0, "file_name": 0, "cleared": 0}
+    counts = {"own_back": 0, "loose_back": 0, "neighbours": 0, "shared_people": 0, "file_name": 0, "cleared": 0}
     with session_scope() as s:
         world = load_world(s, album_id)
         ctx.progress(0, len(world.photos), "estimating dates")
@@ -345,6 +327,6 @@ def run_estimates(ctx: JobContext = NULL_CTX, album_id: Optional[int] = None) ->
                 p.i_year, p.i_month, p.i_min, p.i_max, p.i_precision, p.i_confidence, p.i_source = new
                 p.i_run_id = run_id
                 s.add(p)
-    counts["estimated"] = sum(counts[k] for k in ("own_back", "loose_back", "neighbours", "shared_people", "age", "file_name"))
+    counts["estimated"] = sum(counts[k] for k in ("own_back", "loose_back", "neighbours", "shared_people", "file_name"))
     counts["run_id"] = run_id
     return counts

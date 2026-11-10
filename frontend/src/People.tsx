@@ -90,7 +90,7 @@ export function FaceThumb({
   /** The list Prev/Next walk through when a double-click opens the face's photo. */
   photoList?: ListParams;
 }) {
-  const who = face.person_name ?? (face.est_age != null ? `age ≈${Math.round(face.est_age)}` : "");
+  const who = face.person_name ?? ""; // no "age ≈N": the face-age model is unreliable on old scans
   const open = () => navigate(photoHref(face.photo_id, photoList));
   // Finger: tap toggles as with a mouse click; press and hold opens the photo (mouse: double-click).
   const press = useLongPress(open);
@@ -168,9 +168,9 @@ function Check() {
   return (
     <div className="clusters">
       <p className="muted small">
-        Faces the app thinks it recognizes, by person and best-guess age (5-year brackets, from the birth year where
-        you've set one, otherwise from how old the face looks), most confident first. <b>?</b> marks names it applied itself;{" "}
-        <i>maybe</i> marks suggestions it wasn't sure enough to apply (and every face that looks under 6).{" "}
+        Faces the app thinks it recognizes, by person and 5-year bracket (their age, where you've set a birth year;
+        otherwise the photos' years), most confident first. <b>?</b> marks names it applied itself;{" "}
+        <i>maybe</i> marks suggestions it wasn't sure enough to apply (and every young child: under 6 by their birth year).{" "}
         {touch ? "Tap" : "Click"} the wrong ones, then Confirm: the rest become confirmed and teach the matcher; the{" "}
         {touch ? "tapped" : "clicked"} ones are remembered as “not them”.
       </p>
@@ -180,11 +180,11 @@ function Check() {
   );
 }
 
-/** "age 5–9", "looks 5–9" or "age unknown": the bracket a Check group covers, and how it was guessed. */
+/** "age 5–9" (from the birth year), "photos 1980–84" (no birth year) or "undated": the group's bracket. */
 function ageLabel(group: ReviewGroup): string {
-  if (group.age_lo == null) return "age unknown";
-  const range = `${group.age_lo}–${group.age_lo + 4}`;
-  return group.age_basis === "looks" ? `looks ${range}` : group.age_basis === "mixed" ? `about ${range}` : `age ${range}`;
+  if (group.age_lo != null) return `age ${group.age_lo}–${group.age_lo + 4}`;
+  if (group.year_lo != null) return `photos ${group.year_lo}–${String(group.year_lo + 4).slice(-2)}`;
+  return "undated";
 }
 
 function CheckGroup({ group }: { group: ReviewGroup }) {

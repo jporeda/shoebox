@@ -1221,8 +1221,8 @@ export interface components {
             faces: components["schemas"]["FaceOut"][];
             /** Age Lo */
             age_lo?: number | null;
-            /** Age Basis */
-            age_basis?: ("birth_year" | "looks" | "mixed") | null;
+            /** Year Lo */
+            year_lo?: number | null;
             /** Person Total */
             person_total: number;
         };

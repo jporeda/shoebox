@@ -108,11 +108,10 @@ class ReviewGroup(BaseModel):
     person_id: int
     name: str
     faces: list[FaceOut]
-    # Best-guess age bracket for these faces (age_lo..age_lo+4), None if no guess is possible.
+    # The 5-year bracket these faces fall in: the person's age (age_lo..age_lo+4) when they have a
+    # birth year, else the photos' years (year_lo..year_lo+4); both None for undated photos.
     age_lo: Optional[int] = None
-    # How the ages were guessed: "birth_year" (photo year minus birth year), "looks" (the face's
-    # apparent age), or "mixed".
-    age_basis: Optional[Literal["birth_year", "looks", "mixed"]] = None
+    year_lo: Optional[int] = None
     person_total: int  # this person's faces to check across all brackets
 
 
@@ -336,19 +335,21 @@ def review_faces(s: Session = Depends(get_session)):
     for f in faces:
         by_person.setdefault(f.person_id or f.suggested_person_id, []).append(f)
     out = []
-    # People with the most to check first; within a person, youngest bracket first, unknown ages last.
+    # People with the most to check first; within a person, by age (or by year without a birth
+    # year), youngest or earliest first, undated photos last.
     for pid, members in sorted(by_person.items(), key=lambda kv: -len(kv[1])):
-        brackets: dict[Optional[int], list[tuple[Face, str]]] = {}
+        brackets: dict[tuple[int, Optional[int]], list[Face]] = {}
         for f in members:
-            age, basis = people.best_guess_age(f, photos.get(f.photo_id), persons.get(pid))
-            brackets.setdefault(None if age is None else int(age // 5) * 5, []).append((f, basis))
-        for lo in sorted(brackets, key=lambda b: (b is None, b or 0)):
-            group = sorted(brackets[lo], key=lambda fb: -(fb[0].confidence or 0))
-            bases = {b for _, b in group if b}
+            photo = photos.get(f.photo_id)
+            age = people.known_age(photo, persons.get(pid))
+            year = people.photo_year(photo)
+            key = (0, age // 5 * 5) if age is not None else (1, year // 5 * 5) if year is not None else (2, None)
+            brackets.setdefault(key, []).append(f)
+        for kind, lo in sorted(brackets, key=lambda k: (k[0], k[1] or 0)):
+            group = sorted(brackets[(kind, lo)], key=lambda f: -(f.confidence or 0))
             out.append(ReviewGroup(
-                person_id=pid, name=names[pid], faces=_faces_out(s, [f for f, _ in group]), age_lo=lo,
-                age_basis=None if not bases else bases.pop() if len(bases) == 1 else "mixed",
-                person_total=len(members),
+                person_id=pid, name=names[pid], faces=_faces_out(s, group), person_total=len(members),
+                age_lo=lo if kind == 0 else None, year_lo=lo if kind == 1 else None,
             ))
     return out
 

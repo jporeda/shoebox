@@ -315,17 +315,20 @@ def assign(s: Session, face_ids: list[int], person_id: Optional[int], descriptio
     return editlog.record(s, changes, description)
 
 
-def best_guess_age(face: Face, photo: Optional[Photo], person: Optional[Person]) -> tuple[Optional[float], Optional[str]]:
-    """How old this person probably is in this photo, and how that was worked out.
+def photo_year(photo: Optional[Photo]) -> Optional[int]:
+    """The photo's year: entered, else estimated."""
+    return None if photo is None else photo.t_year if photo.t_year is not None else photo.i_year
 
-    Prefers the photo's year (entered or estimated) minus the person's birth year; otherwise the
-    face's apparent age from the detector, which is only meaningful for people, not pets."""
-    year = None if photo is None else photo.t_year if photo.t_year is not None else photo.i_year
-    if person is not None and person.birth_year is not None and year is not None:
-        return float(max(0, year - person.birth_year)), "birth_year"
-    if face.est_age is not None and (person is None or person.kind != "pet"):
-        return max(0.0, face.est_age), "looks"
-    return None, None
+
+def known_age(photo: Optional[Photo], person: Optional[Person]) -> Optional[int]:
+    """This person's age in this photo: the photo's year minus their birth year, or None.
+
+    How old a face *looks* (Face.est_age) is deliberately not used: the face-age model read
+    young children as ~25-30 on real scans, measured against known ages."""
+    year = photo_year(photo)
+    if person is None or person.birth_year is None or year is None:
+        return None
+    return max(0, year - person.birth_year)
 
 
 def accept(s: Session, face_ids: list[int], description: str | None = None) -> Optional[str]:

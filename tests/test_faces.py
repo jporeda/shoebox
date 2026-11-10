@@ -342,16 +342,17 @@ def test_people_are_people_by_default_and_can_be_tagged_as_pets(photos, env, tmp
 
 
 def test_check_page_groups_a_persons_guesses_by_five_year_age_bracket(photos):
-    """250 guesses for one person are easier to check a few years at a time."""
+    """250 guesses for one person are easier to check a few years at a time: by age from the birth
+    year, else by the photos' years. How old a face *looks* is never used (the model is unreliable)."""
     calls = iter([[det(0.1, 0.1)], [det(0.1, 0.1)], [det(0.1, 0.1)], [det(0.1, 0.1)]])
     run_faces(detector=lambda rgb: next(calls))
     with session_scope() as s:
         sam = Person(name="Sam", birth_year=1980)
-        rex = Person(name="Rex")  # no birth year: falls back to how old the face looks
+        rex = Person(name="Rex")  # no birth year: grouped by the photo's year instead
         s.add_all([sam, rex])
         s.flush()
         ps = {p.id: p for p in s.exec(select(Photo)).all()}
-        for pid, year in zip(photos, (1982, 1984, 1991, None)):
+        for pid, year in zip(photos, (1982, 1984, 1991, 1983)):
             ps[pid].t_year = year
         faces = {f.photo_id: f for f in s.exec(select(Face)).all()}
         for pid, (person, age) in zip(photos, ((sam, 30), (sam, 30), (sam, 30), (rex, 7.6))):
@@ -359,7 +360,8 @@ def test_check_page_groups_a_persons_guesses_by_five_year_age_bracket(photos):
             f.person_id, f.source, f.confidence, f.est_age = person.id, "auto", 0.6, age
         sam_id, rex_id = sam.id, rex.id
     with api_client() as c:
-        groups = [(g["person_id"], g["age_lo"], g["age_basis"], len(g["faces"]), g["person_total"])
+        groups = [(g["person_id"], g["age_lo"], g["year_lo"], len(g["faces"]), g["person_total"])
                   for g in c.get("/api/faces/review").json()]
-    # Sam (3 to check): 1982 and 1984 → ages 2 and 4 → 0–4; 1991 → 11 → 10–14. Rex: looks 7.6 → 5–9.
-    assert groups == [(sam_id, 0, "birth_year", 2, 3), (sam_id, 10, "birth_year", 1, 3), (rex_id, 5, "looks", 1, 1)]
+    # Sam (3 to check): 1982 and 1984 → ages 2 and 4 → 0–4; 1991 → 11 → 10–14 (est_age 30 ignored).
+    # Rex has no birth year: his 1983 photo goes in the 1980–84 group, whatever his face "looks".
+    assert groups == [(sam_id, 0, None, 2, 3), (sam_id, 10, None, 1, 3), (rex_id, None, 1980, 1, 1)]

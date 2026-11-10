@@ -102,8 +102,10 @@ Anything that identifies your family stays out of git:
   4. **people nearby**: dated photos within 15 files in the same album that show the same
      people. Both only count dates you set and names you gave or confirmed; closer photos and
      more people in common weigh more;
-  5. **ages**: a named person with a birth year, and how old their face looks;
-  6. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
+  5. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
+
+  How old a face *looks* is never used: the face-age model read young children as 25–30 on
+  real scans. Ages come only from birth years, so set them on people's pages where you know them.
 
   When pieces of evidence agree, confidence goes up; disagreements are shown
   ("… but file name says 1990"). Estimates never overwrite a date you entered and
@@ -135,8 +137,8 @@ Anything that identifies your family stays out of git:
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as
-  "Name?" with a dashed box. Otherwise it suggests a name, and faces that look
-  under 6 are only ever suggested. Answer them under *People → Check* (click the
+  "Name?" with a dashed box. Otherwise it suggests a name, and children under 6
+  (by their birth year) are only ever suggested. Answer them under *People → Check* (click the
   wrong ones, then Confirm) or with Yes/No on a face box. "Not them" is
   remembered. Automatic names are never exported until you confirm them. The
   Jobs page can revert the names one run gave automatically; those faces then

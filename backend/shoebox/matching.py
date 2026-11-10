@@ -21,7 +21,7 @@ from .db import same, session_scope, update_if
 from .estimate import TRUSTED_FACE_SOURCES
 from .faces import from_blob
 from .jobs_ctx import NULL_CTX, JobContext
-from .models import Face, Photo
+from .models import Face, Person, Photo
 
 AUTO_SIMILARITY = 0.55
 AUTO_MARGIN = 0.10
@@ -49,7 +49,8 @@ def photo_year(p: Photo) -> Optional[int]:
     return p.t_year if p.t_year is not None else p.i_year
 
 
-def load_exemplars(faces: list[Face], years: dict[int, Optional[int]], exclude: set[int] = frozenset()) -> Optional[Exemplars]:
+def load_exemplars(faces: list[Face], years: dict[int, Optional[int]], exclude: set[int] = frozenset(),
+                   births: dict[int, Optional[int]] | None = None) -> Optional[Exemplars]:
     rows = [f for f in faces if f.person_id and f.source in TRUSTED_FACE_SOURCES and not f.ignored
             and f.embedding and f.id not in exclude]
     if not rows:
@@ -60,8 +61,20 @@ def load_exemplars(faces: list[Face], years: dict[int, Optional[int]], exclude: 
         vectors=v,
         person_ids=np.array([f.person_id for f in rows]),
         years=np.array([years.get(f.photo_id) if years.get(f.photo_id) is not None else math.nan for f in rows], float),
-        child=np.array([(f.est_age or 30) < 14 for f in rows]),
+        child=np.array([_is_child(f, years.get(f.photo_id), (births or {}).get(f.person_id)) for f in rows]),
     )
+
+
+def _is_child(f: Face, year: Optional[int], birth_year: Optional[int]) -> bool:
+    """Under 14 in this photo: from the birth year when known. Otherwise the face-age model, which
+    is unreliable (it reads young children as adults), so this rarely says yes without one."""
+    if birth_year is not None and year is not None:
+        return year - birth_year < 14
+    return (f.est_age or 30) < 14
+
+
+def known_age(year: Optional[int], birth_year: Optional[int]) -> Optional[int]:
+    return None if year is None or birth_year is None else max(0, year - birth_year)
 
 
 def match(emb: np.ndarray, year: Optional[int], ex: Exemplars, rejected: set[int] = frozenset()) -> Optional[Match]:
@@ -88,11 +101,13 @@ def match(emb: np.ndarray, year: Optional[int], ex: Exemplars, rejected: set[int
     return Match(pid, round(best, 3), round(best - second, 3))
 
 
-def decide(m: Optional[Match], est_age: Optional[float]) -> str:
-    """'auto' (apply), 'suggest', or 'none'."""
+def decide(m: Optional[Match], est_age: Optional[float], age: Optional[int] = None) -> str:
+    """'auto' (apply), 'suggest', or 'none'. Young children are only ever suggested: ``age`` is the
+    candidate's real age in the photo (from their birth year). A face the age model reads as young
+    also counts: that model reads children as *older*, so when it says "young" it's usually right."""
     if m is None or m.score < SUGGEST_SIMILARITY:
         return "none"
-    young = est_age is not None and est_age < MIN_AUTO_AGE
+    young = (age is not None and age < MIN_AUTO_AGE) or (est_age is not None and est_age < MIN_AUTO_AGE)
     if m.score >= AUTO_SIMILARITY and m.margin >= AUTO_MARGIN and not young:
         return "auto"
     return "suggest"
@@ -105,14 +120,15 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
         photos = {p.id: p for p in s.exec(select(Photo)).all()}
         years = {pid: photo_year(p) for pid, p in photos.items()}
         faces = list(s.exec(select(Face).where(Face.ignored == False)).all())  # noqa: E712
-        ex = load_exemplars(faces, years)
+        births = {p.id: p.birth_year for p in s.exec(select(Person)).all()}
+        ex = load_exemplars(faces, years, births=births)
         counts["exemplars"] = 0 if ex is None else len(ex.person_ids)
         # Unnamed faces of any kind, plus earlier automatic names (recomputed each run).
         targets = [f for f in faces if (f.person_id is None or f.source == "auto") and f.embedding]
         ctx.progress(0, len(targets), "suggesting names")
         for f in targets:
             m = match(from_blob(f.embedding), years.get(f.photo_id), ex, set(f.rejected_person_ids or [])) if ex else None
-            verdict = decide(m, f.est_age)
+            verdict = decide(m, f.est_age, known_age(years.get(f.photo_id), births.get(m.person_id)) if m else None)
             if verdict == "auto" and f.source != "auto":
                 verdict = "suggest"  # drawn/once-named faces are trusted; only a person names them
             new = (m.person_id if verdict == "auto" else None, m.person_id if verdict == "suggest" else None)

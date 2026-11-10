@@ -3699,21 +3699,16 @@
       ],
       "title": "Age Lo"
      },
-     "age_basis": {
+     "year_lo": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "birth_year",
-         "looks",
-         "mixed"
-        ]
+        "type": "integer"
        },
        {
         "type": "null"
        }
       ],
-      "title": "Age Basis"
+      "title": "Year Lo"
      },
      "person_total": {
       "type": "integer",
