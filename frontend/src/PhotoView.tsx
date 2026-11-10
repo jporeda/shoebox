@@ -205,7 +205,13 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
             <div className="error">Original file changed or missing since import — re-run Import.</div>
           )}
         </div>
-        <DateEventEditor ids={[p.id]} currentDate={p.date_label} currentEvent={p.event_label} />
+        <DateEventEditor
+          ids={[p.id]}
+          currentDate={p.date_label}
+          currentEvent={p.event_label}
+          datePicker
+          currentExactDay={/^\d{4}-\d{2}-\d{2}$/.test(p.trusted_label) ? p.trusted_label : null}
+        />
         <PlaceEditor ids={[p.id]} current={{ country: p.country, state: p.state, city: p.city }} />
         <CaptionEditor id={p.id} caption={p.caption ?? ""} />
       </div>

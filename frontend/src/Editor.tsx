@@ -24,10 +24,13 @@ type Props = {
   currentEvent?: string | null;
   autoFocus?: boolean;
   compact?: boolean;
+  /** Photo detail: a calendar for picking an exact day, pre-set to the photo's day when it has one. */
+  currentExactDay?: string | null;
+  datePicker?: boolean;
 };
 
 /** Date + event entry used by both the bulk bar and photo detail. */
-export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, compact }: Props) {
+export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, compact, currentExactDay, datePicker }: Props) {
   const [date, setDate] = useState("");
   const [kindId, setKindId] = useState<string>("");
   const [label, setLabel] = useState("");
@@ -119,6 +122,21 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
             {parsed ? (parsed.ok ? `→ ${parsed.label}` : parsed.error) : " "}
           </span>
         </label>
+        {datePicker && (
+          <label className="field">
+            <span className="field__label">Exact day</span>
+            <input
+              type="date"
+              className="editor__daypicker"
+              min="1850-01-01"
+              max={new Date().toISOString().slice(0, 10)}
+              // What's typed (when it's a whole day), else the photo's own day, else empty.
+              value={/^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : !date.trim() ? currentExactDay ?? "" : ""}
+              onChange={(e) => e.target.value && setDate(e.target.value)}
+            />
+            <span className="field__hint">&nbsp;</span>
+          </label>
+        )}
         <label className="field">
           <span className="field__label">
             Event {currentEvent ? <em className="muted">now {currentEvent}</em> : null}
