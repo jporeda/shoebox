@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Job, type JobType } from "./api";
-import { useUndo } from "./hooks";
+import { useJobs, useUndo } from "./hooks";
 
 const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[] = [
   { type: "ingest", label: "Import", help: "Scan the photo folder: new albums, photos, back scans, duplicates, thumbnails. Then auto-rotates." },
@@ -55,11 +55,7 @@ const LABEL: Record<string, string> = { faces: "Find faces", cluster: "Group fac
 
 export function Jobs() {
   const qc = useQueryClient();
-  const jobs = useQuery({
-    queryKey: ["jobs"],
-    queryFn: api.jobs,
-    refetchInterval: (q) => (q.state.data?.some((j) => ["queued", "running", "cancelling"].includes(j.state)) ? 1000 : 5000),
-  });
+  const jobs = useJobs();
   const start = useMutation({
     mutationFn: ({ type, params }: { type: JobType; params?: Record<string, unknown> }) => api.startJob(type, params),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
@@ -68,14 +64,7 @@ export function Jobs() {
 
   const active = new Set(jobs.data?.filter((j) => ["queued", "running"].includes(j.state)).map((j) => j.type));
 
-  // When a job finishes, photos/albums/stats may have changed: refresh everything.
-  const running = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const now = new Set(jobs.data?.filter((j) => ["queued", "running", "cancelling"].includes(j.state)).map((j) => j.id));
-    const finished = [...running.current].some((id) => !now.has(id));
-    running.current = now;
-    if (finished) qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "jobs" });
-  }, [jobs.data, qc]);
+  // App's useJobWatcher refreshes everything when a job finishes.
 
   return (
     <div className="jobs pad">

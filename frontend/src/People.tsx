@@ -175,7 +175,7 @@ function Check() {
         {touch ? "tapped" : "clicked"} ones are remembered as “not them”.
       </p>
       {review.data?.length === 0 && <p className="empty">Nothing to check. Name more faces, or run “Infer dates & names”.</p>}
-      {review.data?.map((g) => <CheckGroup key={`${g.person_id}:${g.age_lo ?? "?"}`} group={g} />)}
+      {review.data?.map((g) => <CheckGroup key={`${g.person_id}:${g.age_lo ?? "-"}:${g.year_lo ?? "-"}`} group={g} />)}
     </div>
   );
 }
@@ -214,6 +214,9 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
       setWrong(new Set());
       invalidate();
       qc.invalidateQueries({ queryKey: ["faceReview"] });
+      // Confirming queues "Infer dates & names", which re-matches the other faces; looking at the
+      // jobs now lets App's job watcher refresh this page again when that run finishes.
+      qc.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
   return (

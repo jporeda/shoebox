@@ -8,6 +8,33 @@ export const useEventKinds = () => useQuery({ queryKey: ["eventKinds"], queryFn:
 export const usePlaces = () => useQuery({ queryKey: ["places"], queryFn: api.places });
 export const useYears = () => useQuery({ queryKey: ["years"], queryFn: api.years });
 export const useEventInstances = () => useQuery({ queryKey: ["eventInstances"], queryFn: api.eventInstances });
+const ACTIVE = ["queued", "running", "cancelling"];
+
+/** The job list, polled every second while a job is queued or running, else every 10 s. */
+export const useJobs = () =>
+  useQuery({
+    queryKey: ["jobs"],
+    queryFn: api.jobs,
+    refetchInterval: (q) => (q.state.data?.some((j) => ACTIVE.includes(j.state)) ? 1000 : 10000),
+  });
+
+/** Mounted once in App: when any job finishes, on any page, the data it may have changed is
+ *  refetched (e.g. the "Infer dates & names" run that confirming faces on Check starts). Compares
+ *  finished job ids rather than watching running ones, so a job that starts and finishes between
+ *  two polls still counts. */
+export function useJobWatcher() {
+  const qc = useQueryClient();
+  const jobs = useJobs();
+  const finished = useRef<Set<number> | null>(null);
+  useEffect(() => {
+    if (!jobs.data) return;
+    const now = new Set(jobs.data.filter((j) => !ACTIVE.includes(j.state)).map((j) => j.id));
+    const seen = finished.current;
+    finished.current = now;
+    if (seen && [...now].some((id) => !seen.has(id))) qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "jobs" });
+  }, [jobs.data, qc]);
+}
+
 export const usePhotos = (list: ListParams) =>
   useQuery({ queryKey: ["photos", list], queryFn: () => api.photos(list), placeholderData: (prev) => prev });
 

@@ -6,7 +6,7 @@ import { Jobs } from "./Jobs";
 import { LooseBacks } from "./LooseBacks";
 import { PeoplePage, PersonPage } from "./People";
 import { PhotoView } from "./PhotoView";
-import { useStats, useUndo } from "./hooks";
+import { useJobWatcher, useStats, useUndo } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { useRoute } from "./route";
 
@@ -15,6 +15,7 @@ const UNDO_CONFIRM_ABOVE = 20;
 
 export function App() {
   const route = useRoute();
+  useJobWatcher();
   const stats = useStats();
   const undo = useUndo();
   const [toast, setToast] = useState("");
