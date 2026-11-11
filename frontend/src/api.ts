@@ -113,7 +113,7 @@ export const api = {
   eventInstances: () => call<EventInstance[]>("/event-instances"),
   years: () => call<YearCount[]>("/years"),
   settings: () => call<SettingsInfo>("/settings"),
-  saveSettings: (body: { twin_margin_percent: number }) =>
+  saveSettings: (body: { twin_margin_percent?: number; snapshot_gap_minutes?: number }) =>
     call<SettingsInfo>("/settings", { method: "PUT", body: JSON.stringify(body) }),
   collections: () => call<CollectionInfo[]>("/collections"),
   jobs: () => call<Job[]>("/jobs"),

@@ -494,16 +494,26 @@ class SettingsOut(BaseModel):
     # percentage points (the % shown on name guesses). Per collection.
     twin_margin_percent: int
     twin_margin_default: int
+    # At most one database snapshot per this many minutes after jobs (0 = after every job).
+    snapshot_gap_minutes: int
+    snapshot_gap_default: int
 
 
 class SettingsIn(BaseModel):
-    twin_margin_percent: int = Field(ge=0, le=50)
+    # Each one is saved only if given.
+    twin_margin_percent: Optional[int] = Field(None, ge=0, le=50)
+    snapshot_gap_minutes: Optional[int] = Field(None, ge=0, le=1440)
 
 
 def _settings_out(s: Session) -> SettingsOut:
+    from .backup import SNAPSHOT_GAP_DEFAULT, SNAPSHOT_GAP_KEY
+    from .db import get_meta
     from .matching import TWIN_MARGIN, twin_margin
 
-    return SettingsOut(twin_margin_percent=round(twin_margin(s) * 100), twin_margin_default=round(TWIN_MARGIN * 100))
+    return SettingsOut(
+        twin_margin_percent=round(twin_margin(s) * 100), twin_margin_default=round(TWIN_MARGIN * 100),
+        snapshot_gap_minutes=int(get_meta(s, SNAPSHOT_GAP_KEY, SNAPSHOT_GAP_DEFAULT)), snapshot_gap_default=SNAPSHOT_GAP_DEFAULT,
+    )
 
 
 @router.get("/settings", response_model=SettingsOut)
@@ -513,10 +523,14 @@ def get_settings_api(s: Session = Depends(get_session)):
 
 @router.put("/settings", response_model=SettingsOut)
 def save_settings(body: SettingsIn, s: Session = Depends(get_session)):
+    from .backup import SNAPSHOT_GAP_KEY
     from .db import set_meta
     from .matching import TWIN_MARGIN_KEY, twin_margin
 
-    if round(twin_margin(s) * 100) != body.twin_margin_percent:
+    if body.snapshot_gap_minutes is not None:
+        set_meta(s, SNAPSHOT_GAP_KEY, body.snapshot_gap_minutes)
+        s.commit()
+    if body.twin_margin_percent is not None and round(twin_margin(s) * 100) != body.twin_margin_percent:
         set_meta(s, TWIN_MARGIN_KEY, body.twin_margin_percent)
         s.commit()
         jobs.enqueue("estimate")  # re-suggest names with the new margin

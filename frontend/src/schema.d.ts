@@ -1399,7 +1399,9 @@ export interface components {
         /** SettingsIn */
         SettingsIn: {
             /** Twin Margin Percent */
-            twin_margin_percent: number;
+            twin_margin_percent?: number | null;
+            /** Snapshot Gap Minutes */
+            snapshot_gap_minutes?: number | null;
         };
         /** SettingsOut */
         SettingsOut: {
@@ -1407,6 +1409,10 @@ export interface components {
             twin_margin_percent: number;
             /** Twin Margin Default */
             twin_margin_default: number;
+            /** Snapshot Gap Minutes */
+            snapshot_gap_minutes: number;
+            /** Snapshot Gap Default */
+            snapshot_gap_default: number;
         };
         /** Stats */
         Stats: {

@@ -225,7 +225,8 @@ def run_job(job_id: int) -> None:
         if job_type not in NO_BACKUP_AFTER:
             from .backup import run_backup
 
-            result = {**result, "backup": run_backup(f"after-{job_type}")}
+            # After a restore the database was replaced wholesale: always keep a snapshot of it.
+            result = {**result, "backup": run_backup(f"after-{job_type}", after_job=job_type != "restore")}
         state, error = "done", None
     except JobCancelled:
         result, state, error = {}, "cancelled", None

@@ -4215,16 +4215,33 @@
    "SettingsIn": {
     "properties": {
      "twin_margin_percent": {
-      "type": "integer",
-      "maximum": 50.0,
-      "minimum": 0.0,
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 50.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Twin Margin Percent"
+     },
+     "snapshot_gap_minutes": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 1440.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Snapshot Gap Minutes"
      }
     },
     "type": "object",
-    "required": [
-     "twin_margin_percent"
-    ],
     "title": "SettingsIn"
    },
    "SettingsOut": {
@@ -4236,12 +4253,22 @@
      "twin_margin_default": {
       "type": "integer",
       "title": "Twin Margin Default"
+     },
+     "snapshot_gap_minutes": {
+      "type": "integer",
+      "title": "Snapshot Gap Minutes"
+     },
+     "snapshot_gap_default": {
+      "type": "integer",
+      "title": "Snapshot Gap Default"
      }
     },
     "type": "object",
     "required": [
      "twin_margin_percent",
-     "twin_margin_default"
+     "twin_margin_default",
+     "snapshot_gap_minutes",
+     "snapshot_gap_default"
     ],
     "title": "SettingsOut"
    },

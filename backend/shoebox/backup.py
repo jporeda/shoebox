@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -328,10 +329,35 @@ def fixity_due() -> bool:
     return datetime.fromisoformat(last) < utcnow() - timedelta(days=get_settings().fixity_interval_days)
 
 
-def run_backup(reason: str = "manual") -> dict:
+# A database snapshot after a job is skipped if the last one is newer than this many minutes
+# (Settings page, per collection; 0 = after every job). Tagging queues a job for nearly every
+# edit, and each snapshot is a full copy of the database: this keeps that from wearing out an SD
+# card or filling the backup disk. truth.json is still written after every job.
+SNAPSHOT_GAP_KEY = "snapshot_gap_minutes"
+SNAPSHOT_GAP_DEFAULT = 30
+
+
+def snapshot_gap_minutes() -> int:
+    with session_scope() as s:
+        return int(get_meta(s, SNAPSHOT_GAP_KEY, SNAPSHOT_GAP_DEFAULT))
+
+
+def _minutes_since_last_snapshot() -> float | None:
+    newest = max((p.stat().st_mtime for p in (get_settings().backup_dir / "db").glob("shoebox-*.db")), default=None)
+    return None if newest is None else (time.time() - newest) / 60
+
+
+def run_backup(reason: str = "manual", after_job: bool = False) -> dict:
+    """Snapshot the database, export truth.json and write the manifest. ``after_job``: the
+    automatic backup after a job, whose snapshot is skipped if one was taken recently."""
     truth = export_truth()
+    gap, since = (snapshot_gap_minutes(), _minutes_since_last_snapshot()) if after_job else (0, None)
+    if gap > 0 and since is not None and since < gap:
+        snap = f"skipped: the last snapshot is {since:.0f} min old (Settings: at most one every {gap} min)"
+    else:
+        snap = str(snapshot(reason))
     return {
-        "snapshot": str(snapshot(reason)),
+        "snapshot": snap,
         "truth": str(truth) if truth else "not updated: truth.json belongs to another database (run Restore)",
         "manifest": str(write_manifest()),
     }

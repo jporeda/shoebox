@@ -490,6 +490,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 }
 .person-note { margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--warn, #c80); background: var(--panel); }
 .settings { max-width: 720px; }
+.settings__item + .settings__item { margin-top: 12px; }
 .settings__item { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--panel); }
 .settings__item h3 { margin: 0 0 6px; font-size: 15px; }
 .settings__field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }

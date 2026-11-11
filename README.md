@@ -211,8 +211,8 @@ Anything that identifies your family stays out of git:
 | Layer | Location | Contents |
 |---|---|---|
 | Live | Docker volume `shoebox-data` | SQLite DB, thumbnails |
-| Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after every job (the newest 10, then one per hour, day, week and month going back a year) and before schema upgrades (never deleted automatically) |
-| Permanent | `BACKUP_ROOT/truth/truth.json` | Everything you entered, keyed by file hash; `history/` keeps older versions |
+| Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after jobs, at most one every 30 minutes (*Settings*; a manual Backup and Restore always take one), kept as the newest 10, then one per hour, day, week and month going back a year; and before schema upgrades (never deleted automatically) |
+| Permanent | `BACKUP_ROOT/truth/truth.json` | Everything you entered, keyed by file hash, written after every job; `history/` keeps older versions |
 | Permanent | `BACKUP_ROOT/manifest-sha256.txt` | Checksums of every original |
 | Output | `BACKUP_ROOT/export/` | Copies of every photo with embedded metadata (undated ones in `undated/`) |
 | Output | `BACKUP_ROOT/sidecars/` | `file.jpg.xmp` sidecars mirroring the photo tree |

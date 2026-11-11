@@ -148,3 +148,43 @@ def downgrade():
     with db.get_engine().connect() as conn:
         assert conn.exec_driver_sql("SELECT count(*) FROM face JOIN photo ON face.photo_id = photo.id").scalar() == 1
         assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1  # enforcement is back on
+
+
+def test_snapshots_after_jobs_are_at_most_one_per_setting_minutes(album_tree, env):
+    import os
+    import time
+
+    from conftest import api_client
+    from shoebox.backup import SNAPSHOT_GAP_DEFAULT
+
+    def snaps():
+        return sorted((env.backup_dir / "db").glob("shoebox-*-after-*.db"))
+
+    def run(job_type):
+        job = jobs.enqueue(job_type)
+        jobs.run_job(jobs._claim())
+        with session_scope() as s:
+            result = s.get(Job, job.id).result
+            return result.get("backup", result)  # the Backup job's own result is the backup
+
+    assert SNAPSHOT_GAP_DEFAULT == 30
+    run("estimate")
+    assert len(snaps()) == 1  # the first one is always taken
+    second = run("estimate")
+    assert second["snapshot"].startswith("skipped") and len(snaps()) == 1
+    truth = env.backup_dir / "truth" / "truth.json"
+    assert truth.exists()  # truth.json is still written after every job
+    old = time.time() - 31 * 60  # half an hour later...
+    os.utime(snaps()[0], (old, old))
+    run("estimate")
+    assert len(snaps()) == 2
+    with api_client() as c:  # 0: after every job, as before
+        assert c.put("/api/settings", json={"snapshot_gap_minutes": 0}).json()["snapshot_gap_minutes"] == 0
+        assert c.put("/api/settings", json={"snapshot_gap_minutes": -1}).status_code == 422
+    run("estimate")
+    assert len(snaps()) == 3
+    # A manual backup always takes one.
+    with api_client() as c:
+        c.put("/api/settings", json={"snapshot_gap_minutes": 30})
+    run("backup")
+    assert len(list((env.backup_dir / "db").glob("shoebox-*-manual.db"))) == 1

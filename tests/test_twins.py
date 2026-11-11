@@ -402,7 +402,8 @@ def test_twin_margin_is_a_setting_that_defaults_to_the_built_in_one(env):
         s.flush()
         alone_id, ben_id = alone.id, ben.id
     with api_client() as c:
-        assert c.get("/api/settings").json() == {"twin_margin_percent": round(TWIN_MARGIN * 100), "twin_margin_default": round(TWIN_MARGIN * 100)}
+        got = c.get("/api/settings").json()
+        assert (got["twin_margin_percent"], got["twin_margin_default"]) == (round(TWIN_MARGIN * 100),) * 2
         assert c.put("/api/settings", json={"twin_margin_percent": 51}).status_code == 422
         assert c.put("/api/settings", json={"twin_margin_percent": 0}).json()["twin_margin_percent"] == 0
         assert any(j["type"] == "estimate" for j in c.get("/api/jobs").json())  # suggestions are redone
