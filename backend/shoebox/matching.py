@@ -29,7 +29,16 @@ SUGGEST_SIMILARITY = 0.35
 MIN_AUTO_AGE = 6
 TOP_K = 3
 # Known twins (people paired on a "one of two" face) closer than this are suggested as "Ana or Ben?".
+# The default; the Settings page can change it per collection (twin_margin()).
 TWIN_MARGIN = AUTO_MARGIN
+TWIN_MARGIN_KEY = "twin_margin_percent"
+
+
+def twin_margin(s) -> float:
+    """How close two twins' match scores must be to suggest "Ana or Ben?" (0..1), from Settings."""
+    from .db import get_meta
+
+    return get_meta(s, TWIN_MARGIN_KEY, round(TWIN_MARGIN * 100)) / 100
 
 
 @dataclass
@@ -104,12 +113,13 @@ def match(emb: np.ndarray, year: Optional[int], ex: Exemplars, rejected: set[int
     return Match(pid, round(best, 3), round(best - second, 3), scores[1][1] if len(scores) > 1 else None)
 
 
-def twin_guess(m: Match, twins: dict[int, set[int]], sure_here: set[int]) -> tuple[int, Optional[int]] | None:
+def twin_guess(m: Match, twins: dict[int, set[int]], sure_here: set[int],
+               margin: float = TWIN_MARGIN) -> tuple[int, Optional[int]] | None:
     """For a face matched to ``m.person_id``: (person, None) or (person, twin) to suggest instead
     of the plain match, or None to suggest nothing. ``sure_here`` is who's already confirmed on
     the photo's other faces; one person can't be there twice."""
     mine = twins.get(m.person_id, set())
-    if m.runner_up in mine and m.margin < TWIN_MARGIN:
+    if m.runner_up in mine and m.margin < margin:
         pair = {m.person_id, m.runner_up}
         left = pair - sure_here
         if not left:
@@ -137,7 +147,7 @@ def decide(m: Optional[Match], est_age: Optional[float], age: Optional[int] = No
 
 
 def two_twins(a: Optional[Match], b: Optional[Match], twins: dict[int, set[int]],
-              rejected: list[set[int]]) -> tuple[int, int] | None:
+              rejected: list[set[int]], margin: float = TWIN_MARGIN) -> tuple[int, int] | None:
     """A photo with just two faces, each matching one of a pair of twins: (Ana, Ben) to suggest
     "Ana or Ben?" on both, else None.
 
@@ -154,7 +164,7 @@ def two_twins(a: Optional[Match], b: Optional[Match], twins: dict[int, set[int]]
         if other is None:
             return None
     elif b.person_id in twins.get(a.person_id, set()):
-        if a.margin >= TWIN_MARGIN and b.margin >= TWIN_MARGIN:
+        if a.margin >= margin and b.margin >= margin:
             return None  # clearly one each
         other = b.person_id
     else:
@@ -188,6 +198,7 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
         from .people import name_order
 
         names = {p.id: p.name for p in s.exec(select(Person)).all()}
+        margin = twin_margin(s)
         ctx.progress(0, len(targets), "suggesting names")
         # First each face's own guess: (who, alt) and "auto" / "suggest" / "none"...
         plan: dict[int, tuple[Face, Optional[Match], str, Optional[int], Optional[int]]] = {}
@@ -198,7 +209,7 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
                 verdict = "suggest"  # drawn/once-named faces are trusted; only a person names them
             who, alt = m.person_id if m else None, None
             if verdict != "none":
-                guess = twin_guess(m, twins, sure.get(f.photo_id, set()))
+                guess = twin_guess(m, twins, sure.get(f.photo_id, set()), margin)
                 if guess is None:
                     verdict = "none"
                 else:
@@ -214,7 +225,7 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
             if len(ids) == 2 and all(i in plan for i in ids):
                 a, b = (plan[i] for i in ids)
                 pair = two_twins(a[1] if a[2] != "none" else None, b[1] if b[2] != "none" else None, twins,
-                                 [set(a[0].rejected_person_ids or []), set(b[0].rejected_person_ids or [])])
+                                 [set(a[0].rejected_person_ids or []), set(b[0].rejected_person_ids or [])], margin)
                 if pair:
                     for f, m, _, _, _ in (a, b):
                         plan[f.id] = (f, m, "suggest", *pair)

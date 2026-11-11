@@ -376,3 +376,41 @@ def test_a_photo_of_just_the_two_twins_suggests_the_pair_on_both_faces(env):
         got = lambda i: (s.get(Face, i).person_id, s.get(Face, i).suggested_person_id, s.get(Face, i).suggested_alt_person_id)
         assert [got(i) for i in both_ids] == [(None, ana_id, ben_id)] * 2
         assert got(crowd_ids[0])[2] is None and got(crowd_ids[1])[2] is None  # not two faces: as before
+
+
+def test_twin_margin_is_a_setting_that_defaults_to_the_built_in_one(env):
+    from shoebox.matching import TWIN_MARGIN
+    for i in range(3):
+        make_image(env.photos_root / "A1" / f"p{i}.jpg", i)
+    run_ingest()
+    look = unit(21)  # the twins look the same to the face model
+    with session_scope() as s:
+        p0, p1, p2 = s.exec(select(Photo).order_by(Photo.rel_path)).all()
+        ana, ben = Person(name="Ana"), Person(name="Ben")
+        s.add_all([ana, ben])
+        s.flush()
+        n = iter(range(1000))
+        def face(p, x, **kw):
+            noise = np.random.default_rng(next(n)).normal(size=512) * 0.02
+            f = Face(photo_id=p.id, x=x, y=0.1, w=0.1, h=0.1, embedding=to_blob((look + noise).astype(np.float32)), **kw)
+            s.add(f)
+            return f
+        face(p0, 0.1, person_id=ana.id, source="manual")
+        face(p0, 0.5, person_id=ben.id, source="manual")
+        face(p1, 0.1, person_id=ana.id, alt_person_id=ben.id, source="manual")
+        alone = face(p2, 0.1)
+        s.flush()
+        alone_id, ben_id = alone.id, ben.id
+    with api_client() as c:
+        assert c.get("/api/settings").json() == {"twin_margin_percent": round(TWIN_MARGIN * 100), "twin_margin_default": round(TWIN_MARGIN * 100)}
+        assert c.put("/api/settings", json={"twin_margin_percent": 51}).status_code == 422
+        assert c.put("/api/settings", json={"twin_margin_percent": 0}).json()["twin_margin_percent"] == 0
+        assert any(j["type"] == "estimate" for j in c.get("/api/jobs").json())  # suggestions are redone
+    run_matching()
+    with session_scope() as s:
+        assert s.get(Face, alone_id).suggested_alt_person_id is None  # 0: never "Ana or Ben?" for one face
+    with api_client() as c:
+        c.put("/api/settings", json={"twin_margin_percent": 30})
+    run_matching()
+    with session_scope() as s:
+        assert s.get(Face, alone_id).suggested_alt_person_id is not None

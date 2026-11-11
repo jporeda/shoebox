@@ -6,6 +6,7 @@ import { Jobs } from "./Jobs";
 import { LooseBacks } from "./LooseBacks";
 import { PeoplePage, PersonPage } from "./People";
 import { PhotoView } from "./PhotoView";
+import { Settings } from "./Settings";
 import { useJobWatcher, useStats, useUndo } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { useRoute } from "./route";
@@ -92,6 +93,9 @@ export function App() {
           <a className={route.view === "jobs" ? "is-active" : ""} href="#/jobs">
             Jobs
           </a>
+          <a className={route.view === "settings" ? "is-active" : ""} href="#/settings">
+            Settings
+          </a>
         </nav>
         {s && (
           <span className="stats muted">
@@ -114,6 +118,7 @@ export function App() {
       {route.view === "grid" && <Grid list={route.list} />}
       {route.view === "photo" && <PhotoView id={route.id} list={route.list} />}
       {route.view === "jobs" && <Jobs />}
+      {route.view === "settings" && <Settings />}
       {route.view === "people" && <PeoplePage tab={route.tab} />}
       {route.view === "person" && <PersonPage id={route.id} />}
       {route.view === "backs" && <LooseBacks kind={route.kind} albumId={route.album_id} undated={route.undated} />}

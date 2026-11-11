@@ -9,7 +9,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlmodel import Session, col, select
 
@@ -487,6 +487,40 @@ def list_collections():
 
     now = CURRENT_COLLECTION.get()
     return [CollectionOut(id=c.id, name=c.name, current=c.id == now) for c in collections()]
+
+
+class SettingsOut(BaseModel):
+    # "Ana or Ben?" is suggested when two known twins' match scores are within this many
+    # percentage points (the % shown on name guesses). Per collection.
+    twin_margin_percent: int
+    twin_margin_default: int
+
+
+class SettingsIn(BaseModel):
+    twin_margin_percent: int = Field(ge=0, le=50)
+
+
+def _settings_out(s: Session) -> SettingsOut:
+    from .matching import TWIN_MARGIN, twin_margin
+
+    return SettingsOut(twin_margin_percent=round(twin_margin(s) * 100), twin_margin_default=round(TWIN_MARGIN * 100))
+
+
+@router.get("/settings", response_model=SettingsOut)
+def get_settings_api(s: Session = Depends(get_session)):
+    return _settings_out(s)
+
+
+@router.put("/settings", response_model=SettingsOut)
+def save_settings(body: SettingsIn, s: Session = Depends(get_session)):
+    from .db import set_meta
+    from .matching import TWIN_MARGIN_KEY, twin_margin
+
+    if round(twin_margin(s) * 100) != body.twin_margin_percent:
+        set_meta(s, TWIN_MARGIN_KEY, body.twin_margin_percent)
+        s.commit()
+        jobs.enqueue("estimate")  # re-suggest names with the new margin
+    return _settings_out(s)
 
 
 class YearCount(BaseModel):

@@ -335,6 +335,60 @@
     }
    }
   },
+  "/api/settings": {
+   "get": {
+    "summary": "Get Settings Api",
+    "operationId": "get_settings_api_api_settings_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Save Settings",
+    "operationId": "save_settings_api_settings_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SettingsIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/years": {
    "get": {
     "summary": "Photo Years",
@@ -4157,6 +4211,39 @@
      "rotated"
     ],
     "title": "ScanOut"
+   },
+   "SettingsIn": {
+    "properties": {
+     "twin_margin_percent": {
+      "type": "integer",
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Twin Margin Percent"
+     }
+    },
+    "type": "object",
+    "required": [
+     "twin_margin_percent"
+    ],
+    "title": "SettingsIn"
+   },
+   "SettingsOut": {
+    "properties": {
+     "twin_margin_percent": {
+      "type": "integer",
+      "title": "Twin Margin Percent"
+     },
+     "twin_margin_default": {
+      "type": "integer",
+      "title": "Twin Margin Default"
+     }
+    },
+    "type": "object",
+    "required": [
+     "twin_margin_percent",
+     "twin_margin_default"
+    ],
+    "title": "SettingsOut"
    },
    "Stats": {
     "properties": {

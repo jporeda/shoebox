@@ -5,6 +5,7 @@ export type Route =
   | { view: "grid"; list: ListParams }
   | { view: "photo"; id: number; list: ListParams }
   | { view: "jobs" }
+  | { view: "settings" }
   | { view: "people"; tab: "name" | "check" | "people" }
   | { view: "person"; id: number }
   | { view: "backs"; kind: "loose" | "paired"; album_id?: number; undated: boolean };
@@ -28,6 +29,7 @@ export function parseHash(hash: string): Route {
   const m = path.match(/^\/photo\/(\d+)/);
   if (m) return { view: "photo", id: Number(m[1]), list };
   if (path.startsWith("/jobs")) return { view: "jobs" };
+  if (path.startsWith("/settings")) return { view: "settings" };
   const pm = path.match(/^\/people\/(\d+)/);
   if (pm) return { view: "person", id: Number(pm[1]) };
   if (path.startsWith("/people")) {

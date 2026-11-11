@@ -178,7 +178,9 @@ Anything that identifies your family stays out of git:
   both twins in a photo and you set one face to "Ana or Ben", the face it took for the other
   twin becomes "Ana or Ben" too; confirming either face later settles the other. And in a
   photo with just two faces that both look like Ana or Ben, both are suggested as "Ana or Ben?"
-  (unless one is clearly Ana and the other clearly Ben).
+  (unless one is clearly Ana and the other clearly Ben). How close the twins' match scores
+  must be for "Ana or Ben?" is on the **Settings** page (default 10 points; each collection
+  has its own).
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as

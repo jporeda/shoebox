@@ -12,6 +12,7 @@ export type EditBatch = S["EditBatchOut"];
 export type EventKind = S["EventKindOut"];
 export type EventInstance = S["EventInstanceOut"];
 export type YearCount = S["YearCount"];
+export type SettingsInfo = S["SettingsOut"];
 export type CollectionInfo = S["CollectionOut"];
 export type Place = S["PlaceOut"];
 export type NearbyDate = S["NearbyDate"];
@@ -111,6 +112,9 @@ export const api = {
     call<EventKind>("/event-kinds", { method: "POST", body: JSON.stringify({ name }) }),
   eventInstances: () => call<EventInstance[]>("/event-instances"),
   years: () => call<YearCount[]>("/years"),
+  settings: () => call<SettingsInfo>("/settings"),
+  saveSettings: (body: { twin_margin_percent: number }) =>
+    call<SettingsInfo>("/settings", { method: "PUT", body: JSON.stringify(body) }),
   collections: () => call<CollectionInfo[]>("/collections"),
   jobs: () => call<Job[]>("/jobs"),
   startJob: (type: JobType, params: Record<string, unknown> = {}) =>
