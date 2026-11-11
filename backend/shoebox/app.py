@@ -142,5 +142,17 @@ def _refuse_write(request: Request) -> JSONResponse | None:
 
 app.include_router(router)
 app.include_router(people_router)
+class _UI(StaticFiles):
+    """The web UI. The page itself is always revalidated, so a rebuilt app shows up on the next
+    load instead of whenever the browser's own guess says the old copy is stale; the scripts and
+    styles it loads have their content hash in the name, so they can be kept for good."""
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        is_asset = str(full_path).startswith(str(FRONTEND_DIST / "assets"))
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if is_asset else "no-cache"
+        return response
+
+
 if FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="ui")
+    app.mount("/", _UI(directory=FRONTEND_DIST, html=True), name="ui")
