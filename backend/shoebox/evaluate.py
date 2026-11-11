@@ -91,7 +91,7 @@ def evaluate_faces(fraction: float, seed: int) -> dict:
         years: dict[int, Optional[int]] = {pid: photo_year(p) for pid, p in photos.items()}
         faces = list(s.exec(select(Face).where(Face.ignored == False)).all())  # noqa: E712
         births = {p.id: p.birth_year for p in s.exec(select(Person)).all()}
-    named = [f for f in faces if f.person_id and f.source in TRUSTED_FACE_SOURCES and f.embedding]
+    named = [f for f in faces if f.person_id and not f.alt_person_id and f.source in TRUSTED_FACE_SOURCES and f.embedding]
     if len(named) < MIN_FACES:
         return {"status": f"need at least {MIN_FACES} named faces (have {len(named)})"}
     hidden = random.Random(seed).sample(named, max(1, round(len(named) * fraction)))

@@ -306,7 +306,8 @@ def run_cluster(ctx: JobContext = NULL_CTX) -> dict:
 
 def person_centroids(s: Session) -> dict[int, np.ndarray]:
     sums: dict[int, list[np.ndarray]] = {}
-    for f in s.exec(select(Face).where(Face.person_id != None, Face.ignored == False)).all():  # noqa: E711,E712
+    # Not "one of two" faces: a twin's face would pull the other twin's centre towards it.
+    for f in s.exec(select(Face).where(Face.person_id != None, Face.alt_person_id == None, Face.ignored == False)).all():  # noqa: E711,E712
         e = _emb(f)
         if e is not None:
             sums.setdefault(f.person_id, []).append(e)
@@ -354,15 +355,21 @@ def person_for_name(s: Session, name: str) -> tuple[Person, list]:
 
 
 def assign(s: Session, face_ids: list[int], person_id: Optional[int], description: str = "",
-           extra: Iterable[tuple] = ()) -> Optional[str]:
+           extra: Iterable[tuple] = (), alt_person_id: Optional[int] = None) -> Optional[str]:
+    """Name faces. With alt_person_id, each face is one of the two people, not known which (twins)."""
+    if person_id is None or alt_person_id == person_id:
+        alt_person_id = None
     faces = s.exec(select(Face).where(Face.id.in_(face_ids))).all()
     changes = list(extra)
     for f in faces:
-        changes += [(f, "person_id", person_id), (f, "ignored", False), (f, "suggested_person_id", None)]
+        changes += [(f, "person_id", person_id), (f, "alt_person_id", alt_person_id), (f, "ignored", False),
+                    (f, "suggested_person_id", None)]
         if person_id is not None and f.source in ("auto", REVERTED):
             changes.append((f, "source", "manual"))
     if not description:
         who = s.get(Person, person_id).name if person_id else "nobody"
+        if alt_person_id:
+            who += f" or {s.get(Person, alt_person_id).name}"
         description = f"{len(faces)} face(s) → {who}"
     return editlog.record(s, changes, description)
 
@@ -415,10 +422,23 @@ def run_accept_guesses(min_percent: float, ctx: JobContext = NULL_CTX) -> dict:
     return {"min_percent": min_percent, "guesses": len(guesses), "accepted": len(chosen), "batch_id": batch}
 
 
-def reject(s: Session, face_ids: list[int]) -> Optional[str]:
-    """"Not this person": remember it so the same name isn't suggested again for this face."""
+def reject(s: Session, face_ids: list[int], person_id: Optional[int] = None) -> Optional[str]:
+    """"Not this person": remember it so the same name isn't suggested again for this face.
+
+    On a one-of-two face (twins), "not Ana" leaves it as the other person; without person_id
+    (or naming neither of the two) it's "neither of them"."""
     changes = []
     for f in s.exec(select(Face).where(Face.id.in_(face_ids))).all():
+        if f.alt_person_id:
+            pair = {f.person_id, f.alt_person_id}
+            if person_id in pair:
+                other = (pair - {person_id}).pop()
+                rejected = sorted(set(f.rejected_person_ids or []) | {person_id})
+                changes += [(f, "person_id", other), (f, "alt_person_id", None), (f, "rejected_person_ids", rejected)]
+            else:
+                rejected = sorted(set(f.rejected_person_ids or []) | pair)
+                changes += [(f, "person_id", None), (f, "alt_person_id", None), (f, "rejected_person_ids", rejected)]
+            continue
         target = f.person_id or f.suggested_person_id
         if target is None:
             continue
@@ -446,14 +466,19 @@ def set_ignored(s: Session, face_ids: list[int], ignored: bool) -> Optional[str]
     faces = s.exec(select(Face).where(Face.id.in_(face_ids))).all()
     changes = [(f, "ignored", ignored) for f in faces]
     if ignored:
-        changes += [(f, "person_id", None) for f in faces]
+        changes += [(f, k, None) for f in faces for k in ("person_id", "alt_person_id")]
     return editlog.record(s, changes, f"{'ignore' if ignored else 'un-ignore'} {len(faces)} face(s)")
 
 
 def merge_people(s: Session, source_id: int, target_id: int) -> Optional[str]:
-    faces = s.exec(select(Face).where(Face.person_id == source_id)).all()
+    faces = s.exec(select(Face).where((Face.person_id == source_id) | (Face.alt_person_id == source_id))).all()
     src, dst = s.get(Person, source_id), s.get(Person, target_id)
-    changes = [(f, "person_id", target_id) for f in faces]
+    changes = []
+    for f in faces:
+        first = target_id if f.person_id == source_id else f.person_id
+        alt = target_id if f.alt_person_id == source_id else f.alt_person_id
+        # "Sam or Sammy", once Sammy turns out to be Sam, is just Sam.
+        changes += [(f, "person_id", first), (f, "alt_person_id", None if alt == first else alt)]
     if dst.birth_year is None and src.birth_year is not None:
         changes.append((dst, "birth_year", src.birth_year))
     if src.kind == "pet" and dst.kind != "pet":  # "person" is only the default; "pet" was tagged on purpose

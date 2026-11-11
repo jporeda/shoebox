@@ -51,7 +51,7 @@ def photo_year(p: Photo) -> Optional[int]:
 
 def load_exemplars(faces: list[Face], years: dict[int, Optional[int]], exclude: set[int] = frozenset(),
                    births: dict[int, Optional[int]] | None = None) -> Optional[Exemplars]:
-    rows = [f for f in faces if f.person_id and f.source in TRUSTED_FACE_SOURCES and not f.ignored
+    rows = [f for f in faces if f.person_id and not f.alt_person_id and f.source in TRUSTED_FACE_SOURCES and not f.ignored
             and f.embedding and f.id not in exclude]
     if not rows:
         return None

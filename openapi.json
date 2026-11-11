@@ -1663,7 +1663,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/FaceIds"
+        "$ref": "#/components/schemas/RejectIn"
        }
       }
      },
@@ -1992,6 +1992,28 @@
        }
       ],
       "title": "Name"
+     },
+     "alt_person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Person Id"
+     },
+     "alt_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Name"
      }
     },
     "type": "object",
@@ -2701,6 +2723,28 @@
        }
       ],
       "title": "Person Name"
+     },
+     "alt_person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Person Id"
+     },
+     "alt_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Name"
      },
      "source": {
       "type": "string",
@@ -3843,6 +3887,33 @@
      "count"
     ],
     "title": "PlaceOut"
+   },
+   "RejectIn": {
+    "properties": {
+     "face_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Face Ids"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "face_ids"
+    ],
+    "title": "RejectIn"
    },
    "ReviewGroup": {
     "properties": {

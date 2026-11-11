@@ -436,15 +436,16 @@ def list_photos(
 
         chosen = _id_list(people, "people")
         named = select(Face.photo_id).where(Face.ignored == False)  # noqa: E712
+        # A "one of two" face (twins) counts for either person.
         if people_mode == "any":
-            q = q.where(Photo.id.in_(named.where(Face.person_id.in_(chosen))))
+            q = q.where(Photo.id.in_(named.where(Face.person_id.in_(chosen) | Face.alt_person_id.in_(chosen))))
         else:
             for pid in chosen:  # every one of them is in the photo
-                q = q.where(Photo.id.in_(named.where(Face.person_id == pid)))
+                q = q.where(Photo.id.in_(named.where((Face.person_id == pid) | (Face.alt_person_id == pid))))
     if person_id is not None:
         from .models import Face
 
-        q = q.where(Photo.id.in_(select(Face.photo_id).where(Face.person_id == person_id)))
+        q = q.where(Photo.id.in_(select(Face.photo_id).where((Face.person_id == person_id) | (Face.alt_person_id == person_id))))
     total = s.exec(select(func.count()).select_from(q.subquery())).one()
     if order == "chrono":
         eff = func.coalesce(Photo.t_year, Photo.i_year)

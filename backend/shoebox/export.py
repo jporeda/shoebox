@@ -101,6 +101,11 @@ class ExportItem:
         return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()
 
 
+
+def _face_name(f, names: dict[int, str]) -> str:
+    """A face's name in exports: "Ana", or "Ana or Ben" for a one-of-two face (twins)."""
+    return f"{names[f.person_id]} or {names[f.alt_person_id]}" if f.alt_person_id else names[f.person_id]
+
 def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")[:40] or "x"
 
@@ -175,9 +180,12 @@ def build_plan(session: Session) -> list[ExportItem]:
             if inst.label != kind.name:
                 kw.append(inst.label)
         for f in sorted(faces_by_photo.get(p.id, []), key=lambda f: f.x):
-            it.faces.append((names[f.person_id], *rotate_box((f.x, f.y, f.w, f.h), f.frame_rotation, p.rotation)))
-        named = {f.person_id for f in faces_by_photo.get(p.id, [])}
-        it.people = sorted({names[i] for i in named if i not in pet_ids})
+            it.faces.append((_face_name(f, names), *rotate_box((f.x, f.y, f.w, f.h), f.frame_rotation, p.rotation)))
+        mine = faces_by_photo.get(p.id, [])
+        named = {f.person_id for f in mine if not f.alt_person_id}
+        # "Ana or Ben" (twins) is kept together as one name: it's not known which of them it is.
+        either = sorted({_face_name(f, names) for f in mine if f.alt_person_id})
+        it.people = sorted({names[i] for i in named if i not in pet_ids}) + either
         it.pets = sorted({names[i] for i in named if i in pet_ids})
         it.width, it.height = p.width or 0, p.height or 0
         kw += it.people + it.pets

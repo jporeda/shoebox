@@ -158,6 +158,9 @@ class Face(SQLModel, table=True):
     det_score: Optional[float] = None
     detector_ver: Optional[str] = None
     person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
+    # "One of two people, we don't know which" (twins): the face is person_id OR alt_person_id.
+    # Only a person sets it; such a face never teaches the matcher or dates photos by who's in them.
+    alt_person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
     source: str = "auto"  # auto | manual | drawn | accepted
     ignored: bool = False
     confidence: Optional[float] = None

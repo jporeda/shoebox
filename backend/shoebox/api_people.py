@@ -30,6 +30,9 @@ class FaceOut(BaseModel):
     h: float
     person_id: Optional[int]
     person_name: Optional[str]
+    # Set when the face is one of two people, not known which (twins): person OR alt person.
+    alt_person_id: Optional[int] = None
+    alt_name: Optional[str] = None
     source: str
     ignored: bool
     est_age: Optional[float]
@@ -80,6 +83,9 @@ class AssignIn(BaseModel):
     face_ids: list[int]
     person_id: Optional[int] = None
     name: Optional[str] = None  # creates the person if needed
+    # "Or" a second person: one of the two, not known which (twins). Id, or a name (created if needed).
+    alt_person_id: Optional[int] = None
+    alt_name: Optional[str] = None
 
 
 class IgnoreIn(BaseModel):
@@ -133,6 +139,7 @@ def face_out(f: Face, p: Photo, names: dict[int, str]) -> FaceOut:
     return FaceOut(
         id=f.id, photo_id=p.id, photo_sha256=p.sha256, rotation=p.rotation, x=x, y=y, w=w, h=h,
         person_id=f.person_id, person_name=names.get(f.person_id) if f.person_id else None,
+        alt_person_id=f.alt_person_id, alt_name=names.get(f.alt_person_id) if f.alt_person_id else None,
         source=f.source, ignored=f.ignored, est_age=f.est_age, cluster_id=f.cluster_id, year_label=_year_label(p),
         suggested_person_id=f.suggested_person_id,
         suggested_name=names.get(f.suggested_person_id) if f.suggested_person_id else None,
@@ -151,10 +158,11 @@ def _faces_out(s: Session, faces: list[Face]) -> list[FaceOut]:
 
 
 def _person_out(s: Session, person: Person) -> PersonOut:
-    faces = s.exec(select(Face).where(Face.person_id == person.id)).all()
+    faces = s.exec(select(Face).where((Face.person_id == person.id) | (Face.alt_person_id == person.id))).all()
     photos = s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()
     years = sorted(y for p in photos if (y := p.t_year if p.t_year is not None else p.i_year) is not None)
-    cover = max(faces, key=lambda f: (f.source != "auto", f.w * f.h), default=None)
+    # The cover is a face known to be them, not a "one of two" (it may be their twin).
+    cover = max(faces, key=lambda f: (f.alt_person_id is None, f.source != "auto", f.w * f.h), default=None)
     return PersonOut(
         id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, kind=person.kind or "person",
         face_count=len(faces),
@@ -222,7 +230,7 @@ def merge_person(person_id: int, body: MergeIn, s: Session = Depends(get_session
 
 @router.get("/people/{person_id}/faces", response_model=list[FaceOut])
 def person_faces(person_id: int, s: Session = Depends(get_session)):
-    faces = list(s.exec(select(Face).where(Face.person_id == person_id)).all())
+    faces = list(s.exec(select(Face).where((Face.person_id == person_id) | (Face.alt_person_id == person_id))).all())
     out = _faces_out(s, faces)
     photos = {p.id: p for p in s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()}
     albums = {a.id: a.sort_order for a in s.exec(select(Album)).all()}
@@ -289,7 +297,15 @@ def assign_faces(body: AssignIn, s: Session = Depends(get_session)):
         person_id = person.id
     elif person_id is not None and s.get(Person, person_id) is None:
         raise HTTPException(404, "person not found")
-    batch = people.assign(s, body.face_ids, person_id, extra=new_person)
+    alt_id = body.alt_person_id
+    if body.alt_name and body.alt_name.strip():
+        alt, created = people.person_for_name(s, body.alt_name)
+        alt_id, new_person = alt.id, new_person + created
+    elif alt_id is not None and s.get(Person, alt_id) is None:
+        raise HTTPException(404, "person not found")
+    if alt_id is not None and (person_id is None or alt_id == person_id):
+        raise HTTPException(422, "the second person must be someone other than the first")
+    batch = people.assign(s, body.face_ids, person_id, extra=new_person, alt_person_id=alt_id)
     s.commit()
     jobs.enqueue("estimate")
     return BatchOut(batch_id=batch, person=_person_out(s, s.get(Person, person_id)) if person_id else None)
@@ -311,9 +327,14 @@ def accept_faces(body: FaceIds, s: Session = Depends(get_session)):
     return BatchOut(batch_id=batch)
 
 
+class RejectIn(FaceIds):
+    # Which person they're not, for one-of-two faces (twins): "not Ana" leaves Ben. Omitted: neither.
+    person_id: Optional[int] = None
+
+
 @router.post("/faces/reject", response_model=BatchOut)
-def reject_faces(body: FaceIds, s: Session = Depends(get_session)):
-    batch = people.reject(s, body.face_ids)
+def reject_faces(body: RejectIn, s: Session = Depends(get_session)):
+    batch = people.reject(s, body.face_ids, body.person_id)
     s.commit()
     jobs.enqueue("estimate")
     return BatchOut(batch_id=batch)
