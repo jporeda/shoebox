@@ -111,6 +111,10 @@ Anything that identifies your family stays out of git:
   Pick an event type. A year plus a fixed-date holiday becomes that day
   ("1985" + Christmas → 1985-12-25), and a dated event instance dates any
   undated photo you later tag with it.
+
+  On a phone or tablet: tap to open, press and hold to select. Pinch the grid with two
+  fingers, as in the Photos app: spread them for fewer, bigger photos (down to one across),
+  pinch them together for more, smaller ones. Each device remembers the size you chose.
 - **Estimated dates** (amber, shown as `≈1978-10` with a confidence). The app
   combines several kinds of evidence, and photo detail's *Why* line shows which
   ones it used:
