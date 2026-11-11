@@ -363,9 +363,12 @@ _TWIN_FIELDS = ("person_id", "alt_person_id", "suggested_person_id", "suggested_
 
 
 def twin_deductions(s: Session, changes: list[tuple]) -> list[tuple]:
-    """What naming these faces tells us about twins elsewhere in the same photos: one person
-    can't be in a photo twice, so once Ana is confirmed on one face, another face that's
-    "Ana or Ben" is Ben (and an "Ana or Ben?" suggestion becomes "Ben?").
+    """What naming these faces tells us about twins elsewhere in the same photos:
+
+    - one person can't be in a photo twice, so once Ana is confirmed on one face, another face
+      that's "Ana or Ben" is Ben (and an "Ana or Ben?" suggestion becomes "Ben?");
+    - if the app found both twins in a photo and one face is set to "Ana or Ben", the face it
+      took for the other twin is just as uncertain, so it becomes "Ana or Ben" too.
 
     Works on the photos' faces as they'll be after ``changes``, and returns the extra changes to
     record in the same batch, so one Undo takes back both."""
@@ -404,6 +407,27 @@ def twin_deductions(s: Session, changes: list[tuple]) -> list[tuple]:
                         put(i, "suggested_person_id", (pair - sure).pop())
                         put(i, "suggested_alt_person_id", None)
                         changed = True
+                        continue
+                # The app's guess for this face (an automatic name or a suggestion) is one of a pair
+                # someone set on another face here, and neither twin is confirmed in the photo:
+                # this face is "Ana or Ben" as well.
+                if st["alt_person_id"] or (st["person_id"] and st["source"] != "auto"):
+                    continue
+                guess = {st["person_id"], st["suggested_person_id"], st["suggested_alt_person_id"]} - {None}
+                for j in mine:
+                    other = state[j]
+                    if j == i or not (other["alt_person_id"] and other["person_id"]) or other["source"] == "auto":
+                        continue
+                    pair = (other["person_id"], other["alt_person_id"])  # already in "Ana or Ben" order
+                    if guess & set(pair) and not set(pair) & sure:
+                        put(i, "person_id", pair[0])
+                        put(i, "alt_person_id", pair[1])
+                        put(i, "suggested_person_id", None)
+                        put(i, "suggested_alt_person_id", None)
+                        if st["source"] in ("auto", REVERTED):
+                            put(i, "source", "accepted")
+                        changed = True
+                        break
         if not changed:
             break
     return extra
@@ -414,7 +438,7 @@ def _record_with_twins(s: Session, changes: list[tuple], description: str) -> Op
     extra = twin_deductions(s, changes)
     if extra:
         n = len({obj.id for obj, _, _ in extra})
-        description += f", so the other twin on {n} other face{'s' if n != 1 else ''}"
+        description += f", and the twin on {n} other face{'s' if n != 1 else ''}"
     return editlog.record(s, changes + extra, description)
 
 

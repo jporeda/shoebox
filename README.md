@@ -174,7 +174,9 @@ Anything that identifies your family stays out of git:
   suggestions do the same: when the face model can't tell Ana from Ben, it suggests
   "Ana or Ben?" (never applied by itself). One person can't be in a photo twice, so once
   Ana is confirmed on one face, another face there that's "Ana or Ben" becomes Ben (in the
-  same Undo step), and suggestions on that photo say "Ben?".
+  same Undo step), and suggestions on that photo say "Ben?". Likewise, when the app found
+  both twins in a photo and you set one face to "Ana or Ben", the face it took for the other
+  twin becomes "Ana or Ben" too; confirming either face later settles the other.
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as

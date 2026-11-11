@@ -295,3 +295,41 @@ def test_confirming_one_twin_in_a_photo_makes_the_other_face_the_other_twin(env)
     with session_scope() as s:
         g = s.get(Face, guess_id)
         assert (g.person_id, g.suggested_person_id, sorted(g.rejected_person_ids)) == (None, None, sorted([ana_id, ben_id]))
+
+
+def test_setting_one_of_two_detected_twins_to_the_pair_sets_the_other_too(env):
+    make_image(env.photos_root / "A1" / "p0.jpg", 0)
+    run_ingest()
+    with session_scope() as s:
+        p = s.exec(select(Photo)).one()
+        ana, ben, cy = Person(name="Ana"), Person(name="Ben"), Person(name="Cy")
+        s.add_all([ana, ben, cy])
+        s.flush()
+        # Some earlier face made Ana and Ben known twins.
+        s.add(Face(photo_id=p.id, x=0.8, y=0.8, w=0.1, h=0.1, person_id=ana.id, alt_person_id=ben.id, source="manual", ignored=True))
+        left = Face(photo_id=p.id, x=0.1, y=0.1, w=0.2, h=0.2, person_id=ana.id, source="auto", confidence=0.7)  # app: Ana
+        right = Face(photo_id=p.id, x=0.4, y=0.1, w=0.2, h=0.2, suggested_person_id=ben.id, source="auto")  # app: Ben?
+        third = Face(photo_id=p.id, x=0.7, y=0.1, w=0.2, h=0.2, suggested_person_id=cy.id, source="auto")  # someone else
+        s.add_all([left, right, third])
+        s.flush()
+        left_id, right_id, third_id, ana_id, ben_id, cy_id = left.id, right.id, third.id, ana.id, ben.id, cy.id
+    with api_client() as c:
+        c.post("/api/faces/assign", json={"face_ids": [left_id], "person_id": ana_id, "alt_person_id": ben_id})
+        assert "and the twin on 1 other face" in c.get("/api/edits").json()[0]["description"]
+    with session_scope() as s:
+        r, t = s.get(Face, right_id), s.get(Face, third_id)
+        assert (r.person_id, r.alt_person_id, r.suggested_person_id, r.source) == (ana_id, ben_id, None, "accepted")
+        assert (t.person_id, t.suggested_person_id) == (None, cy_id)  # not a twin: left alone
+    with api_client() as c:
+        c.post("/api/undo", json={})
+    with session_scope() as s:
+        r = s.get(Face, right_id)
+        assert (r.person_id, r.alt_person_id, r.suggested_person_id, r.source) == (None, None, ben_id, "auto")
+    with api_client() as c:
+        c.post("/api/faces/assign", json={"face_ids": [left_id], "person_id": ana_id, "alt_person_id": ben_id})
+        # Then it turns out the right one is Ben: so the left one is Ana.
+        c.post("/api/faces/assign", json={"face_ids": [right_id], "person_id": ben_id})
+    with session_scope() as s:
+        l, r = s.get(Face, left_id), s.get(Face, right_id)
+        assert (l.person_id, l.alt_person_id) == (ana_id, None)
+        assert (r.person_id, r.alt_person_id) == (ben_id, None)
