@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { imgUrl, type ListParams, type PhotoSummary } from "./api";
 import { FiltersButton, SidebarDrawer } from "./Drawer";
 import { DateEventEditor, PlaceEditor } from "./Editor";
-import { useAlbums, useDrawer, useLongPress, usePhotos, useTouch, useUpdatePhotos } from "./hooks";
+import { useAlbums, useDrawer, useEventInstances, useLongPress, usePhotos, useTouch, useUpdatePhotos, useYears } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
 import { backsHref, gridHref, listQuery, navigate, photoHref, takeLastPhoto } from "./route";
@@ -16,23 +16,10 @@ const STATUS_FILTERS: { value: ListParams["status"]; label: string }[] = [
 
 function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onClose: () => void }) {
   const albums = useAlbums();
-  const people = usePeople();
   const touch = useTouch();
-  const person = people.data?.find((p) => p.id === list.person_id);
   const go = (patch: Partial<ListParams>) => navigate(gridHref({ ...list, ...patch }));
   return (
     <SidebarDrawer open={open} onClose={onClose}>
-      {person && (
-        <section>
-          <h3 className="sidebar__heading">Person</h3>
-          <div className="filter-chip">
-            <a href={`#/people/${person.id}`}>{person.name}</a>
-            <a href={gridHref({ ...list, person_id: undefined })} title="Show everyone">
-              ×
-            </a>
-          </div>
-        </section>
-      )}
       <section>
         <h3 className="sidebar__heading">Albums</h3>
         <ul className="nav-list">
@@ -76,6 +63,7 @@ function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onC
           </section>
         ) : null;
       })()}
+      <FilterSection list={list} />
       <section>
         <h3 className="sidebar__heading">Show</h3>
         <div className="segmented">
@@ -124,6 +112,107 @@ function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onC
         </section>
       )}
     </SidebarDrawer>
+  );
+}
+
+const idSet = (text?: string) => new Set((text ?? "").split(",").filter(Boolean).map(Number));
+const idText = (ids: Set<number>) => (ids.size ? [...ids].sort((a, b) => a - b).join(",") : undefined);
+
+/** Years, people and events, in any combination: any of the ticked years or events; the ticked
+ *  people all together (or any of them). Each choice is part of the address, so Back undoes it. */
+function FilterSection({ list }: { list: ListParams }) {
+  const years = useYears();
+  const people = usePeople();
+  const events = useEventInstances();
+  const go = (patch: Partial<ListParams>) => navigate(gridHref({ ...list, ...patch }));
+  // Arriving from a person's page ("Show N photos") counts as that person being ticked.
+  const chosenPeople = idSet(list.people);
+  if (list.person_id !== undefined) chosenPeople.add(list.person_id);
+  const chosenYears = idSet(list.years);
+  const chosenEvents = idSet(list.events);
+  const toggle = (set: Set<number>, id: number) => {
+    const next = new Set(set);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return idText(next);
+  };
+  const active = chosenYears.size + chosenPeople.size + chosenEvents.size;
+  return (
+    <section className="filters">
+      <h3 className="sidebar__heading">
+        Filter
+        {active > 0 && (
+          <button
+            className="linkish"
+            onClick={() => go({ years: undefined, people: undefined, people_mode: undefined, events: undefined, person_id: undefined })}
+          >
+            clear {active}
+          </button>
+        )}
+      </h3>
+      <details open={chosenYears.size > 0}>
+        <summary>Years{chosenYears.size ? ` · ${[...chosenYears].sort().join(", ")}` : ""}</summary>
+        <div className="filters__chips">
+          {years.data?.map((y) => (
+            <button
+              key={y.year}
+              className={`chip ${chosenYears.has(y.year) ? "is-on" : ""}`}
+              aria-pressed={chosenYears.has(y.year)}
+              title={`${y.count} photo${y.count === 1 ? "" : "s"}`}
+              onClick={() => go({ years: toggle(chosenYears, y.year) })}
+            >
+              {y.year}
+            </button>
+          ))}
+          {years.data?.length === 0 && <span className="muted small">No dated photos yet.</span>}
+        </div>
+      </details>
+      <details open={chosenPeople.size > 0}>
+        <summary>People{chosenPeople.size ? ` · ${chosenPeople.size}` : ""}</summary>
+        {chosenPeople.size > 1 && (
+          <div className="segmented filters__mode">
+            <button className={list.people_mode !== "any" ? "is-active" : ""} onClick={() => go({ people_mode: undefined })}>
+              All together
+            </button>
+            <button className={list.people_mode === "any" ? "is-active" : ""} onClick={() => go({ people_mode: "any" })}>
+              Any of them
+            </button>
+          </div>
+        )}
+        <ul className="filters__list">
+          {people.data?.map((p) => (
+            <li key={p.id}>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={chosenPeople.has(p.id)}
+                  onChange={() => go({ people: toggle(chosenPeople, p.id), person_id: undefined })}
+                />
+                <span className="filters__name">{p.name}</span>
+                <span className="muted small">{p.face_count}</span>
+              </label>
+            </li>
+          ))}
+          {people.data?.length === 0 && <li className="muted small">Nobody named yet.</li>}
+        </ul>
+      </details>
+      <details open={chosenEvents.size > 0}>
+        <summary>Events{chosenEvents.size ? ` · ${chosenEvents.size}` : ""}</summary>
+        <ul className="filters__list">
+          {events.data
+            ?.filter((ev) => ev.count > 0 || chosenEvents.has(ev.id))
+            .map((ev) => (
+              <li key={ev.id}>
+                <label className="check">
+                  <input type="checkbox" checked={chosenEvents.has(ev.id)} onChange={() => go({ events: toggle(chosenEvents, ev.id) })} />
+                  <span className="filters__name">{ev.label}</span>
+                  <span className="muted small">{ev.count}</span>
+                </label>
+              </li>
+            ))}
+          {events.data?.every((ev) => ev.count === 0) && <li className="muted small">No events tagged yet.</li>}
+        </ul>
+      </details>
+    </section>
   );
 }
 

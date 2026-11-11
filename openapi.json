@@ -130,6 +130,74 @@
       "description": "only these photos: comma-separated ids (e.g. one Check group)"
      },
      {
+      "name": "years",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated years (entered, else estimated); any of them",
+       "title": "Years"
+      },
+      "description": "comma-separated years (entered, else estimated); any of them"
+     },
+     {
+      "name": "people",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated person ids",
+       "title": "People"
+      },
+      "description": "comma-separated person ids"
+     },
+     {
+      "name": "people_mode",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "all",
+        "any"
+       ],
+       "type": "string",
+       "default": "all",
+       "title": "People Mode"
+      }
+     },
+     {
+      "name": "events",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated event instance ids; any of them",
+       "title": "Events"
+      },
+      "description": "comma-separated event instance ids; any of them"
+     },
+     {
       "name": "order",
       "in": "query",
       "required": false,
@@ -219,6 +287,29 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/years": {
+   "get": {
+    "summary": "Photo Years",
+    "description": "Each year with photos (entered date, else estimate), for the year filter.",
+    "operationId": "photo_years_api_years_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/YearCount"
+         },
+         "type": "array",
+         "title": "Response Photo Years Api Years Get"
         }
        }
       }
@@ -3969,6 +4060,24 @@
      "type"
     ],
     "title": "ValidationError"
+   },
+   "YearCount": {
+    "properties": {
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "year",
+     "count"
+    ],
+    "title": "YearCount"
    }
   }
  }

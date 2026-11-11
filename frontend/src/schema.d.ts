@@ -39,6 +39,26 @@ export interface paths {
         patch: operations["update_photos_api_photos_patch"];
         trace?: never;
     };
+    "/api/years": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Photo Years
+         * @description Each year with photos (entered date, else estimate), for the year filter.
+         */
+        get: operations["photo_years_api_years_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}": {
         parameters: {
             query?: never;
@@ -1315,6 +1335,13 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** YearCount */
+        YearCount: {
+            /** Year */
+            year: number;
+            /** Count */
+            count: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -1354,6 +1381,13 @@ export interface operations {
                 event_instance_id?: number | null;
                 /** @description only these photos: comma-separated ids (e.g. one Check group) */
                 ids?: string | null;
+                /** @description comma-separated years (entered, else estimated); any of them */
+                years?: string | null;
+                /** @description comma-separated person ids */
+                people?: string | null;
+                people_mode?: "all" | "any";
+                /** @description comma-separated event instance ids; any of them */
+                events?: string | null;
                 order?: "album" | "chrono" | "confidence";
                 offset?: number;
                 limit?: number;
@@ -1413,6 +1447,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_years_api_years_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearCount"][];
                 };
             };
         };

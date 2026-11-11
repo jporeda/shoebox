@@ -96,3 +96,41 @@ def test_photo_list_can_be_limited_to_given_ids(album_tree, env):
         got = c.get("/api/photos", params={"ids": ",".join(map(str, pick))}).json()
         assert got["total"] == 2 and sorted(p["id"] for p in got["items"]) == sorted(pick)
         assert c.get("/api/photos", params={"ids": "1,x"}).status_code == 422
+
+
+def test_photo_filters_combine_years_people_and_events(album_tree, env):
+    from conftest import api_client
+    from sqlmodel import select
+    from shoebox.db import session_scope
+    from shoebox.ingest import run_ingest
+    from shoebox.models import EventKind, Face, Person
+
+    run_ingest()
+    with api_client() as c:
+        ids = [p["id"] for p in c.get("/api/photos").json()["items"]][:4]
+        a, b, d, e = ids
+        with session_scope() as s:
+            bday = s.exec(select(EventKind).where(EventKind.name == "Birthday")).one().id
+        c.patch("/api/photos", json={"ids": [a, b], "date": "1985", "event_kind_id": bday, "event_label": "Party"})
+        c.patch("/api/photos", json={"ids": [d], "date": "1986"})
+        c.patch("/api/photos", json={"ids": [e], "date": "1990"})
+        with session_scope() as s:
+            sam, ann = Person(name="Sam"), Person(name="Ann")
+            s.add_all([sam, ann])
+            s.flush()
+            for pid, who in ((a, sam), (a, ann), (b, sam), (d, ann)):
+                s.add(Face(photo_id=pid, x=0.1, y=0.1, w=0.1, h=0.1, person_id=who.id, source="manual"))
+            sam_id, ann_id = sam.id, ann.id
+        party = c.get("/api/event-instances").json()[0]["id"]
+
+        def got(**params):
+            return sorted(p["id"] for p in c.get("/api/photos", params=params).json()["items"])
+
+        assert got(years="1985,1986") == sorted([a, b, d])  # any of the years
+        assert got(people=f"{sam_id},{ann_id}") == [a]  # both of them, together
+        assert got(people=f"{sam_id},{ann_id}", people_mode="any") == sorted([a, b, d])
+        assert got(years="1985,1986", people=str(ann_id)) == sorted([a, d])  # filters combine
+        assert got(events=str(party)) == sorted([a, b])
+        assert got(events=str(party), people=str(ann_id)) == [a]
+        assert {y["year"]: y["count"] for y in c.get("/api/years").json()}[1985] >= 2
+        assert c.get("/api/photos", params={"years": "19x5"}).status_code == 422

@@ -399,6 +399,10 @@ def list_photos(
     duplicates: bool = False,
     event_instance_id: Optional[int] = None,
     ids: Optional[str] = Query(None, description="only these photos: comma-separated ids (e.g. one Check group)"),
+    years: Optional[str] = Query(None, description="comma-separated years (entered, else estimated); any of them"),
+    people: Optional[str] = Query(None, description="comma-separated person ids"),
+    people_mode: Literal["all", "any"] = "all",
+    events: Optional[str] = Query(None, description="comma-separated event instance ids; any of them"),
     order: Literal["album", "chrono", "confidence"] = "album",
     offset: int = 0,
     limit: int = Query(20000, le=50000),
@@ -418,11 +422,22 @@ def list_photos(
     if event_instance_id is not None:
         q = q.where(Photo.event_instance_id == event_instance_id)
     if ids is not None:
-        try:
-            wanted = {int(i) for i in ids.split(",") if i.strip()}
-        except ValueError:
-            raise HTTPException(422, "ids must be comma-separated numbers")
-        q = q.where(Photo.id.in_(wanted))
+        q = q.where(Photo.id.in_(_id_list(ids, "ids")))
+    # Multi-select filters: any of the values within one, all of the filters together.
+    if years:
+        q = q.where(func.coalesce(Photo.t_year, Photo.i_year).in_(_id_list(years, "years")))
+    if events:
+        q = q.where(Photo.event_instance_id.in_(_id_list(events, "events")))
+    if people:
+        from .models import Face
+
+        chosen = _id_list(people, "people")
+        named = select(Face.photo_id).where(Face.ignored == False)  # noqa: E712
+        if people_mode == "any":
+            q = q.where(Photo.id.in_(named.where(Face.person_id.in_(chosen))))
+        else:
+            for pid in chosen:  # every one of them is in the photo
+                q = q.where(Photo.id.in_(named.where(Face.person_id == pid)))
     if person_id is not None:
         from .models import Face
 
@@ -444,6 +459,28 @@ def list_photos(
     rows = s.exec(q.offset(offset).limit(limit)).all()
     labels = _labels(s)
     return PhotoPage(total=total, items=[summarize(p, labels) for p in rows])
+
+
+def _id_list(text: str, name: str) -> set[int]:
+    try:
+        return {int(i) for i in text.split(",") if i.strip()}
+    except ValueError:
+        raise HTTPException(422, f"{name} must be comma-separated numbers")
+
+
+class YearCount(BaseModel):
+    year: int
+    count: int
+
+
+@router.get("/years", response_model=list[YearCount])
+def photo_years(s: Session = Depends(get_session)):
+    """Each year with photos (entered date, else estimate), for the year filter."""
+    eff = func.coalesce(Photo.t_year, Photo.i_year)
+    rows = s.exec(
+        select(eff, func.count()).where(Photo.missing == False, eff != None).group_by(eff).order_by(eff)  # noqa: E711,E712
+    ).all()
+    return [YearCount(year=y, count=n) for y, n in rows]
 
 
 @router.get("/photos/{photo_id}", response_model=PhotoDetail)

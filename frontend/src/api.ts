@@ -11,6 +11,7 @@ export type UndoResult = S["UndoResult"];
 export type EditBatch = S["EditBatchOut"];
 export type EventKind = S["EventKindOut"];
 export type EventInstance = S["EventInstanceOut"];
+export type YearCount = S["YearCount"];
 export type Place = S["PlaceOut"];
 export type NearbyDate = S["NearbyDate"];
 export type ParsedDate = S["ParsedDate"];
@@ -34,6 +35,11 @@ export type ListParams = {
   order?: "album" | "chrono" | "confidence";
   /** Only these photos, comma-separated ids (e.g. the photos of one Check group). */
   ids?: string;
+  /** Multi-select filters, comma-separated: any of the years / events; people all together, or any. */
+  years?: string;
+  people?: string;
+  people_mode?: "all" | "any";
+  events?: string;
 };
 
 export class ApiError extends Error {}
@@ -99,6 +105,7 @@ export const api = {
   addEventKind: (name: string) =>
     call<EventKind>("/event-kinds", { method: "POST", body: JSON.stringify({ name }) }),
   eventInstances: () => call<EventInstance[]>("/event-instances"),
+  years: () => call<YearCount[]>("/years"),
   jobs: () => call<Job[]>("/jobs"),
   startJob: (type: JobType, params: Record<string, unknown> = {}) =>
     call<Job>("/jobs", { method: "POST", body: JSON.stringify({ type, params }) }),

@@ -6,6 +6,8 @@ export const useAlbums = () => useQuery({ queryKey: ["albums"], queryFn: api.alb
 export const useStats = () => useQuery({ queryKey: ["stats"], queryFn: api.stats });
 export const useEventKinds = () => useQuery({ queryKey: ["eventKinds"], queryFn: api.eventKinds });
 export const usePlaces = () => useQuery({ queryKey: ["places"], queryFn: api.places });
+export const useYears = () => useQuery({ queryKey: ["years"], queryFn: api.years });
+export const useEventInstances = () => useQuery({ queryKey: ["eventInstances"], queryFn: api.eventInstances });
 export const usePhotos = (list: ListParams) =>
   useQuery({ queryKey: ["photos", list], queryFn: () => api.photos(list), placeholderData: (prev) => prev });
 
@@ -25,6 +27,7 @@ export function useUpdatePhotos() {
       qc.invalidateQueries({ queryKey: ["edits"] });
       qc.invalidateQueries({ queryKey: ["eventInstances"] });
       qc.invalidateQueries({ queryKey: ["places"] });
+      qc.invalidateQueries({ queryKey: ["years"] });
     },
   });
 }
