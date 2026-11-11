@@ -12,6 +12,7 @@ export type EditBatch = S["EditBatchOut"];
 export type EventKind = S["EventKindOut"];
 export type EventInstance = S["EventInstanceOut"];
 export type YearCount = S["YearCount"];
+export type CollectionInfo = S["CollectionOut"];
 export type Place = S["PlaceOut"];
 export type NearbyDate = S["NearbyDate"];
 export type ParsedDate = S["ParsedDate"];
@@ -107,6 +108,7 @@ export const api = {
     call<EventKind>("/event-kinds", { method: "POST", body: JSON.stringify({ name }) }),
   eventInstances: () => call<EventInstance[]>("/event-instances"),
   years: () => call<YearCount[]>("/years"),
+  collections: () => call<CollectionInfo[]>("/collections"),
   jobs: () => call<Job[]>("/jobs"),
   startJob: (type: JobType, params: Record<string, unknown> = {}) =>
     call<Job>("/jobs", { method: "POST", body: JSON.stringify({ type, params }) }),
@@ -146,7 +148,15 @@ export const api = {
     call<Back>(`/${kind}-backs/${id}`, { method: "PATCH", body: JSON.stringify({ date }) }),
 };
 
-export const faceUrl = (id: number) => `/api/face/${id}.jpg`;
+/** The collection this browser is working in (set by the top bar's picker); "main" if none. */
+export function currentCollection(): string {
+  return document.cookie.match(/(?:^|; )shoebox_collection=([^;]*)/)?.[1] ?? "main";
+}
+export function setCollection(id: string) {
+  document.cookie = `shoebox_collection=${id}; path=/; max-age=31536000; SameSite=Lax`;
+}
+// Face ids repeat across collections, so the collection is part of a face crop's URL (and cache key).
+export const faceUrl = (id: number) => `/api/face/${id}.jpg?c=${currentCollection()}`;
 
 export const imgUrl = (sha: string, kind: "thumb" | "preview", rotation = 0) =>
   `/api/img/${sha}/${kind}/${rotation}.jpg`;

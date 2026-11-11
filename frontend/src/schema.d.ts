@@ -39,6 +39,26 @@ export interface paths {
         patch: operations["update_photos_api_photos_patch"];
         trace?: never;
     };
+    "/api/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collections
+         * @description The configured collections, and which one this request is working on (the UI's picker).
+         */
+        get: operations["list_collections_api_collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/years": {
         parameters: {
             query?: never;
@@ -814,6 +834,15 @@ export interface components {
             faces: components["schemas"]["FaceOut"][];
             suggestion: components["schemas"]["Suggestion"] | null;
         };
+        /** CollectionOut */
+        CollectionOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Current */
+            current: boolean;
+        };
         /** DrawIn */
         DrawIn: {
             /** X */
@@ -1449,6 +1478,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collections_api_collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"][];
                 };
             };
         };

@@ -312,6 +312,29 @@
     }
    }
   },
+  "/api/collections": {
+   "get": {
+    "summary": "List Collections",
+    "description": "The configured collections, and which one this request is working on (the UI's picker).",
+    "operationId": "list_collections_api_collections_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CollectionOut"
+         },
+         "type": "array",
+         "title": "Response List Collections Api Collections Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/years": {
    "get": {
     "summary": "Photo Years",
@@ -2374,6 +2397,29 @@
      "suggestion"
     ],
     "title": "ClusterOut"
+   },
+   "CollectionOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "current": {
+      "type": "boolean",
+      "title": "Current"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "current"
+    ],
+    "title": "CollectionOut"
    },
    "DrawIn": {
     "properties": {

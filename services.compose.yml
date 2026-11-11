@@ -7,6 +7,16 @@ x-common: &common
     - shoebox-data:/data
     - ${BACKUP_ROOT:?set BACKUP_ROOT in private/.env}:/backup
     - ./private:/config:ro
+    # Extra collections (separate sets of photos), slots 2-5: set COLLECTION_<n>_NAME, _PHOTOS and
+    # _BACKUP in private/.env. An unset slot mounts an empty placeholder that the app ignores.
+    - ${COLLECTION_2_PHOTOS:-./config/unused}:/collections/2/photos:ro
+    - ${COLLECTION_2_BACKUP:-./config/unused}:/collections/2/backup
+    - ${COLLECTION_3_PHOTOS:-./config/unused}:/collections/3/photos:ro
+    - ${COLLECTION_3_BACKUP:-./config/unused}:/collections/3/backup
+    - ${COLLECTION_4_PHOTOS:-./config/unused}:/collections/4/photos:ro
+    - ${COLLECTION_4_BACKUP:-./config/unused}:/collections/4/backup
+    - ${COLLECTION_5_PHOTOS:-./config/unused}:/collections/5/photos:ro
+    - ${COLLECTION_5_BACKUP:-./config/unused}:/collections/5/backup
   restart: unless-stopped
 
 services:

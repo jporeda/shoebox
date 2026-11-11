@@ -17,6 +17,7 @@ def main(argv: list[str] | None = None) -> None:
     run = sub.add_parser("run", help="run one job synchronously (e.g. ingest, export, restore)")
     run.add_argument("job")
     run.add_argument("--params", default="{}", help="JSON params")
+    run.add_argument("--collection", default="main", help='collection id: "main" (default), or c2, c3 ...')
     sub.add_parser("openapi", help="print the OpenAPI schema")
     args = parser.parse_args(argv)
 
@@ -31,11 +32,15 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "run":
         import logging
 
+        from .config import CURRENT_COLLECTION, collection_ids
         from .db import migrate, session_scope
         from .jobs import enqueue, run_job
         from .models import Job
 
         logging.basicConfig(level=logging.INFO)
+        if args.collection not in collection_ids():
+            sys.exit(f"unknown collection {args.collection!r}; configured: {', '.join(sorted(collection_ids()))}")
+        CURRENT_COLLECTION.set(args.collection)
         migrate()
         job = enqueue(args.job, json.loads(args.params))
         with session_scope() as s:

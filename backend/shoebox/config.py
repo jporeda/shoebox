@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass, field, fields
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field, fields, replace
 from functools import lru_cache
 from pathlib import Path
+from typing import Iterator
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".tif", ".tiff", ".png", ".heic", ".heif"}
 
@@ -49,6 +52,11 @@ class Settings:
     bind: str = "127.0.0.1"
     # Extra host names the server answers to on the network, comma-separated (SHOEBOX_HOSTS).
     hosts: str = ""
+    # Collections: the photos at photos_root are the main one, named collection_name. Further,
+    # fully separate collections (slots 2..MAX_SLOT) are mounted under collections_root/<n>/photos
+    # and /backup by compose, from COLLECTION_<n>_NAME / _PHOTOS / _BACKUP in private/.env.
+    collection_name: str = "Photos"
+    collections_root: Path = Path("/collections")
     extra: dict = field(default_factory=dict)
 
     @property
@@ -91,6 +99,69 @@ def load_settings() -> Settings:
     return s
 
 
+# --- collections --------------------------------------------------------------------------
+# Each collection is a separate set of photos with its own database, thumbnails, backups,
+# truth.json and exports: no people, dates, faces or edits are shared between collections.
+
+MAIN = "main"
+MAX_SLOT = 5  # main + collections 2..5; compose mounts that many slots
+CURRENT_COLLECTION: ContextVar[str] = ContextVar("shoebox_collection", default=MAIN)
+
+
+@dataclass(frozen=True)
+class Collection:
+    id: str  # "main", or "c<slot>": also its folder under data_dir/collections
+    name: str
+    slot: int
+
+
+def collections() -> list[Collection]:
+    """The configured collections: main, then each slot whose photo and backup folders are set."""
+    out = [Collection(MAIN, _base_settings().collection_name, 1)]
+    for n in range(2, MAX_SLOT + 1):
+        if os.environ.get(f"COLLECTION_{n}_PHOTOS") and os.environ.get(f"COLLECTION_{n}_BACKUP"):
+            out.append(Collection(f"c{n}", os.environ.get(f"COLLECTION_{n}_NAME") or f"Collection {n}", n))
+    return out
+
+
+def collection_ids() -> set[str]:
+    return {c.id for c in collections()}
+
+
+@contextmanager
+def use_collection(collection_id: str) -> Iterator[None]:
+    """Run the enclosed code (settings, database, jobs) against one collection."""
+    token = CURRENT_COLLECTION.set(collection_id)
+    try:
+        yield
+    finally:
+        CURRENT_COLLECTION.reset(token)
+
+
 @lru_cache
-def get_settings() -> Settings:
+def _base_settings() -> Settings:
     return load_settings()
+
+
+@lru_cache
+def _collection_settings(collection_id: str) -> Settings:
+    base = _base_settings()
+    slot = int(collection_id[1:])
+    root = base.collections_root / str(slot)
+    return replace(base, photos_root=root / "photos", backup_dir=root / "backup",
+                   data_dir=base.data_dir / "collections" / collection_id,
+                   collection_name=os.environ.get(f"COLLECTION_{slot}_NAME") or f"Collection {slot}")
+
+
+def get_settings() -> Settings:
+    """Settings for the collection this code runs for (CURRENT_COLLECTION)."""
+    cid = CURRENT_COLLECTION.get()
+    return _base_settings() if cid == MAIN else _collection_settings(cid)
+
+
+def _clear() -> None:
+    _base_settings.cache_clear()
+    _collection_settings.cache_clear()
+
+
+get_settings.cache_clear = _clear  # type: ignore[attr-defined]

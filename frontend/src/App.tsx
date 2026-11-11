@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError } from "./api";
+import { api, ApiError, setCollection } from "./api";
 import { Grid } from "./Grid";
 import { Jobs } from "./Jobs";
 import { LooseBacks } from "./LooseBacks";
@@ -77,6 +77,7 @@ export function App() {
         <a className="brand" href="#/">
           Shoebox
         </a>
+        <CollectionPicker />
         <nav>
           <a className={route.view === "grid" || route.view === "photo" ? "is-active" : ""} href="#/">
             Photos
@@ -117,5 +118,34 @@ export function App() {
       {route.view === "backs" && <LooseBacks kind={route.kind} albumId={route.album_id} undated={route.undated} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
+  );
+}
+
+/** Switch between collections (separate sets of photos). Shown only when there's more than one.
+ *  Switching starts fresh on the new collection's photos: nothing is shared between them. */
+function CollectionPicker() {
+  const list = useQuery({ queryKey: ["collections"], queryFn: api.collections });
+  const current = list.data?.find((c) => c.current);
+  useEffect(() => {
+    if (current && (list.data?.length ?? 0) > 1) document.title = `${current.name} · Shoebox`;
+  }, [current, list.data]);
+  if (!list.data || list.data.length < 2) return null;
+  return (
+    <select
+      className="collection-picker"
+      aria-label="Collection"
+      value={current?.id}
+      onChange={(e) => {
+        setCollection(e.target.value);
+        window.location.hash = "#/";
+        window.location.reload();
+      }}
+    >
+      {list.data.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
   );
 }

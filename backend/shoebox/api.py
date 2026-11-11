@@ -471,6 +471,21 @@ def _id_list(text: str, name: str) -> set[int]:
         raise HTTPException(422, f"{name} must be comma-separated numbers")
 
 
+class CollectionOut(BaseModel):
+    id: str
+    name: str
+    current: bool
+
+
+@router.get("/collections", response_model=list[CollectionOut])
+def list_collections():
+    """The configured collections, and which one this request is working on (the UI's picker)."""
+    from .config import CURRENT_COLLECTION, collections
+
+    now = CURRENT_COLLECTION.get()
+    return [CollectionOut(id=c.id, name=c.name, current=c.id == now) for c in collections()]
+
+
 class YearCount(BaseModel):
     year: int
     count: int

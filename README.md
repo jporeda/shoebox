@@ -66,6 +66,27 @@ Restore can't be undone in one step: to go back, copy an earlier snapshot from
 address: the same phone opening the `.local` name and the IP address, a private window, or a
 Home Screen icon each start their own history.
 
+### Several collections (optional)
+
+A collection is a completely separate set of photos: its own folder (with any subfolders; every
+folder that holds images becomes an album), its own people, dates, faces, events, undo history,
+backups and exports. Nothing carries over between collections.
+
+1. In `private/.env`, add a slot (2 to 5) with all three lines:
+   ```
+   COLLECTION_2_NAME=Grandma's albums
+   COLLECTION_2_PHOTOS=/Users/you/Pictures/GrandmaScans
+   COLLECTION_2_BACKUP=/Users/you/Shoebox-backup-grandma
+   ```
+   Give each collection its own backup folder. `SHOEBOX_COLLECTION_NAME` names the first one.
+2. `docker compose up -d`, then pick the collection in the top bar and run **Import** for it on
+   the Jobs page.
+
+The picker only shows with two or more collections; it's remembered per browser. Keep a slot's
+number once it has data (each slot's database lives under `collections/c<n>` in the data volume).
+Restoring from a snapshot or `truth.json` works per collection, from that collection's backup
+folder. On the command line, `shoebox run <job> --collection c2` targets one.
+
 ## Personal data
 
 Anything that identifies your family stays out of git:

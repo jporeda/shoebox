@@ -17,8 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from . import editlog
 from .api import router
 from .api_people import router as people_router
-from .config import get_settings
-from .db import migrate
+from .config import CURRENT_COLLECTION, MAIN, collection_ids, get_settings
+from .db import migrate_all
 
 FRONTEND_DIST = Path(os.environ.get("SHOEBOX_FRONTEND", "/app/frontend/dist"))
 
@@ -26,7 +26,7 @@ FRONTEND_DIST = Path(os.environ.get("SHOEBOX_FRONTEND", "/app/frontend/dist"))
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     logging.basicConfig(level=logging.INFO)
-    migrate()
+    migrate_all()
     yield
 
 
@@ -38,6 +38,10 @@ app = FastAPI(title="Shoebox", lifespan=lifespan)
 APP_HEADER = "X-Shoebox"
 CLIENT_HEADER = "X-Shoebox-Client"  # a random id per browser, so Undo undoes that device's own edits
 CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
+# Which collection a request works on: set by the UI's collection picker (a cookie, so plain
+# <img> requests carry it too). Unknown or missing means the main collection.
+COLLECTION_COOKIE = "shoebox_collection"
+COLLECTION_HEADER = "X-Shoebox-Collection"
 VITE_DEV_PORT = 5173  # `npm run dev` proxies /api here and keeps the page's Origin
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
@@ -112,9 +116,12 @@ async def guard(request: Request, call_next):
     client = request.headers.get(CLIENT_HEADER, "")
     actor = f"{editlog.CLIENT_PREFIX}{client}" if CLIENT_ID.fullmatch(client) else editlog.ANONYMOUS
     token = editlog.CURRENT_ACTOR.set(actor)
+    wanted = request.headers.get(COLLECTION_HEADER) or request.cookies.get(COLLECTION_COOKIE) or MAIN
+    collection = CURRENT_COLLECTION.set(wanted if wanted in collection_ids() else MAIN)
     try:
         return await call_next(request)
     finally:
+        CURRENT_COLLECTION.reset(collection)
         editlog.CURRENT_ACTOR.reset(token)
 
 

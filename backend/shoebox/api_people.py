@@ -429,7 +429,8 @@ def face_image(face_id: int, s: Session = Depends(get_session)):
     if f is None:
         raise HTTPException(404, "face not found")
     path = people.face_crop(f, s.get(Photo, f.photo_id))
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+    # Face ids repeat across collections: the URL carries the collection, and caches key on the cookie.
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600", "Vary": "Cookie"})
 
 
 @router.get("/faces/stats")

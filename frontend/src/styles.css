@@ -440,3 +440,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .filters__mode { margin: 4px 0; }
 .filters__list--albums { max-height: 320px; }
 .check.is-missing .filters__name { color: var(--muted); text-decoration: line-through; }
+.collection-picker { font: inherit; font-weight: 600; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); max-width: 220px; }

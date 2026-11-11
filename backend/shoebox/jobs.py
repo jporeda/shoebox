@@ -16,7 +16,7 @@ from typing import Callable
 
 from sqlmodel import select
 
-from .db import migrate, session_scope
+from .db import migrate_all, session_scope
 from .jobs_ctx import JobCancelled, JobContext
 from .models import Job, Photo, utcnow
 
@@ -284,21 +284,34 @@ def _maybe_queue_age_backfill() -> None:
 
 
 def worker_loop() -> None:
+    """One worker for every collection: each has its own job queue (in its own database), taken in
+    turn, so a long job in one collection holds up the others until it finishes."""
+    from .config import collections, use_collection
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    migrate()
-    log.info("worker started; requeued %d interrupted job(s)", recover_interrupted())
-    _maybe_queue_age_backfill()
+    migrate_all()
+    for c in collections():
+        with use_collection(c.id):
+            log.info("worker: %s: requeued %d interrupted job(s)", c.name, recover_interrupted())
+            _maybe_queue_age_backfill()
     last_schedule_check = datetime.min.replace(tzinfo=timezone.utc)
     while True:
-        job_id = _claim()
-        if job_id is not None:
-            log.info("running job %s", job_id)
-            run_job(job_id)
+        ran = False
+        for c in collections():
+            with use_collection(c.id):
+                job_id = _claim()
+                if job_id is not None:
+                    log.info("running job %s in %s", job_id, c.name)
+                    run_job(job_id)
+                    ran = True
+        if ran:
             continue
         if utcnow() - last_schedule_check > timedelta(hours=1):
             last_schedule_check = utcnow()
-            try:
-                _maybe_schedule_fixity()
-            except Exception:
-                log.exception("fixity scheduling failed")
+            for c in collections():
+                with use_collection(c.id):
+                    try:
+                        _maybe_schedule_fixity()
+                    except Exception:
+                        log.exception("fixity scheduling failed for %s", c.name)
         time.sleep(POLL_SECONDS)
