@@ -333,3 +333,46 @@ def test_setting_one_of_two_detected_twins_to_the_pair_sets_the_other_too(env):
         l, r = s.get(Face, left_id), s.get(Face, right_id)
         assert (l.person_id, l.alt_person_id) == (ana_id, None)
         assert (r.person_id, r.alt_person_id) == (ben_id, None)
+
+
+def test_two_twins():
+    from shoebox.matching import two_twins
+    twins = {1: {2}, 2: {1}}
+    clear_a, clear_b = Match(1, 0.7, 0.3, runner_up=3), Match(2, 0.7, 0.3, runner_up=3)
+    close_a = Match(1, 0.6, 0.02, runner_up=2)
+    assert two_twins(clear_a, clear_a, twins, [set(), set()]) == (1, 2)  # both look like Ana: one is Ben
+    assert two_twins(close_a, clear_b, twins, [set(), set()]) == (1, 2)  # one too close to call
+    assert two_twins(clear_a, clear_b, twins, [set(), set()]) is None  # clearly one each
+    assert two_twins(clear_a, None, twins, [set(), set()]) is None  # the other face matches no one
+    assert two_twins(Match(3, 0.7, 0.3), Match(3, 0.7, 0.3), twins, [set(), set()]) is None  # not twins
+    assert two_twins(clear_a, clear_a, twins, [{2}, set()]) is None  # told it isn't Ben
+
+
+def test_a_photo_of_just_the_two_twins_suggests_the_pair_on_both_faces(env):
+    for i in range(4):
+        make_image(env.photos_root / "A1" / f"p{i}.jpg", i)
+    run_ingest()
+    ana_look, ben_look = unit(11), unit(12)  # the face model can tell them apart, usually
+    with session_scope() as s:
+        p0, p1, p2, p3 = s.exec(select(Photo).order_by(Photo.rel_path)).all()
+        ana, ben = Person(name="Ana"), Person(name="Ben")
+        s.add_all([ana, ben])
+        s.flush()
+        n = iter(range(1000))
+        def face(p, x, look, **kw):
+            noise = np.random.default_rng(next(n)).normal(size=512) * 0.01
+            f = Face(photo_id=p.id, x=x, y=0.1, w=0.1, h=0.1, embedding=to_blob((look + noise).astype(np.float32)), **kw)
+            s.add(f)
+            return f
+        face(p0, 0.1, ana_look, person_id=ana.id, source="manual")
+        face(p0, 0.5, ben_look, person_id=ben.id, source="manual")
+        face(p1, 0.1, ana_look, person_id=ana.id, alt_person_id=ben.id, source="manual")  # makes them twins
+        both = [face(p2, 0.1, ana_look), face(p2, 0.5, ana_look)]  # just the two of them, both look like Ana
+        crowd = [face(p3, 0.1, ana_look), face(p3, 0.4, ana_look), face(p3, 0.7, unit(13))]  # three people
+        s.flush()
+        both_ids, crowd_ids, ana_id, ben_id = [f.id for f in both], [f.id for f in crowd], ana.id, ben.id
+    run_matching()
+    with session_scope() as s:
+        got = lambda i: (s.get(Face, i).person_id, s.get(Face, i).suggested_person_id, s.get(Face, i).suggested_alt_person_id)
+        assert [got(i) for i in both_ids] == [(None, ana_id, ben_id)] * 2
+        assert got(crowd_ids[0])[2] is None and got(crowd_ids[1])[2] is None  # not two faces: as before

@@ -176,7 +176,9 @@ Anything that identifies your family stays out of git:
   Ana is confirmed on one face, another face there that's "Ana or Ben" becomes Ben (in the
   same Undo step), and suggestions on that photo say "Ben?". Likewise, when the app found
   both twins in a photo and you set one face to "Ana or Ben", the face it took for the other
-  twin becomes "Ana or Ben" too; confirming either face later settles the other.
+  twin becomes "Ana or Ben" too; confirming either face later settles the other. And in a
+  photo with just two faces that both look like Ana or Ben, both are suggested as "Ana or Ben?"
+  (unless one is clearly Ana and the other clearly Ben).
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as

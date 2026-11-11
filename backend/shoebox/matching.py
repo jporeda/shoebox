@@ -135,6 +135,35 @@ def decide(m: Optional[Match], est_age: Optional[float], age: Optional[int] = No
     return "suggest"
 
 
+
+def two_twins(a: Optional[Match], b: Optional[Match], twins: dict[int, set[int]],
+              rejected: list[set[int]]) -> tuple[int, int] | None:
+    """A photo with just two faces, each matching one of a pair of twins: (Ana, Ben) to suggest
+    "Ana or Ben?" on both, else None.
+
+    Both looking like the same twin always means the pair (one of them must be the other twin).
+    One clearly Ana and the other clearly Ben is left as two separate suggestions; it's the pair
+    only when either is too close to call. Nor if either face was already told it isn't one of them."""
+    if a is None or b is None:
+        return None
+    if a.person_id == b.person_id:
+        mine = twins.get(a.person_id, set())
+        other = next((m.runner_up for m in (a, b) if m.runner_up in mine), None)
+        if other is None and len(mine) == 1:
+            other = next(iter(mine))
+        if other is None:
+            return None
+    elif b.person_id in twins.get(a.person_id, set()):
+        if a.margin >= TWIN_MARGIN and b.margin >= TWIN_MARGIN:
+            return None  # clearly one each
+        other = b.person_id
+    else:
+        return None
+    pair = (a.person_id, other)
+    if any(set(pair) & r for r in rejected):
+        return None
+    return pair
+
 def run_matching(ctx: JobContext = NULL_CTX) -> dict:
     run_id = f"names-{uuid.uuid4().hex[:8]}"
     counts = {"auto": 0, "suggested": 0, "unnamed": 0, "exemplars": 0, "run_id": run_id}
@@ -160,6 +189,8 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
 
         names = {p.id: p.name for p in s.exec(select(Person)).all()}
         ctx.progress(0, len(targets), "suggesting names")
+        # First each face's own guess: (who, alt) and "auto" / "suggest" / "none"...
+        plan: dict[int, tuple[Face, Optional[Match], str, Optional[int], Optional[int]]] = {}
         for f in targets:
             m = match(from_blob(f.embedding), years.get(f.photo_id), ex, set(f.rejected_person_ids or [])) if ex else None
             verdict = decide(m, f.est_age, known_age(years.get(f.photo_id), births.get(m.person_id)) if m else None)
@@ -174,8 +205,22 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
                     who, alt = guess
                     if alt is not None or who != m.person_id:
                         verdict = "suggest"  # a twin call is never made automatically
-                    if alt is not None and name_order(names[alt]) < name_order(names[who]):
-                        who, alt = alt, who  # one order per pair: "Ana or Ben"
+            plan[f.id] = (f, m, verdict, who, alt)
+        # ...then photos of just the two twins: both faces "Ana or Ben?" (see two_twins).
+        on_photo: dict[int, list[int]] = {}
+        for f in faces:
+            on_photo.setdefault(f.photo_id, []).append(f.id)
+        for ids in on_photo.values():
+            if len(ids) == 2 and all(i in plan for i in ids):
+                a, b = (plan[i] for i in ids)
+                pair = two_twins(a[1] if a[2] != "none" else None, b[1] if b[2] != "none" else None, twins,
+                                 [set(a[0].rejected_person_ids or []), set(b[0].rejected_person_ids or [])])
+                if pair:
+                    for f, m, _, _, _ in (a, b):
+                        plan[f.id] = (f, m, "suggest", *pair)
+        for f, m, verdict, who, alt in plan.values():
+            if alt is not None and name_order(names[alt]) < name_order(names[who]):
+                who, alt = alt, who  # one order per pair: "Ana or Ben"
             new = (who if verdict == "auto" else None, who if verdict == "suggest" else None,
                    alt if verdict == "suggest" else None)
             counts["auto" if verdict == "auto" else "suggested" if verdict == "suggest" else "unnamed"] += 1
