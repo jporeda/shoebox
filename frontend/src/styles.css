@@ -312,6 +312,19 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .field__label { font-size: 13px; }
   /* No iOS callout / text selection on press-and-hold of pictures that act as buttons. */
   .grid.is-selecting .tile:not(.is-selected) img { opacity: 0.85; }
+  /* Two fingers on the grid change its columns (gridPinch.ts) instead of zooming the page. */
+  .grid { touch-action: pan-y; }
+  .grid.grid--cols { grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--gap); }
+  .grid.grid--dense .tile { border-radius: 2px; contain-intrinsic-size: var(--tile) var(--tile); }
+  .grid.grid--dense .tile__meta, .grid.grid--dense .tile__badges { display: none; }
+  .grid.grid--dense .tile img { object-fit: cover; }
+  .grid.is-pinching { will-change: transform; }
+  /* Clip the scaled grid sideways only: hiding overflow would make .main a scroll container and
+     collapse the phone page, which scrolls as a whole. */
+  .main:has(> .grid.is-pinching) { overflow-x: clip; }
+  /* ...and keep the bars on top of it. */
+  .app:has(.grid.is-pinching) :is(.topbar, .main__head) { position: relative; z-index: 2; }
+  .app:has(.grid.is-pinching) .main__head { background: var(--bg); }
 
   /* Photo view */
   .photo-view__bar { flex-wrap: wrap; row-gap: 6px; }

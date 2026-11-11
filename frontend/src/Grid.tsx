@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { imgUrl, type ListParams, type PhotoSummary } from "./api";
 import { FiltersButton, SidebarDrawer } from "./Drawer";
 import { DateEventEditor, PlaceEditor } from "./Editor";
-import { useAlbums, useDrawer, useEventInstances, useLongPress, usePhotos, useTouch, useUpdatePhotos, useYears } from "./hooks";
+import { useGridPinch } from "./gridPinch";
+import { useAlbums, useDrawer, useEventInstances, useLongPress, usePhone, usePhotos, useTouch, useUpdatePhotos, useYears } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
 import { backsHref, gridHref, listQuery, navigate, photoHref, takeLastPhoto } from "./route";
@@ -81,7 +82,7 @@ function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onC
       {touch ? (
         <section className="sidebar__help muted">
           Tap to open · Press and hold to select · Then tap to add or remove, or press and hold another photo to select
-          everything between
+          everything between · Pinch with two fingers for bigger or smaller photos
         </section>
       ) : (
         <section className="sidebar__help muted">
@@ -234,6 +235,7 @@ function Progress({ done, total }: { done: number; total: number }) {
 function Tile({
   p,
   selected,
+  big,
   onClick,
   onOpen,
   onTap,
@@ -241,6 +243,8 @@ function Tile({
 }: {
   p: PhotoSummary;
   selected: boolean;
+  /** Shown large (pinched to one or two columns): use the sharper preview image. */
+  big: boolean;
   /** Mouse click: select (with shift / ⌘ for ranges and adding). */
   onClick: (e: React.MouseEvent) => void;
   /** Mouse double-click. */
@@ -263,7 +267,7 @@ function Tile({
       onDoubleClick={onOpen}
       data-id={p.id}
     >
-      <img src={imgUrl(p.sha256, "thumb", p.rotation)} loading="lazy" alt={p.rel_path} draggable={false} />
+      <img src={imgUrl(p.sha256, big ? "preview" : "thumb", p.rotation)} loading="lazy" alt={p.rel_path} draggable={false} />
       <span className="tile__meta">
         <span className="tile__date">
           {p.date_label || "—"}
@@ -310,6 +314,8 @@ export function Grid({ list }: { list: ListParams }) {
   // Back from a photo: restore this list's scroll position once its tiles are rendered, then make
   // sure the photo last viewed (possibly several swipes on) is on screen.
   const gridEl = useRef<HTMLDivElement>(null);
+  // Pinch the grid (phones and tablets) for fewer, bigger photos or more, smaller ones.
+  const pinch = useGridPinch(gridEl, touch, usePhone());
   const scrollKey = listQuery(list);
   // Once per visit to the grid: switching filters inside the grid keeps today's behaviour.
   const restored = useRef(false);
@@ -359,11 +365,13 @@ export function Grid({ list }: { list: ListParams }) {
   };
 
   const onTileTap = (p: PhotoSummary) => {
+    if (pinch.suppressed()) return;
     if (selectMode) toggle(p);
     else navigate(photoHref(p.id, list));
   };
 
   const onTileLongPress = (p: PhotoSummary) => {
+    if (pinch.suppressed()) return;
     const i = indexOf.get(p.id)!;
     if (!selectMode) {
       setSelectMode(true);
@@ -460,7 +468,8 @@ export function Grid({ list }: { list: ListParams }) {
         )}
         <div
           ref={gridEl}
-          className={`grid ${selectMode ? "is-selecting" : ""} ${selectedIds.length ? "has-sheet" : ""}`}
+          className={`grid ${pinch.className} ${selectMode ? "is-selecting" : ""} ${selectedIds.length ? "has-sheet" : ""}`}
+          style={pinch.style}
           onScroll={(e) => scrollMemory.set(scrollKey, e.currentTarget.scrollTop)}
         >
           {items.map((p) => (
@@ -468,6 +477,7 @@ export function Grid({ list }: { list: ListParams }) {
               key={p.id}
               p={p}
               selected={selected.has(p.id)}
+              big={pinch.big}
               onClick={(e) => onTileClick(p, e)}
               onOpen={() => navigate(photoHref(p.id, list))}
               onTap={() => onTileTap(p)}
