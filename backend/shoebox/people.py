@@ -354,11 +354,20 @@ def person_for_name(s: Session, name: str) -> tuple[Person, list]:
     return person, [(person, editlog.CREATED, True)]
 
 
+def name_order(name: str) -> tuple[str, str]:
+    """How the two names of a pair (twins) are ordered: alphabetically, so it's always "Ana or Ben"."""
+    return (name.lower(), name)
+
+
 def assign(s: Session, face_ids: list[int], person_id: Optional[int], description: str = "",
            extra: Iterable[tuple] = (), alt_person_id: Optional[int] = None) -> Optional[str]:
     """Name faces. With alt_person_id, each face is one of the two people, not known which (twins)."""
     if person_id is None or alt_person_id == person_id:
         alt_person_id = None
+    if alt_person_id is not None:  # one order per pair, alphabetical: always "Ana or Ben"
+        a, b = s.get(Person, person_id), s.get(Person, alt_person_id)
+        if name_order(b.name) < name_order(a.name):
+            person_id, alt_person_id = alt_person_id, person_id
     faces = s.exec(select(Face).where(Face.id.in_(face_ids))).all()
     changes = list(extra)
     for f in faces:

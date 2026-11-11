@@ -142,3 +142,23 @@ def test_people_list_their_known_twins(faces):
         c.post("/api/faces/assign", json={"face_ids": [faces[0]], "person_id": ana["id"]})
         assert all(p["twin_ids"] == [] for p in c.get("/api/people").json())
         assert cy["twin_ids"] == []
+
+
+def test_a_pair_is_always_named_in_one_order(faces, env):
+    with api_client() as c:
+        ana, ben = name_pair(c, [faces[0]])
+        # Named the other way round: still stored, shown and exported as "Ana or Ben".
+        c.post("/api/faces/assign", json={"face_ids": [faces[1]], "person_id": ben["id"], "alt_person_id": ana["id"]})
+    with session_scope() as s:
+        for i in faces[:2]:
+            f = s.get(Face, i)
+            assert (f.person_id, f.alt_person_id) == (ana["id"], ben["id"])
+        f = s.get(Face, faces[1])
+        f.person_id, f.alt_person_id = ben["id"], ana["id"]  # stored the other way before this rule
+        s.add(f)
+    run_export()
+    index = json.loads((env.backup_dir / "export" / "export-index.json").read_text())
+    with session_scope() as s:
+        photo_id = s.get(Face, faces[1]).photo_id
+    t = tags(env.backup_dir / "export" / index[str(photo_id)]["path"], "XMP-mwg-rs:RegionInfo")
+    assert t["XMP-mwg-rs:RegionInfo"]["RegionList"][0]["Name"] == "Ana or Ben"

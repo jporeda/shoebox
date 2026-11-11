@@ -104,7 +104,11 @@ class ExportItem:
 
 def _face_name(f, names: dict[int, str]) -> str:
     """A face's name in exports: "Ana", or "Ana or Ben" for a one-of-two face (twins)."""
-    return f"{names[f.person_id]} or {names[f.alt_person_id]}" if f.alt_person_id else names[f.person_id]
+    from .people import name_order
+
+    if not f.alt_person_id:
+        return names[f.person_id]
+    return " or ".join(sorted((names[f.person_id], names[f.alt_person_id]), key=name_order))
 
 def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")[:40] or "x"

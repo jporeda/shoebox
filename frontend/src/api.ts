@@ -164,7 +164,15 @@ export function setCollection(id: string) {
 // Face ids repeat across collections, so the collection is part of a face crop's URL (and cache key).
 /** A face's name: "Ana", or "Ana or Ben" when it's one of the two and not known which (twins). */
 export const faceName = (f: Face): string | null =>
-  f.person_name && f.alt_name ? `${f.person_name} or ${f.alt_name}` : (f.person_name ?? null);
+  f.person_name && f.alt_name ? pairLabel(f.person_name, f.alt_name) : (f.person_name ?? null);
+
+/** A pair's name, always in one order (alphabetical, as the server stores and exports it): "Ana or Ben". */
+export function pairLabel(a: string, b: string): string {
+  const key = (s: string) => [s.toLowerCase(), s];
+  const [ka, kb] = [key(a), key(b)];
+  const aFirst = ka[0] < kb[0] || (ka[0] === kb[0] && ka[1] <= kb[1]);
+  return aFirst ? `${a} or ${b}` : `${b} or ${a}`;
+}
 
 export const faceUrl = (id: number) => `/api/face/${id}.jpg?c=${currentCollection()}`;
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, faceName, faceUrl, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
+import { api, ApiError, faceName, faceUrl, pairLabel, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
 import { useLongPress, useTouch } from "./hooks";
 import { gridHref, navigate, photoHref } from "./route";
 
@@ -10,14 +10,16 @@ export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.peo
 export type Pair = { person_id: number; alt_person_id: number };
 
 /** Known twins: people someone has paired on a "one of two" face. twinsOf(id) lists them, and
- *  pairs are "A or B" for every such pair, both ways round, for the name box's suggestions. */
+ *  pairs are each such pair once, "Ana or Ben" (never also "Ben or Ana"), for the name box. */
 export function useTwins() {
   const people = usePeople();
   const byId = new Map((people.data ?? []).map((p) => [p.id, p]));
   const twinsOf = (id: number | null | undefined): Person[] =>
     id == null ? [] : (byId.get(id)?.twin_ids ?? []).flatMap((t) => byId.get(t) ?? []);
   const pairs = (people.data ?? []).flatMap((p) =>
-    twinsOf(p.id).map((t) => ({ label: `${p.name} or ${t.name}`, pair: { person_id: p.id, alt_person_id: t.id } })),
+    twinsOf(p.id)
+      .map((t) => ({ label: pairLabel(p.name, t.name), pair: { person_id: p.id, alt_person_id: t.id } }))
+      .filter((x) => x.label.startsWith(`${p.name} or `)), // each pair once, from its first name
   );
   return { twinsOf, pairs };
 }
@@ -38,7 +40,7 @@ export function TwinChoices({ personId, name, onPick, prefix = "", suffix = "", 
       {twinsOf(personId).map((t) => (
         <button key={t.id} className={className} disabled={disabled} title="One of the two, not sure which"
           onClick={() => onPick({ person_id: personId!, alt_person_id: t.id })}>
-          {prefix}{name} or {t.name}{suffix}
+          {prefix}{pairLabel(name, t.name)}{suffix}
         </button>
       ))}
     </>
@@ -75,7 +77,10 @@ export function NameInput({
   // A name that matches no one creates a new person on submit; say so, so a typo doesn't quietly
   // make a duplicate. Only once the people list has loaded, to avoid a false "new" while loading.
   const typed = name.trim();
-  const pair = onPair ? pairs.find((p) => p.label.toLowerCase() === typed.toLowerCase()) : undefined;
+  const said = typed.toLowerCase();
+  const pair = onPair
+    ? pairs.find((p) => p.label.toLowerCase() === said || p.label.toLowerCase().split(" or ").reverse().join(" or ") === said)
+    : undefined;
   const isNew =
     typed !== "" && !pair && !!people.data && !people.data.some((p) => p.name.trim().toLowerCase() === typed.toLowerCase());
   return (
