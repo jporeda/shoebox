@@ -102,6 +102,10 @@ def _remove_created(session: Session, obj: SQLModel) -> bool:
             return False  # named on later faces too
         for f in session.exec(select(Face).where(Face.suggested_person_id == obj.id)).all():
             f.suggested_person_id = None  # a guess, recomputed by the next naming run
+            f.suggested_alt_person_id = None
+            session.add(f)
+        for f in session.exec(select(Face).where(Face.suggested_alt_person_id == obj.id)).all():
+            f.suggested_alt_person_id = None
             session.add(f)
     session.delete(obj)
     session.flush()

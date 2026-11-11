@@ -28,6 +28,8 @@ AUTO_MARGIN = 0.10
 SUGGEST_SIMILARITY = 0.35
 MIN_AUTO_AGE = 6
 TOP_K = 3
+# Known twins (people paired on a "one of two" face) closer than this are suggested as "Ana or Ben?".
+TWIN_MARGIN = AUTO_MARGIN
 
 
 @dataclass
@@ -43,6 +45,7 @@ class Match:
     person_id: int
     score: float
     margin: float
+    runner_up: Optional[int] = None  # the next closest person, if any
 
 
 def photo_year(p: Photo) -> Optional[int]:
@@ -98,7 +101,26 @@ def match(emb: np.ndarray, year: Optional[int], ex: Exemplars, rejected: set[int
     scores.sort(reverse=True)
     best, pid = scores[0]
     second = scores[1][0] if len(scores) > 1 else 0.0
-    return Match(pid, round(best, 3), round(best - second, 3))
+    return Match(pid, round(best, 3), round(best - second, 3), scores[1][1] if len(scores) > 1 else None)
+
+
+def twin_guess(m: Match, twins: dict[int, set[int]], sure_here: set[int]) -> tuple[int, Optional[int]] | None:
+    """For a face matched to ``m.person_id``: (person, None) or (person, twin) to suggest instead
+    of the plain match, or None to suggest nothing. ``sure_here`` is who's already confirmed on
+    the photo's other faces; one person can't be there twice."""
+    mine = twins.get(m.person_id, set())
+    if m.runner_up in mine and m.margin < TWIN_MARGIN:
+        pair = {m.person_id, m.runner_up}
+        left = pair - sure_here
+        if not left:
+            return None
+        if len(left) == 1:
+            return (left.pop(), None)
+        return (m.person_id, m.runner_up)
+    if m.person_id in sure_here and mine:  # their twin is in the photo already: it's the other one
+        other = mine - sure_here
+        return (other.pop(), None) if len(other) == 1 else None
+    return (m.person_id, None)
 
 
 def decide(m: Optional[Match], est_age: Optional[float], age: Optional[int] = None) -> str:
@@ -125,21 +147,46 @@ def run_matching(ctx: JobContext = NULL_CTX) -> dict:
         counts["exemplars"] = 0 if ex is None else len(ex.person_ids)
         # Unnamed faces of any kind, plus earlier automatic names (recomputed each run).
         targets = [f for f in faces if (f.person_id is None or f.source == "auto") and f.embedding]
+        # Twins: people paired on a "one of two" face; and who's confirmed in each photo.
+        twins: dict[int, set[int]] = {}
+        sure: dict[int, set[int]] = {}
+        for f in faces:
+            if f.alt_person_id and f.person_id:
+                twins.setdefault(f.person_id, set()).add(f.alt_person_id)
+                twins.setdefault(f.alt_person_id, set()).add(f.person_id)
+            elif f.person_id and f.source != "auto":
+                sure.setdefault(f.photo_id, set()).add(f.person_id)
+        from .people import name_order
+
+        names = {p.id: p.name for p in s.exec(select(Person)).all()}
         ctx.progress(0, len(targets), "suggesting names")
         for f in targets:
             m = match(from_blob(f.embedding), years.get(f.photo_id), ex, set(f.rejected_person_ids or [])) if ex else None
             verdict = decide(m, f.est_age, known_age(years.get(f.photo_id), births.get(m.person_id)) if m else None)
             if verdict == "auto" and f.source != "auto":
                 verdict = "suggest"  # drawn/once-named faces are trusted; only a person names them
-            new = (m.person_id if verdict == "auto" else None, m.person_id if verdict == "suggest" else None)
+            who, alt = m.person_id if m else None, None
+            if verdict != "none":
+                guess = twin_guess(m, twins, sure.get(f.photo_id, set()))
+                if guess is None:
+                    verdict = "none"
+                else:
+                    who, alt = guess
+                    if alt is not None or who != m.person_id:
+                        verdict = "suggest"  # a twin call is never made automatically
+                    if alt is not None and name_order(names[alt]) < name_order(names[who]):
+                        who, alt = alt, who  # one order per pair: "Ana or Ben"
+            new = (who if verdict == "auto" else None, who if verdict == "suggest" else None,
+                   alt if verdict == "suggest" else None)
             counts["auto" if verdict == "auto" else "suggested" if verdict == "suggest" else "unnamed"] += 1
-            if (f.person_id, f.suggested_person_id) == new:
+            if (f.person_id, f.suggested_person_id, f.suggested_alt_person_id) == new:
                 continue
-            values = {"person_id": new[0], "suggested_person_id": new[1],
+            values = {"person_id": new[0], "suggested_person_id": new[1], "suggested_alt_person_id": new[2],
                       "confidence": m.score if m and verdict != "none" else None}
             if verdict == "auto":
                 values.update(run_id=run_id, cluster_id=None)
             # Skipped if someone named, ignored or answered this face since it was read.
             update_if(s, Face, f.id, same(Face.person_id, f.person_id), same(Face.suggested_person_id, f.suggested_person_id),
+                      same(Face.suggested_alt_person_id, f.suggested_alt_person_id),
                       same(Face.source, f.source), Face.ignored == False, **values)  # noqa: E712
     return counts

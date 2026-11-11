@@ -170,7 +170,11 @@ Anything that identifies your family stays out of git:
   date photos by who's in them. When you find out, pick *It's Ana* / *It's Ben*
   (or *Not Ana* on Ana's page, which leaves Ben), or *Neither*. Once Ana and Ben share a face,
   "Ana or Ben" is offered wherever Ana is: next to the app's guess, on a face named Ana, as a
-  group's suggestion, under *Check* ("Confirm as Ana or Ben") and in the name box.
+  group's suggestion, under *Check* ("Confirm as Ana or Ben") and in the name box. Name
+  suggestions do the same: when the face model can't tell Ana from Ben, it suggests
+  "Ana or Ben?" (never applied by itself). One person can't be in a photo twice, so once
+  Ana is confirmed on one face, another face there that's "Ana or Ben" becomes Ben (in the
+  same Undo step), and suggestions on that photo say "Ben?".
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as

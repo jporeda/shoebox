@@ -359,6 +359,65 @@ def name_order(name: str) -> tuple[str, str]:
     return (name.lower(), name)
 
 
+_TWIN_FIELDS = ("person_id", "alt_person_id", "suggested_person_id", "suggested_alt_person_id", "source", "ignored")
+
+
+def twin_deductions(s: Session, changes: list[tuple]) -> list[tuple]:
+    """What naming these faces tells us about twins elsewhere in the same photos: one person
+    can't be in a photo twice, so once Ana is confirmed on one face, another face that's
+    "Ana or Ben" is Ben (and an "Ana or Ben?" suggestion becomes "Ben?").
+
+    Works on the photos' faces as they'll be after ``changes``, and returns the extra changes to
+    record in the same batch, so one Undo takes back both."""
+    touched = {obj.photo_id for obj, field, _ in changes if isinstance(obj, Face)}
+    if not touched:
+        return []
+    faces = list(s.exec(select(Face).where(Face.photo_id.in_(touched))).all())
+    state = {f.id: {k: getattr(f, k) for k in _TWIN_FIELDS} for f in faces}
+    for obj, field, value in changes:
+        if isinstance(obj, Face) and obj.id in state and field in _TWIN_FIELDS:
+            state[obj.id][field] = value
+    by_id = {f.id: f for f in faces}
+    extra: list[tuple] = []
+
+    def put(fid: int, field: str, value) -> None:
+        state[fid][field] = value
+        extra.append((by_id[fid], field, value))
+
+    for _ in range(len(faces)):  # a deduction can settle another face in the photo; stop when none do
+        changed = False
+        for photo in touched:
+            mine = [fid for fid in state if by_id[fid].photo_id == photo and not state[fid]["ignored"]]
+            sure = {state[i]["person_id"] for i in mine if state[i]["person_id"] and not state[i]["alt_person_id"]
+                    and state[i]["source"] != "auto"}
+            for i in mine:
+                st = state[i]
+                if st["alt_person_id"] and st["person_id"]:
+                    pair = {st["person_id"], st["alt_person_id"]}
+                    if len(pair & sure) == 1:
+                        put(i, "person_id", (pair - sure).pop())
+                        put(i, "alt_person_id", None)
+                        changed = True
+                elif st["person_id"] is None and st["suggested_person_id"] and st["suggested_alt_person_id"]:
+                    pair = {st["suggested_person_id"], st["suggested_alt_person_id"]}
+                    if len(pair & sure) == 1:
+                        put(i, "suggested_person_id", (pair - sure).pop())
+                        put(i, "suggested_alt_person_id", None)
+                        changed = True
+        if not changed:
+            break
+    return extra
+
+
+def _record_with_twins(s: Session, changes: list[tuple], description: str) -> Optional[str]:
+    """Record changes plus what they imply for twins in the same photos, as one undoable batch."""
+    extra = twin_deductions(s, changes)
+    if extra:
+        n = len({obj.id for obj, _, _ in extra})
+        description += f", so the other twin on {n} other face{'s' if n != 1 else ''}"
+    return editlog.record(s, changes + extra, description)
+
+
 def assign(s: Session, face_ids: list[int], person_id: Optional[int], description: str = "",
            extra: Iterable[tuple] = (), alt_person_id: Optional[int] = None) -> Optional[str]:
     """Name faces. With alt_person_id, each face is one of the two people, not known which (twins)."""
@@ -372,7 +431,7 @@ def assign(s: Session, face_ids: list[int], person_id: Optional[int], descriptio
     changes = list(extra)
     for f in faces:
         changes += [(f, "person_id", person_id), (f, "alt_person_id", alt_person_id), (f, "ignored", False),
-                    (f, "suggested_person_id", None)]
+                    (f, "suggested_person_id", None), (f, "suggested_alt_person_id", None)]
         if person_id is not None and f.source in ("auto", REVERTED):
             changes.append((f, "source", "manual"))
     if not description:
@@ -380,7 +439,7 @@ def assign(s: Session, face_ids: list[int], person_id: Optional[int], descriptio
         if alt_person_id:
             who += f" or {s.get(Person, alt_person_id).name}"
         description = f"{len(faces)} face(s) → {who}"
-    return editlog.record(s, changes, description)
+    return _record_with_twins(s, changes, description)
 
 
 def photo_year(photo: Optional[Photo]) -> Optional[int]:
@@ -405,11 +464,13 @@ def accept(s: Session, face_ids: list[int], description: str | None = None) -> O
     for f in s.exec(select(Face).where(Face.id.in_(face_ids))).all():
         if f.person_id is None and f.suggested_person_id is not None:
             changes.append((f, "person_id", f.suggested_person_id))
+            if f.suggested_alt_person_id is not None:  # "Ana or Ben?" -> yes, one of the two
+                changes.append((f, "alt_person_id", f.suggested_alt_person_id))
         if f.person_id is not None or f.suggested_person_id is not None:
-            changes.append((f, "suggested_person_id", None))
+            changes += [(f, "suggested_person_id", None), (f, "suggested_alt_person_id", None)]
             if f.source in ("auto", REVERTED):
                 changes.append((f, "source", "accepted"))
-    return editlog.record(s, changes, description or f"confirm {len(face_ids)} name(s)")
+    return _record_with_twins(s, changes, description or f"confirm {len(face_ids)} name(s)")
 
 
 def run_accept_guesses(min_percent: float, ctx: JobContext = NULL_CTX) -> dict:
@@ -451,9 +512,12 @@ def reject(s: Session, face_ids: list[int], person_id: Optional[int] = None) -> 
         target = f.person_id or f.suggested_person_id
         if target is None:
             continue
-        rejected = sorted(set(f.rejected_person_ids or []) | {target})
-        changes += [(f, "person_id", None), (f, "suggested_person_id", None), (f, "rejected_person_ids", rejected)]
-    return editlog.record(s, changes, f"not that person ({len(face_ids)} face(s))")
+        # "Ana or Ben?" -> no: neither of them.
+        targets = {target} | ({f.suggested_alt_person_id} if f.person_id is None and f.suggested_alt_person_id else set())
+        rejected = sorted(set(f.rejected_person_ids or []) | targets)
+        changes += [(f, "person_id", None), (f, "suggested_person_id", None), (f, "suggested_alt_person_id", None),
+                    (f, "rejected_person_ids", rejected)]
+    return _record_with_twins(s, changes, f"not that person ({len(face_ids)} face(s))")
 
 
 def revert_run(s: Session, run_id: str) -> Optional[str]:

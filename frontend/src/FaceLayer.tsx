@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, faceName, faceUrl, imgUrl, type Face } from "./api";
+import { api, ApiError, faceName, faceUrl, imgUrl, pairLabel, type Face } from "./api";
 import { useTouch } from "./hooks";
 import { NameInput, TwinChoices } from "./People";
 
@@ -291,7 +291,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
             {current.source === "auto" && current.person_name
               ? `Looks like ${current.person_name}${matchPercent(current)}`
               : current.suggested_name
-                ? `Maybe ${current.suggested_name}?${matchPercent(current)}`
+                ? `Maybe ${guessName(current)}?${matchPercent(current)}`
                 : (faceName(current) ?? "Unnamed face")}
           </span>
           {((current.source === "auto" && current.person_name) || current.suggested_name) && (
@@ -302,12 +302,12 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
               <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
                 No
               </button>
-              {/* The guess has a known twin: "Ana or Ben" is the safe answer. */}
-              <TwinChoices
+              {/* The guess has a known twin: "Ana or Ben" is the safe answer (unless that's the guess). */}
+              {!current.suggested_alt_person_id && <TwinChoices
                 personId={current.source === "auto" && current.person_id ? current.person_id : current.suggested_person_id}
                 name={guessName(current) ?? ""}
                 onPick={(p) => act(() => api.assignFaces([current.id], p))}
-              />
+              />}
             </>
           )}
           {/* On touch, don't pop the keyboard up over Yes / No on every tap of a face. */}
@@ -436,7 +436,10 @@ function matchPercent(face: Face): string {
 }
 
 function guessName(face: Face): string | null {
-  return (face.source === "auto" && face.person_name) || face.suggested_name || null;
+  if (face.source === "auto" && face.person_name) return face.person_name;
+  // Matching couldn't tell two known twins apart: "Ana or Ben".
+  if (face.suggested_name && face.suggested_alt_name) return pairLabel(face.suggested_name, face.suggested_alt_name);
+  return face.suggested_name || null;
 }
 
 function FaceBox({ face, active, onClick }: { face: Face; active: boolean; onClick: () => void }) {

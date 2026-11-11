@@ -173,6 +173,8 @@ class Face(SQLModel, table=True):
     cluster_id: Optional[int] = Field(default=None, index=True)
     # Name suggested by matching but not applied (too unsure, or the face looks under 6).
     suggested_person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
+    # Set when matching can't tell two known twins apart: the suggestion is "suggested OR this one".
+    suggested_alt_person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
     # People a person said this face is *not*; never suggested for it again.
     rejected_person_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))
 

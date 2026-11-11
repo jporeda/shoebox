@@ -2892,6 +2892,28 @@
       ],
       "title": "Suggested Name"
      },
+     "suggested_alt_person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Suggested Alt Person Id"
+     },
+     "suggested_alt_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Suggested Alt Name"
+     },
      "confidence": {
       "anyOf": [
        {
@@ -3326,6 +3348,19 @@
      "auto_count": {
       "type": "integer",
       "title": "Auto Count"
+     },
+     "photo_count": {
+      "type": "integer",
+      "title": "Photo Count",
+      "default": 0
+     },
+     "double_photo_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Double Photo Ids",
+      "default": []
      },
      "twin_ids": {
       "items": {

@@ -488,3 +488,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .compare__item img { height: auto; max-height: 55vh; }
   .compare__actions { margin-left: 0; width: 100%; }
 }
+.person-note { margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--warn, #c80); background: var(--panel); }

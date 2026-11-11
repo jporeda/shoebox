@@ -1003,6 +1003,10 @@ export interface components {
             suggested_person_id: number | null;
             /** Suggested Name */
             suggested_name: string | null;
+            /** Suggested Alt Person Id */
+            suggested_alt_person_id?: number | null;
+            /** Suggested Alt Name */
+            suggested_alt_name?: string | null;
             /** Confidence */
             confidence: number | null;
         };
@@ -1161,6 +1165,16 @@ export interface components {
             face_count: number;
             /** Auto Count */
             auto_count: number;
+            /**
+             * Photo Count
+             * @default 0
+             */
+            photo_count?: number;
+            /**
+             * Double Photo Ids
+             * @default []
+             */
+            double_photo_ids?: number[];
             /**
              * Twin Ids
              * @default []

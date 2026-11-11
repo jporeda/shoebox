@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,6 +41,9 @@ class FaceOut(BaseModel):
     year_label: str
     suggested_person_id: Optional[int]
     suggested_name: Optional[str]
+    # "Ana or Ben?": matching couldn't tell two known twins apart.
+    suggested_alt_person_id: Optional[int] = None
+    suggested_alt_name: Optional[str] = None
     confidence: Optional[float]
 
 
@@ -74,6 +78,10 @@ class PersonOut(BaseModel):
     kind: Literal["person", "pet"]
     face_count: int
     auto_count: int
+    # Photos they're in: what "Show photos" opens. Fewer than face_count when they're named on two
+    # faces of one photo (double_photo_ids: usually a mistake, e.g. both twins named the same).
+    photo_count: int = 0
+    double_photo_ids: list[int] = []
     # People this one has been paired with on a "one of two" face (twins): "A or B" is then
     # offered wherever A is suggested or typed.
     twin_ids: list[int] = []
@@ -146,6 +154,8 @@ def face_out(f: Face, p: Photo, names: dict[int, str]) -> FaceOut:
         source=f.source, ignored=f.ignored, est_age=f.est_age, cluster_id=f.cluster_id, year_label=_year_label(p),
         suggested_person_id=f.suggested_person_id,
         suggested_name=names.get(f.suggested_person_id) if f.suggested_person_id else None,
+        suggested_alt_person_id=f.suggested_alt_person_id,
+        suggested_alt_name=names.get(f.suggested_alt_person_id) if f.suggested_alt_person_id else None,
         confidence=f.confidence,
     )
 
@@ -162,7 +172,11 @@ def _faces_out(s: Session, faces: list[Face]) -> list[FaceOut]:
 
 def _person_out(s: Session, person: Person) -> PersonOut:
     faces = s.exec(select(Face).where((Face.person_id == person.id) | (Face.alt_person_id == person.id))).all()
-    photos = s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()
+    # Only photos still in the folder, as in the grid.
+    photos = s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}), Photo.missing == False)).all()  # noqa: E712
+    live = {p.id for p in photos}
+    faces = [f for f in faces if f.photo_id in live]
+    per_photo = Counter(f.photo_id for f in faces)
     years = sorted(y for p in photos if (y := p.t_year if p.t_year is not None else p.i_year) is not None)
     # The cover is a face known to be them, not a "one of two" (it may be their twin).
     cover = max(faces, key=lambda f: (f.alt_person_id is None, f.source != "auto", f.w * f.h), default=None)
@@ -170,6 +184,8 @@ def _person_out(s: Session, person: Person) -> PersonOut:
         id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, kind=person.kind or "person",
         face_count=len(faces),
         auto_count=sum(f.source == "auto" for f in faces),
+        photo_count=len(per_photo),
+        double_photo_ids=sorted(pid for pid, n in per_photo.items() if n > 1),
         twin_ids=sorted({f.alt_person_id if f.person_id == person.id else f.person_id
                          for f in faces if f.alt_person_id and not f.ignored}),
         cover_face_id=cover.id if cover else None, first_year=years[0] if years else None,
@@ -236,8 +252,10 @@ def merge_person(person_id: int, body: MergeIn, s: Session = Depends(get_session
 @router.get("/people/{person_id}/faces", response_model=list[FaceOut])
 def person_faces(person_id: int, s: Session = Depends(get_session)):
     faces = list(s.exec(select(Face).where((Face.person_id == person_id) | (Face.alt_person_id == person_id))).all())
+    # Only photos still in the folder, as in the grid that "Show photos" opens.
+    photos = {p.id: p for p in s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}), Photo.missing == False)).all()}  # noqa: E712
+    faces = [f for f in faces if f.photo_id in photos]
     out = _faces_out(s, faces)
-    photos = {p.id: p for p in s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()}
     albums = {a.id: a.sort_order for a in s.exec(select(Album)).all()}
 
     def key(fo: FaceOut):

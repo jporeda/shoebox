@@ -301,7 +301,7 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
             key={f.id}
             face={f}
             dimmed={wrong.has(f.id)}
-            caption={`${f.source === "auto" && f.person_id ? "?" : "maybe"} ${Math.round((f.confidence ?? 0) * 100)}% ${f.year_label}`}
+            caption={`${f.source === "auto" && f.person_id ? "?" : "maybe"}${f.suggested_name && f.suggested_alt_name ? ` ${pairLabel(f.suggested_name, f.suggested_alt_name)}?` : ""} ${Math.round((f.confidence ?? 0) * 100)}% ${f.year_label}`}
             onClick={() =>
               setWrong((prev) => {
                 const next = new Set(prev);
@@ -438,7 +438,7 @@ function PeopleList() {
             {p.kind === "pet" && <span className="badge person-card__pet">pet</span>}
           </span>
           <span className="muted small">
-            {p.face_count - p.auto_count} photos{p.auto_count > 0 && ` (+${p.auto_count} to check)`}
+            {p.photo_count} photo{p.photo_count === 1 ? "" : "s"}{p.auto_count > 0 && ` (${p.auto_count} to check)`}
             {p.first_year && ` · ${p.first_year}${p.last_year !== p.first_year ? `–${p.last_year}` : ""}`}
             {p.birth_year && ` · b. ${p.birth_year}`}
           </span>
@@ -543,10 +543,21 @@ export function PersonPage({ id }: { id: number }) {
           </select>
         </label>
         <a className="btn btn--ghost" href={gridHref({ person_id: id, order: "chrono" })}>
-          Show {person.face_count} photos →
+          Show {person.photo_count} photo{person.photo_count === 1 ? "" : "s"} →
         </a>
         {error && <span className="error">{error}</span>}
       </div>
+      {(person.double_photo_ids ?? []).length > 0 && (
+        // Why there are more faces here than photos: the same person on two faces of one photo.
+        <p className="person-note small">
+          {person.name} is named on more than one face in {(person.double_photo_ids ?? []).length} photo
+          {(person.double_photo_ids ?? []).length === 1 ? "" : "s"}, so there are more faces here than photos. Usually one of
+          them is someone else.{" "}
+          <a href={photoHref((person.double_photo_ids ?? [])[0], { ids: (person.double_photo_ids ?? []).join(",") })}>
+            Check {(person.double_photo_ids ?? []).length === 1 ? "it" : "them"} →
+          </a>
+        </p>
+      )}
       <p className="muted small">
         Oldest to newest. A face that doesn't belong stands out here; select it and remove it.{" "}
         {touch ? "Press and hold a face to open its photo." : "Double-click opens the photo."}
