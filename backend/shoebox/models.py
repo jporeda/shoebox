@@ -66,6 +66,8 @@ class Photo(SQLModel, table=True):
     phash: Optional[str] = None
     dup_group_id: Optional[int] = Field(default=None, index=True)
     is_dup_keeper: bool = False
+    # sha256s of photos someone said are not duplicates of this one (kept apart when grouping).
+    not_dup_of: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
 
     # Trusted date.
     t_year: Optional[int] = Field(default=None, index=True)

@@ -133,6 +133,8 @@ def build_truth() -> dict:
                 entry["rotation"] = p.rotation
             if p.is_dup_keeper:
                 entry["dup_keeper"] = True
+            if p.not_dup_of:
+                entry["not_dup_of"] = p.not_dup_of
             if p.back_source == "manual":
                 entry["back_date"] = {"year": p.back_year, "month": p.back_month}
             faces = [
@@ -424,6 +426,8 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
                 changes += [(p, "rotation", e["rotation"]), (p, "rotation_source", "manual")]
             if e.get("dup_keeper"):
                 changes.append((p, "is_dup_keeper", True))
+            if e.get("not_dup_of"):
+                changes.append((p, "not_dup_of", sorted(set(p.not_dup_of or []) | set(e["not_dup_of"]))))
             if "back_date" in e:
                 changes += [
                     (p, "back_year", e["back_date"]["year"]),
@@ -457,6 +461,8 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
         # From now on this database owns the truth file (see _may_replace).
         set_meta(s, "truth_adopted", truth.get("db_id") or LEGACY_OWNER)
     from .estimate import run_estimates
+    from .ingest import group_duplicates
 
+    group_duplicates()  # restored "not duplicates" marks split their groups again
     run_estimates()
     return {"matched": matched, "unmatched": unmatched}

@@ -441,3 +441,37 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .filters__list--albums { max-height: 320px; }
 .check.is-missing .filters__name { color: var(--muted); text-decoration: line-through; }
 .collection-picker { font: inherit; font-weight: 600; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); max-width: 220px; }
+
+/* Duplicates: the photo view's row and the side-by-side compare overlay. */
+.dup-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.compare {
+  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+  background: var(--bg, var(--panel)); height: 100dvh;
+}
+.compare__bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px;
+  border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.compare__actions { margin-left: auto; display: flex; gap: 8px; }
+.compare__grid {
+  flex: 1; min-height: 0; overflow: auto; display: grid; gap: 12px; padding: 12px 16px;
+  grid-template-columns: repeat(var(--n, 2), minmax(260px, 1fr));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+.compare__item {
+  margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px;
+  border: 2px solid var(--border); border-radius: 10px; background: var(--panel);
+}
+.compare__item.is-kept { border-color: var(--ok); }
+.compare__item img { width: 100%; height: calc(100dvh - 300px); min-height: 200px; object-fit: contain; background: var(--panel-2); border-radius: 6px; }
+.compare__name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare__folder { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare__facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 13px; }
+.compare__facts dt { color: var(--muted); }
+.compare__facts dd { margin: 0; }
+.compare__buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+@media (max-width: 600px) {
+  .compare__grid { grid-template-columns: 1fr; }
+  .compare__item img { height: auto; max-height: 55vh; }
+  .compare__actions { margin-left: 0; width: 100%; }
+}

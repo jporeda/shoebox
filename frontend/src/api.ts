@@ -98,6 +98,9 @@ export const api = {
   photo: (id: number) => call<PhotoDetail>(`/photos/${id}`),
   update: (body: BulkUpdate) => call<BulkResult>("/photos", { method: "PATCH", body: JSON.stringify(body) }),
   keeper: (id: number) => call<PhotoDetail>(`/photos/${id}/keeper`, { method: "POST" }),
+  notDuplicates: (id: number, onlyThis = false) =>
+    call<PhotoDetail>(`/photos/${id}/not-duplicates`, { method: "POST", body: JSON.stringify({ only_this: onlyThis }) }),
+  keepAll: (id: number) => call<PhotoDetail>(`/photos/${id}/keep-all`, { method: "POST" }),
   parseDate: (text: string) => call<ParsedDate>(`/parse-date${qs({ text })}`),
   undo: (batch_id?: string, skip = false) =>
     call<UndoResult>("/undo", { method: "POST", body: JSON.stringify({ batch_id, skip }) }),

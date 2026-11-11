@@ -1,4 +1,4 @@
-from conftest import api_client
+from conftest import api_client, make_image
 
 from shoebox.ingest import run_ingest
 
@@ -152,3 +152,48 @@ def test_albums_are_a_filter_that_combines_with_the_others(album_tree, env):
         c.patch("/api/photos", json={"ids": [in_one[0]], "date": "1985"})
         got = c.get("/api/photos", params={"albums": both, "years": "1985"}).json()["items"]
         assert [p["id"] for p in got] == [in_one[0]]
+
+
+def test_duplicates_can_keep_both_and_go_back_to_one(album_tree, env):
+    make_image(album_tree / "Album 1990s" / "rescan.jpg", 2, size=(640, 480), quality=60)  # a rescan of IMG_0002
+    run_ingest()
+    with api_client() as client:
+        dups = client.get("/api/photos", params={"duplicates": True}).json()["items"]
+        a, b = [p["id"] for p in dups]
+        detail = client.get(f"/api/photos/{a}").json()
+        assert detail["dup_members"] == [a, b] and detail["file_size"] > 0
+
+        kept = lambda: [client.get(f"/api/photos/{i}").json()["is_dup_keeper"] for i in (a, b)]
+        client.post(f"/api/photos/{a}/keep-all")
+        assert kept() == [True, True]
+        client.post("/api/undo", json={})
+        assert kept() == [False, False]
+
+        client.post(f"/api/photos/{a}/keep-all")
+        client.post(f"/api/photos/{b}/keeper")  # "Keep only this one"
+        assert kept() == [False, True]
+        assert client.post("/api/photos/999999/keep-all").status_code == 404
+
+
+def test_not_duplicates_splits_the_group_and_import_keeps_it_split(album_tree, env):
+    make_image(album_tree / "Album 1990s" / "rescan.jpg", 2, size=(640, 480), quality=60)
+    make_image(album_tree / "Album 1990s" / "rescan 2.jpg", 2, size=(400, 300), quality=50)
+    run_ingest()
+    with api_client() as client:
+        group = lambda: {p["rel_path"]: p["dup_group_id"] for p in client.get("/api/photos", params={"duplicates": True}).json()["items"]}
+        assert len(group()) == 3 and len(set(group().values())) == 1
+        ids = {p["rel_path"]: p["id"] for p in client.get("/api/photos", params={"duplicates": True}).json()["items"]}
+
+        # Just one photo out of the group: the other two stay duplicates.
+        client.post(f"/api/photos/{ids['Album 1990s/rescan 2.jpg']}/not-duplicates", json={"only_this": True})
+        assert set(group()) == {"Album 1980s/IMG_0002.jpg", "Album 1990s/rescan.jpg"}
+        run_ingest()
+        assert set(group()) == {"Album 1980s/IMG_0002.jpg", "Album 1990s/rescan.jpg"}
+
+        # The whole group: none left, still after Import; Undo brings the pair back.
+        client.post(f"/api/photos/{ids['Album 1990s/rescan.jpg']}/not-duplicates", json={})
+        assert group() == {}
+        run_ingest()
+        assert group() == {}
+        client.post("/api/undo", json={})
+        assert set(group()) == {"Album 1980s/IMG_0002.jpg", "Album 1990s/rescan.jpg"}

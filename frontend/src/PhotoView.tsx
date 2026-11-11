@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, imgUrl, type ListParams, type NearbyDate } from "./api";
+import { DupCompare } from "./DupCompare";
 import { DateEventEditor, PlaceEditor } from "./Editor";
 import { AcceptGuesses, FaceLayer } from "./FaceLayer";
 import { usePhotos, useUpdatePhotos } from "./hooks";
@@ -11,7 +12,6 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   const detail = useQuery({ queryKey: ["photo", id], queryFn: () => api.photo(id) });
   const photos = usePhotos(list);
   const update = useUpdatePhotos();
-  const qc = useQueryClient();
   const items = photos.data?.items ?? [];
   const idx = items.findIndex((p) => p.id === id);
   const prev = idx > 0 ? items[idx - 1] : null;
@@ -183,31 +183,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
               <span className="facts__v muted">{p.scan_datetime} (usually the scan date)</span>
             </div>
           )}
-          {p.dup_members.length > 1 && (
-            <div>
-              <span className="facts__k">Duplicates</span>
-              <span className="facts__v">
-                {p.dup_members.map((m) => (
-                  <a key={m} href={photoHref(m, list)} className={m === p.id ? "is-current" : ""}>
-                    #{m}
-                  </a>
-                ))}{" "}
-                {p.is_dup_keeper ? (
-                  <span className="badge badge--ok">kept for export</span>
-                ) : (
-                  <button
-                    className="btn btn--ghost"
-                    onClick={async () => {
-                      await api.keeper(p.id);
-                      qc.invalidateQueries();
-                    }}
-                  >
-                    Keep this one
-                  </button>
-                )}
-              </span>
-            </div>
-          )}
+          {p.dup_members.length > 1 && <DuplicatesRow id={p.id} members={p.dup_members} list={list} />}
           {p.fixity_ok === false && (
             <div className="error">Original file changed or missing since import — re-run Import.</div>
           )}
@@ -222,6 +198,55 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
         <PlaceEditor ids={[p.id]} current={{ country: p.country, state: p.state, city: p.city }} />
         <CaptionEditor id={p.id} caption={p.caption ?? ""} />
       </div>
+    </div>
+  );
+}
+
+/** The photo's duplicate group: links to each, Compare side by side, and which to keep for export. */
+function DuplicatesRow({ id, members, list }: { id: number; members: number[]; list: ListParams }) {
+  const qc = useQueryClient();
+  const [comparing, setComparing] = useState(false);
+  // The same queries the compare view uses, so it opens with them already loaded.
+  const details = useQueries({ queries: members.map((m) => ({ queryKey: ["photo", m], queryFn: () => api.photo(m) })) });
+  const loaded = details.every((d) => d.data);
+  const kept = details.filter((d) => d.data?.is_dup_keeper).length;
+  const thisKept = details[members.indexOf(id)]?.data?.is_dup_keeper ?? false;
+  const act = async (call: Promise<unknown>) => {
+    await call;
+    qc.invalidateQueries();
+  };
+  return (
+    <div>
+      <span className="facts__k">Duplicates</span>
+      <span className="facts__v dup-row">
+        {members.map((m) => (
+          <a key={m} href={photoHref(m, list)} className={m === id ? "is-current" : ""}>
+            #{m}
+          </a>
+        ))}
+        <button className="btn btn--ghost" onClick={() => setComparing(true)}>
+          Compare side by side
+        </button>
+        {thisKept && <span className="badge badge--ok">{kept === members.length ? "all kept for export" : "kept for export"}</span>}
+        {!(thisKept && kept === 1) && (
+          <button className="btn btn--ghost" onClick={() => act(api.keeper(id))}>
+            {thisKept ? "Keep only this one" : "Keep this one"}
+          </button>
+        )}
+        {loaded && kept < members.length && (
+          <button className="btn btn--ghost" onClick={() => act(api.keepAll(id))}>
+            {members.length === 2 ? "Keep both" : `Keep all ${members.length}`}
+          </button>
+        )}
+        <button
+          className="btn btn--ghost"
+          title="These aren't the same picture: split them up (Import keeps them apart; Undo puts them back)"
+          onClick={() => act(api.notDuplicates(id))}
+        >
+          Not duplicates
+        </button>
+      </span>
+      {comparing && <DupCompare ids={members} list={list} onClose={() => setComparing(false)} />}
     </div>
   );
 }

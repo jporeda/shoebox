@@ -209,3 +209,16 @@ def test_place_is_set_in_bulk_suggested_backed_up_and_exported(album_tree, env):
 
         c.post("/api/undo", json={})  # takes back clearing the city
         assert c.get(f"/api/photos/{b}").json()["city"] == "Salem"
+
+
+def test_keep_both_exports_every_photo_in_the_duplicate_group(album_tree, env):
+    make_image(album_tree / "Album 1990s" / "rescan.jpg", 2, size=(640, 480), quality=60)  # a rescan of IMG_0002
+    run_ingest()
+    a, b = pid("Album 1980s/IMG_0002.jpg"), pid("Album 1990s/rescan.jpg")
+    run_export()
+    index = json.loads((env.backup_dir / "export" / "export-index.json").read_text())
+    assert (str(a) in index, str(b) in index) == (True, False)  # one file per group by default
+    with session_scope() as s:
+        services.keep_all(s, b)
+    run_export()
+    assert exported(env, a).exists() and exported(env, b).exists()

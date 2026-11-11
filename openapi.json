@@ -436,6 +436,96 @@
     }
    }
   },
+  "/api/photos/{photo_id}/not-duplicates": {
+   "post": {
+    "summary": "Not Duplicates",
+    "description": "Split a wrongly grouped duplicate group (undoable; Import keeps the photos apart).",
+    "operationId": "not_duplicates_api_photos__photo_id__not_duplicates_post",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NotDuplicatesIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PhotoDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/photos/{photo_id}/keep-all": {
+   "post": {
+    "summary": "Keep All Photos",
+    "description": "Keep every photo in this one's duplicate group (all of them are exported).",
+    "operationId": "keep_all_photos_api_photos__photo_id__keep_all_post",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PhotoDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/parse-date": {
    "get": {
     "summary": "Parse Date",
@@ -3057,6 +3147,17 @@
     ],
     "title": "NeighbourOut"
    },
+   "NotDuplicatesIn": {
+    "properties": {
+     "only_this": {
+      "type": "boolean",
+      "title": "Only This",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "NotDuplicatesIn"
+   },
    "ParsedDate": {
     "properties": {
      "ok": {
@@ -3536,6 +3637,10 @@
       "type": "array",
       "title": "Dup Members"
      },
+     "file_size": {
+      "type": "integer",
+      "title": "File Size"
+     },
      "fixity_ok": {
       "anyOf": [
        {
@@ -3598,6 +3703,7 @@
      "back_candidates",
      "back_transcription",
      "dup_members",
+     "file_size",
      "fixity_ok",
      "fixity_checked_at"
     ],

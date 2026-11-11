@@ -26,6 +26,22 @@ def with_dup_group(session: Session, photos: list[Photo]) -> list[Photo]:
     return out
 
 
+def dup_group_ids(
+    photos: list[Photo], max_distance: int, not_dup_of: Optional[dict[int, list[str]]] = None
+) -> dict[int, Optional[int]]:
+    """Each photo's duplicate group (the group's lowest id), or None when it has no duplicate.
+    Pairs marked "not duplicates" (``not_dup_of``, else each photo's own list) aren't linked."""
+    from .images import hamming_groups
+
+    by_sha = {p.sha256: p.id for p in photos}
+    marks = not_dup_of if not_dup_of is not None else {p.id: p.not_dup_of or [] for p in photos}
+    apart = {frozenset((pid, by_sha[sha])) for pid, shas in marks.items() for sha in shas if sha in by_sha}
+    hashes = {p.id: p.phash for p in photos if p.phash}
+    groups = hamming_groups(hashes, max_distance, apart)
+    group_of = {pid: g[0] for g in groups for pid in g}
+    return {p.id: group_of.get(p.id) for p in photos}
+
+
 def get_or_create_instance(
     session: Session, kind: EventKind, year: Optional[int], label: Optional[str] = None
 ) -> EventInstance:
@@ -160,3 +176,38 @@ def set_keeper(session: Session, photo_id: int) -> Optional[str]:
     members = session.exec(select(Photo).where(Photo.dup_group_id == p.dup_group_id)).all()
     changes = [(m, "is_dup_keeper", m.id == p.id) for m in members]
     return editlog.record(session, changes, f"keep {p.rel_path} in duplicate group")
+
+
+def not_duplicates(session: Session, photo_id: int, only_this: bool = False) -> Optional[str]:
+    """Split a duplicate group someone says is wrong: every photo in it apart from every other, or
+    (only_this) just this photo apart from the rest. Remembered by sha256, so Import keeps them apart."""
+    from .config import get_settings
+
+    p = session.get(Photo, photo_id)
+    if p is None or p.dup_group_id is None:
+        return None
+    members = session.exec(select(Photo).where(Photo.dup_group_id == p.dup_group_id)).all()
+    if only_this:
+        new = {m.id: {o.sha256 for o in members if o.id != m.id} if m.id == p.id else {p.sha256} for m in members}
+    else:
+        new = {m.id: {o.sha256 for o in members if o.id != m.id} for m in members}
+    marks = {m.id: sorted(set(m.not_dup_of or []) | new[m.id]) for m in members}
+    # Regroup just this group: taking links away can split it, never join it to another.
+    groups = dup_group_ids(members, get_settings().dup_phash_distance, marks)
+    changes: list[tuple[Any, str, Any]] = []
+    for m in members:
+        changes += [(m, "not_dup_of", marks[m.id]), (m, "dup_group_id", groups[m.id])]
+        if groups[m.id] is None:
+            changes.append((m, "is_dup_keeper", False))
+    what = f"{p.rel_path} is not a duplicate" if only_this else f"{len(members)} photos are not duplicates"
+    return editlog.record(session, changes, what)
+
+
+def keep_all(session: Session, photo_id: int) -> Optional[str]:
+    """Keep every photo in this one's duplicate group: Export then writes each of them."""
+    p = session.get(Photo, photo_id)
+    if p is None or p.dup_group_id is None:
+        return None
+    members = session.exec(select(Photo).where(Photo.dup_group_id == p.dup_group_id)).all()
+    changes = [(m, "is_dup_keeper", True) for m in members]
+    return editlog.record(session, changes, f"keep all {len(members)} in duplicate group")

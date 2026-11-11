@@ -121,15 +121,15 @@ def build_plan(session: Session) -> list[ExportItem]:
     ).all():
         faces_by_photo.setdefault(f.photo_id, []).append(f)
 
-    # One file per duplicate group: the keeper, else the lowest id.
+    # Per duplicate group: every photo marked to keep (one, or all after "Keep both"), else the lowest id.
     groups: dict[int, list[Photo]] = {}
     for p in photos:
         if p.dup_group_id is not None:
             groups.setdefault(p.dup_group_id, []).append(p)
     skip = set()
     for members in groups.values():
-        keep = next((m for m in members if m.is_dup_keeper), min(members, key=lambda m: m.id))
-        skip |= {m.id for m in members if m.id != keep.id}
+        keep = {m.id for m in members if m.is_dup_keeper} or {min(m.id for m in members)}
+        skip |= {m.id for m in members if m.id not in keep}
 
     items: list[ExportItem] = []
     for p in photos:

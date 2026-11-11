@@ -113,6 +113,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/not-duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Not Duplicates
+         * @description Split a wrongly grouped duplicate group (undoable; Import keeps the photos apart).
+         */
+        post: operations["not_duplicates_api_photos__photo_id__not_duplicates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{photo_id}/keep-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep All Photos
+         * @description Keep every photo in this one's duplicate group (all of them are exported).
+         */
+        post: operations["keep_all_photos_api_photos__photo_id__keep_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/parse-date": {
         parameters: {
             query?: never;
@@ -1060,6 +1100,14 @@ export interface components {
             /** Inferred Source */
             inferred_source: string | null;
         };
+        /** NotDuplicatesIn */
+        NotDuplicatesIn: {
+            /**
+             * Only This
+             * @default false
+             */
+            only_this?: boolean;
+        };
         /** ParsedDate */
         ParsedDate: {
             /** Ok */
@@ -1193,6 +1241,8 @@ export interface components {
             back_transcription: string | null;
             /** Dup Members */
             dup_members: number[];
+            /** File Size */
+            file_size: number;
             /** Fixity Ok */
             fixity_ok: boolean | null;
             /** Fixity Checked At */
@@ -1554,6 +1604,72 @@ export interface operations {
         };
     };
     keep_photo_api_photos__photo_id__keeper_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    not_duplicates_api_photos__photo_id__not_duplicates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotDuplicatesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    keep_all_photos_api_photos__photo_id__keep_all_post: {
         parameters: {
             query?: never;
             header?: never;

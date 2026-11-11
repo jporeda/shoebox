@@ -95,6 +95,7 @@ class PhotoDetail(PhotoSummary):
     back_candidates: list[dict]
     back_transcription: Optional[str]
     dup_members: list[int]
+    file_size: int
     fixity_ok: Optional[bool]
     fixity_checked_at: Optional[datetime]
 
@@ -354,6 +355,7 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
         back_candidates=p.back_candidates or [],
         back_transcription=(bt.transcription if (bt := s.exec(select(BackText).where(BackText.photo_id == p.id)).first()) else None),
         dup_members=list(members),
+        file_size=p.file_size,
         fixity_ok=p.fixity_ok,
         fixity_checked_at=p.fixity_checked_at,
     )
@@ -534,6 +536,26 @@ def update_photos(body: BulkUpdate, s: Session = Depends(get_session)):
 @router.post("/photos/{photo_id}/keeper", response_model=PhotoDetail)
 def keep_photo(photo_id: int, s: Session = Depends(get_session)):
     services.set_keeper(s, photo_id)
+    s.commit()
+    return get_photo(photo_id, s)
+
+
+class NotDuplicatesIn(BaseModel):
+    only_this: bool = False  # just this photo apart from the rest, instead of splitting the whole group
+
+
+@router.post("/photos/{photo_id}/not-duplicates", response_model=PhotoDetail)
+def not_duplicates(photo_id: int, body: NotDuplicatesIn, s: Session = Depends(get_session)):
+    """Split a wrongly grouped duplicate group (undoable; Import keeps the photos apart)."""
+    services.not_duplicates(s, photo_id, only_this=body.only_this)
+    s.commit()
+    return get_photo(photo_id, s)
+
+
+@router.post("/photos/{photo_id}/keep-all", response_model=PhotoDetail)
+def keep_all_photos(photo_id: int, s: Session = Depends(get_session)):
+    """Keep every photo in this one's duplicate group (all of them are exported)."""
+    services.keep_all(s, photo_id)
     s.commit()
     return get_photo(photo_id, s)
 
