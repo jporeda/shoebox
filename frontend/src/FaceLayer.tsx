@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, ApiError, faceName, faceUrl, imgUrl, type Face } from "./api";
 import { useTouch } from "./hooks";
-import { NameInput } from "./People";
+import { NameInput, TwinChoices } from "./People";
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -302,16 +302,25 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
               <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
                 No
               </button>
+              {/* The guess has a known twin: "Ana or Ben" is the safe answer. */}
+              <TwinChoices
+                personId={current.source === "auto" && current.person_id ? current.person_id : current.suggested_person_id}
+                name={guessName(current) ?? ""}
+                onPick={(p) => act(() => api.assignFaces([current.id], p))}
+              />
             </>
           )}
           {/* On touch, don't pop the keyboard up over Yes / No on every tap of a face. */}
-          <NameInput autoFocus={!touch} onSubmit={(name) => act(() => api.assignFaces([current.id], { name }))} placeholder={current.person_name ? "Rename to…" : "Who is this?"} />
+          <NameInput autoFocus={!touch} onSubmit={(name) => act(() => api.assignFaces([current.id], { name }))} onPair={(p) => act(() => api.assignFaces([current.id], p))} placeholder={current.person_name ? "Rename to…" : "Who is this?"} />
           {current.person_name && current.source !== "auto" && !current.alt_person_id && (
             <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
               Not {current.person_name}
             </button>
           )}
           {/* Twins: "one of these two, not sure which". Once you know, pick one; or neither. */}
+          {current.person_id != null && current.source !== "auto" && !current.alt_person_id && (
+            <TwinChoices personId={current.person_id} name={current.person_name ?? ""} onPick={(p) => act(() => api.assignFaces([current.id], p))} />
+          )}
           {current.person_id != null && current.source !== "auto" && !current.alt_person_id && !orOpen && (
             <button className="btn btn--ghost" onClick={() => setOrOpen(true)} title="One of two people, not sure which (e.g. twins)">
               Or…

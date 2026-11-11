@@ -130,3 +130,15 @@ def test_export_names_the_pair_together_and_truth_round_trips(faces, env, tmp_pa
         names = {p.id: p.name for p in s.exec(select(Person)).all()}
         f = s.exec(select(Face)).one()
         assert (names[f.person_id], names[f.alt_person_id]) == ("Ana", "Ben")
+
+
+def test_people_list_their_known_twins(faces):
+    with api_client() as c:
+        ana, ben = name_pair(c, [faces[0]])
+        cy = c.post("/api/faces/assign", json={"face_ids": [faces[1]], "name": "Cy"}).json()["person"]
+        twins = {p["name"]: p["twin_ids"] for p in c.get("/api/people").json()}
+        assert twins == {"Ana": [ben["id"]], "Ben": [ana["id"]], "Cy": []}
+        # Once nobody is "one of the two" any more, they're no longer offered as a pair.
+        c.post("/api/faces/assign", json={"face_ids": [faces[0]], "person_id": ana["id"]})
+        assert all(p["twin_ids"] == [] for p in c.get("/api/people").json())
+        assert cy["twin_ids"] == []

@@ -1161,6 +1161,11 @@ export interface components {
             face_count: number;
             /** Auto Count */
             auto_count: number;
+            /**
+             * Twin Ids
+             * @default []
+             */
+            twin_ids?: number[];
             /** Cover Face Id */
             cover_face_id: number | null;
             /** First Year */

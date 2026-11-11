@@ -74,6 +74,9 @@ class PersonOut(BaseModel):
     kind: Literal["person", "pet"]
     face_count: int
     auto_count: int
+    # People this one has been paired with on a "one of two" face (twins): "A or B" is then
+    # offered wherever A is suggested or typed.
+    twin_ids: list[int] = []
     cover_face_id: Optional[int]
     first_year: Optional[int]
     last_year: Optional[int]
@@ -167,6 +170,8 @@ def _person_out(s: Session, person: Person) -> PersonOut:
         id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, kind=person.kind or "person",
         face_count=len(faces),
         auto_count=sum(f.source == "auto" for f in faces),
+        twin_ids=sorted({f.alt_person_id if f.person_id == person.id else f.person_id
+                         for f in faces if f.alt_person_id and not f.ignored}),
         cover_face_id=cover.id if cover else None, first_year=years[0] if years else None,
         last_year=years[-1] if years else None,
     )

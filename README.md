@@ -168,7 +168,9 @@ Anything that identifies your family stays out of git:
   It shows as "Ana or Ben" on both people's pages and in the filters, and is exported
   as one name, "Ana or Ben", never as either alone. It doesn't teach the name matcher or
   date photos by who's in them. When you find out, pick *It's Ana* / *It's Ben*
-  (or *Not Ana* on Ana's page, which leaves Ben), or *Neither*.
+  (or *Not Ana* on Ana's page, which leaves Ben), or *Neither*. Once Ana and Ben share a face,
+  "Ana or Ben" is offered wherever Ana is: next to the app's guess, on a face named Ana, as a
+  group's suggestion, under *Check* ("Confirm as Ana or Ben") and in the name box.
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as

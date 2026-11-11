@@ -3327,6 +3327,14 @@
       "type": "integer",
       "title": "Auto Count"
      },
+     "twin_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Twin Ids",
+      "default": []
+     },
      "cover_face_id": {
       "anyOf": [
        {

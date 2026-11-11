@@ -6,6 +6,45 @@ import { gridHref, navigate, photoHref } from "./route";
 
 export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
 
+/** "A or B": a face that's one of two people, not known which (twins). */
+export type Pair = { person_id: number; alt_person_id: number };
+
+/** Known twins: people someone has paired on a "one of two" face. twinsOf(id) lists them, and
+ *  pairs are "A or B" for every such pair, both ways round, for the name box's suggestions. */
+export function useTwins() {
+  const people = usePeople();
+  const byId = new Map((people.data ?? []).map((p) => [p.id, p]));
+  const twinsOf = (id: number | null | undefined): Person[] =>
+    id == null ? [] : (byId.get(id)?.twin_ids ?? []).flatMap((t) => byId.get(t) ?? []);
+  const pairs = (people.data ?? []).flatMap((p) =>
+    twinsOf(p.id).map((t) => ({ label: `${p.name} or ${t.name}`, pair: { person_id: p.id, alt_person_id: t.id } })),
+  );
+  return { twinsOf, pairs };
+}
+
+/** "Ana or Ben" buttons for a person's known twins (nothing if they have none). */
+export function TwinChoices({ personId, name, onPick, prefix = "", suffix = "", className = "btn btn--ghost", disabled }: {
+  personId: number | null | undefined;
+  name: string;
+  onPick: (pair: Pair) => void;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const { twinsOf } = useTwins();
+  return (
+    <>
+      {twinsOf(personId).map((t) => (
+        <button key={t.id} className={className} disabled={disabled} title="One of the two, not sure which"
+          onClick={() => onPick({ person_id: personId!, alt_person_id: t.id })}>
+          {prefix}{name} or {t.name}{suffix}
+        </button>
+      ))}
+    </>
+  );
+}
+
 function useInvalidateFaces() {
   const qc = useQueryClient();
   return () => {
@@ -17,36 +56,44 @@ function useInvalidateFaces() {
 /** Name box with autocomplete over existing people; Enter submits. */
 export function NameInput({
   onSubmit,
+  onPair,
   placeholder = "Who is this?",
   autoFocus,
   busy,
 }: {
   onSubmit: (name: string) => void;
+  /** Set where faces are being named: known twins are then offered as "Ana or Ben" too. */
+  onPair?: (pair: Pair) => void;
   placeholder?: string;
   autoFocus?: boolean;
   busy?: boolean;
 }) {
   const people = usePeople();
+  const { pairs } = useTwins();
   const touch = useTouch();
   const [name, setName] = useState("");
   // A name that matches no one creates a new person on submit; say so, so a typo doesn't quietly
   // make a duplicate. Only once the people list has loaded, to avoid a false "new" while loading.
   const typed = name.trim();
+  const pair = onPair ? pairs.find((p) => p.label.toLowerCase() === typed.toLowerCase()) : undefined;
   const isNew =
-    typed !== "" && !!people.data && !people.data.some((p) => p.name.trim().toLowerCase() === typed.toLowerCase());
+    typed !== "" && !pair && !!people.data && !people.data.some((p) => p.name.trim().toLowerCase() === typed.toLowerCase());
   return (
     <form
       className={`field__inline ${isNew ? "name-input--new" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
-        if (name.trim()) {
+        if (pair && onPair) {
+          onPair(pair.pair);
+          setName("");
+        } else if (name.trim()) {
           onSubmit(name.trim());
           setName("");
         }
       }}
     >
       <input
-        list="people-names"
+        list={onPair ? "people-names-pairs" : "people-names"}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={placeholder}
@@ -62,6 +109,12 @@ export function NameInput({
       <datalist id="people-names">
         {people.data?.map((p) => <option key={p.id} value={p.name} />)}
       </datalist>
+      {onPair && (
+        <datalist id="people-names-pairs">
+          {people.data?.map((p) => <option key={p.id} value={p.name} />)}
+          {pairs.map((p) => <option key={p.label} value={p.label} />)}
+        </datalist>
+      )}
       <button className="btn btn--primary" type="submit" disabled={busy || !name.trim()}>
         Name
       </button>
@@ -204,11 +257,12 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
   const qc = useQueryClient();
   const [wrong, setWrong] = useState<Set<number>>(new Set());
   const run = useMutation({
-    mutationFn: async () => {
+    // pair: confirm the right-looking ones as "this person or their twin" instead of as them.
+    mutationFn: async (pair?: Pair) => {
       const bad = group.faces.filter((f) => wrong.has(f.id)).map((f) => f.id);
       const good = group.faces.filter((f) => !wrong.has(f.id)).map((f) => f.id);
       if (bad.length) await api.rejectFaces(bad);
-      if (good.length) await api.acceptFaces(good);
+      if (good.length) await (pair ? api.assignFaces(good, pair) : api.acceptFaces(good));
     },
     onSuccess: () => {
       setWrong(new Set());
@@ -230,9 +284,10 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
           {group.faces.length - wrong.size} of {group.faces.length} look right
           {group.person_total > group.faces.length && ` · ${group.person_total} to check in all`}
         </span>
-        <button className="btn btn--primary" onClick={() => run.mutate()} disabled={run.isPending}>
+        <button className="btn btn--primary" onClick={() => run.mutate(undefined)} disabled={run.isPending}>
           Confirm
         </button>
+        <TwinChoices personId={group.person_id} name={group.name} prefix="Confirm as " onPick={(p) => run.mutate(p)} disabled={run.isPending} />
         <ViewPhotos faces={group.faces} />
       </div>
       <div className="cluster__faces">
@@ -270,10 +325,10 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
   };
 
   const run = useMutation({
-    mutationFn: async (action: { name?: string; person_id?: number; ignore?: boolean }) => {
+    mutationFn: async (action: { name?: string; person_id?: number; alt_person_id?: number; ignore?: boolean }) => {
       const ids = cluster.member_ids.filter((id) => !excluded.has(id));
       if (action.ignore) return api.ignoreFaces(ids);
-      return api.assignFaces(ids, action.person_id ? { person_id: action.person_id } : { name: action.name });
+      return api.assignFaces(ids, action.person_id ? { person_id: action.person_id, alt_person_id: action.alt_person_id } : { name: action.name });
     },
     onSuccess: invalidate,
     onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
@@ -307,7 +362,11 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
             {cluster.suggestion.name}? <span className="muted">{Math.round(cluster.suggestion.similarity * 100)}%</span>
           </button>
         )}
-        <NameInput onSubmit={(name) => run.mutate({ name })} busy={run.isPending} />
+        {cluster.suggestion && (
+          <TwinChoices personId={cluster.suggestion.person_id} name={cluster.suggestion.name} suffix="?" className="chip"
+            onPick={(p) => run.mutate(p)} disabled={run.isPending} />
+        )}
+        <NameInput onSubmit={(name) => run.mutate({ name })} onPair={(p) => run.mutate(p)} busy={run.isPending} />
         <button className="btn btn--ghost" onClick={() => run.mutate({ ignore: true })} disabled={run.isPending} title="Strangers, background people, not faces">
           Ignore
         </button>
@@ -350,7 +409,7 @@ function Singles() {
       {selected.size > 0 && (
         <div className="cluster__actions">
           <span className="muted small">{selected.size} selected</span>
-          <NameInput onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} />
+          <NameInput onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} onPair={(p) => act(() => api.assignFaces([...selected], p))} />
           <button className="btn btn--ghost" onClick={() => act(() => api.ignoreFaces([...selected]))}>
             Ignore
           </button>
@@ -514,7 +573,7 @@ export function PersonPage({ id }: { id: number }) {
           <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([...selected], id))}>
             Not {person.name}
           </button>
-          <NameInput placeholder="Move to…" onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} />
+          <NameInput placeholder="Move to…" onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} onPair={(p) => act(() => api.assignFaces([...selected], p))} />
           <button className="btn btn--ghost" onClick={() => act(() => api.ignoreFaces([...selected]))}>
             Ignore
           </button>
