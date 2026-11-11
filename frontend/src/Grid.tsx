@@ -20,32 +20,11 @@ function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onC
   const go = (patch: Partial<ListParams>) => navigate(gridHref({ ...list, ...patch }));
   return (
     <SidebarDrawer open={open} onClose={onClose}>
-      <section>
-        <h3 className="sidebar__heading">Albums</h3>
-        <ul className="nav-list">
-          <li>
-            <a className={list.album_id === undefined ? "is-active" : ""} href={gridHref({ ...list, album_id: undefined })}>
-              All photos
-            </a>
-          </li>
-          {albums.data?.map((a) => (
-            <li key={a.id}>
-              <a
-                className={`${list.album_id === a.id ? "is-active" : ""} ${a.missing ? "is-missing" : ""}`}
-                href={gridHref({ ...list, album_id: a.id })}
-                title={a.rel_path}
-              >
-                <span className="nav-list__name">{a.name}</span>
-                <span className="nav-list__count">
-                  <Progress done={a.dated} total={a.count} />
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <FilterSection list={list} />
       {(() => {
-        const a = albums.data?.find((x) => x.id === list.album_id);
+        // Backs belong to one album: offered when exactly one album is ticked.
+        const chosen = chosenAlbums(list);
+        const a = chosen.size === 1 ? albums.data?.find((x) => chosen.has(x.id)) : undefined;
         return a && a.loose_backs + a.paired_backs > 0 ? (
           <section className="stack">
             {a.paired_backs > 0 && (
@@ -63,7 +42,6 @@ function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onC
           </section>
         ) : null;
       })()}
-      <FilterSection list={list} />
       <section>
         <h3 className="sidebar__heading">Show</h3>
         <div className="segmented">
@@ -117,10 +95,17 @@ function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onC
 
 const idSet = (text?: string) => new Set((text ?? "").split(",").filter(Boolean).map(Number));
 const idText = (ids: Set<number>) => (ids.size ? [...ids].sort((a, b) => a - b).join(",") : undefined);
+/** Ticked albums; an older single-album link (album_id, e.g. from a back) counts as one ticked. */
+function chosenAlbums(list: ListParams): Set<number> {
+  const set = idSet(list.albums);
+  if (list.album_id !== undefined) set.add(list.album_id);
+  return set;
+}
 
 /** Years, people and events, in any combination: any of the ticked years or events; the ticked
  *  people all together (or any of them). Each choice is part of the address, so Back undoes it. */
 function FilterSection({ list }: { list: ListParams }) {
+  const albums = useAlbums();
   const years = useYears();
   const people = usePeople();
   const events = useEventInstances();
@@ -128,6 +113,7 @@ function FilterSection({ list }: { list: ListParams }) {
   // Arriving from a person's page ("Show N photos") counts as that person being ticked.
   const chosenPeople = idSet(list.people);
   if (list.person_id !== undefined) chosenPeople.add(list.person_id);
+  const chosenAlbumSet = chosenAlbums(list);
   const chosenYears = idSet(list.years);
   const chosenEvents = idSet(list.events);
   const toggle = (set: Set<number>, id: number) => {
@@ -135,7 +121,7 @@ function FilterSection({ list }: { list: ListParams }) {
     next.has(id) ? next.delete(id) : next.add(id);
     return idText(next);
   };
-  const active = chosenYears.size + chosenPeople.size + chosenEvents.size;
+  const active = chosenAlbumSet.size + chosenYears.size + chosenPeople.size + chosenEvents.size;
   return (
     <section className="filters">
       <h3 className="sidebar__heading">
@@ -143,12 +129,32 @@ function FilterSection({ list }: { list: ListParams }) {
         {active > 0 && (
           <button
             className="linkish"
-            onClick={() => go({ years: undefined, people: undefined, people_mode: undefined, events: undefined, person_id: undefined })}
+            onClick={() =>
+              go({ albums: undefined, album_id: undefined, years: undefined, people: undefined, people_mode: undefined, events: undefined, person_id: undefined })
+            }
           >
             clear {active}
           </button>
         )}
       </h3>
+      <details>
+        <summary>Albums{chosenAlbumSet.size ? ` · ${chosenAlbumSet.size}` : ""}</summary>
+        <ul className="filters__list filters__list--albums">
+          {albums.data?.map((a) => (
+            <li key={a.id}>
+              <label className={`check ${a.missing ? "is-missing" : ""}`} title={a.rel_path}>
+                <input
+                  type="checkbox"
+                  checked={chosenAlbumSet.has(a.id)}
+                  onChange={() => go({ albums: toggle(chosenAlbumSet, a.id), album_id: undefined })}
+                />
+                <span className="filters__name">{a.name}</span>
+                <Progress done={a.dated} total={a.count} />
+              </label>
+            </li>
+          ))}
+        </ul>
+      </details>
       <details open={chosenYears.size > 0}>
         <summary>Years{chosenYears.size ? ` · ${[...chosenYears].sort().join(", ")}` : ""}</summary>
         <div className="filters__chips">

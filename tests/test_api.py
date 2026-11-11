@@ -134,3 +134,21 @@ def test_photo_filters_combine_years_people_and_events(album_tree, env):
         assert got(events=str(party), people=str(ann_id)) == [a]
         assert {y["year"]: y["count"] for y in c.get("/api/years").json()}[1985] >= 2
         assert c.get("/api/photos", params={"years": "19x5"}).status_code == 422
+
+
+def test_albums_are_a_filter_that_combines_with_the_others(album_tree, env):
+    from conftest import api_client
+    from shoebox.ingest import run_ingest
+
+    run_ingest()
+    with api_client() as c:
+        albums = {a["name"]: a["id"] for a in c.get("/api/albums").json()}
+        items = c.get("/api/photos").json()["items"]
+        both = ",".join(str(i) for i in albums.values())
+        assert c.get("/api/photos", params={"albums": both}).json()["total"] == len(items)
+        one = albums["Album 1980s"]
+        in_one = [p["id"] for p in items if p["album_id"] == one]
+        assert sorted(p["id"] for p in c.get("/api/photos", params={"albums": str(one)}).json()["items"]) == sorted(in_one)
+        c.patch("/api/photos", json={"ids": [in_one[0]], "date": "1985"})
+        got = c.get("/api/photos", params={"albums": both, "years": "1985"}).json()["items"]
+        assert [p["id"] for p in got] == [in_one[0]]

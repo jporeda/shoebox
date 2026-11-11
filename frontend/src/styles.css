@@ -438,3 +438,5 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .filters__list .check { margin-top: 4px; }
 .filters__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filters__mode { margin: 4px 0; }
+.filters__list--albums { max-height: 320px; }
+.check.is-missing .filters__name { color: var(--muted); text-decoration: line-through; }

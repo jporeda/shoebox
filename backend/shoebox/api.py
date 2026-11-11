@@ -399,6 +399,7 @@ def list_photos(
     duplicates: bool = False,
     event_instance_id: Optional[int] = None,
     ids: Optional[str] = Query(None, description="only these photos: comma-separated ids (e.g. one Check group)"),
+    albums: Optional[str] = Query(None, description="comma-separated album ids; any of them"),
     years: Optional[str] = Query(None, description="comma-separated years (entered, else estimated); any of them"),
     people: Optional[str] = Query(None, description="comma-separated person ids"),
     people_mode: Literal["all", "any"] = "all",
@@ -424,6 +425,8 @@ def list_photos(
     if ids is not None:
         q = q.where(Photo.id.in_(_id_list(ids, "ids")))
     # Multi-select filters: any of the values within one, all of the filters together.
+    if albums:
+        q = q.where(Photo.album_id.in_(_id_list(albums, "albums")))
     if years:
         q = q.where(func.coalesce(Photo.t_year, Photo.i_year).in_(_id_list(years, "years")))
     if events:

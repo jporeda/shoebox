@@ -1381,6 +1381,8 @@ export interface operations {
                 event_instance_id?: number | null;
                 /** @description only these photos: comma-separated ids (e.g. one Check group) */
                 ids?: string | null;
+                /** @description comma-separated album ids; any of them */
+                albums?: string | null;
                 /** @description comma-separated years (entered, else estimated); any of them */
                 years?: string | null;
                 /** @description comma-separated person ids */

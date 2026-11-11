@@ -130,6 +130,24 @@
       "description": "only these photos: comma-separated ids (e.g. one Check group)"
      },
      {
+      "name": "albums",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated album ids; any of them",
+       "title": "Albums"
+      },
+      "description": "comma-separated album ids; any of them"
+     },
+     {
       "name": "years",
       "in": "query",
       "required": false,

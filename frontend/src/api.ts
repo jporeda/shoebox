@@ -35,7 +35,8 @@ export type ListParams = {
   order?: "album" | "chrono" | "confidence";
   /** Only these photos, comma-separated ids (e.g. the photos of one Check group). */
   ids?: string;
-  /** Multi-select filters, comma-separated: any of the years / events; people all together, or any. */
+  /** Multi-select filters, comma-separated: any of the albums / years / events; people all together, or any. */
+  albums?: string;
   years?: string;
   people?: string;
   people_mode?: "all" | "any";

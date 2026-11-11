@@ -19,6 +19,7 @@ export function parseHash(hash: string): Route {
     duplicates: q.get("dups") === "1" || undefined,
     order: (q.get("order") as ListParams["order"]) || "album",
     ids: q.get("ids") || undefined,
+    albums: q.get("albums") || undefined,
     years: q.get("years") || undefined,
     people: q.get("people") || undefined,
     people_mode: q.get("pmode") === "any" ? "any" : undefined,
@@ -51,6 +52,7 @@ export function listQuery(list: ListParams): string {
   if (list.duplicates) q.set("dups", "1");
   if (list.order && list.order !== "album") q.set("order", list.order);
   if (list.ids) q.set("ids", list.ids);
+  if (list.albums) q.set("albums", list.albums);
   if (list.years) q.set("years", list.years);
   if (list.people) q.set("people", list.people);
   if (list.people && list.people_mode === "any") q.set("pmode", "any");

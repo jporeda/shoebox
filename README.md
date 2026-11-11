@@ -84,7 +84,7 @@ Anything that identifies your family stays out of git:
 
 ## Using it
 
-- **Grid:** pick an album. Click to select, Shift-click for a range, ⌘-click to
+- **Grid:** narrow it down with **Filter** (any combination of albums, years, people and events). Click to select, Shift-click for a range, ⌘-click to
   add. Press `Y` (or use the bar at the bottom) and type a date:
   `1987`, `1987-06`, `1987-06-14`, `1980s`, `1985-1988`, `~1987`.
   Pick an event type. A year plus a fixed-date holiday becomes that day
