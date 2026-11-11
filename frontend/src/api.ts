@@ -127,11 +127,14 @@ export const api = {
   clusters: (singles = false) => call<Cluster[]>(`/clusters${qs({ singles })}`),
   clusterFaces: (id: number) => call<Face[]>(`/clusters/${id}/faces`),
   photoFaces: (id: number) => call<Face[]>(`/photos/${id}/faces`),
-  assignFaces: (face_ids: number[], who: { person_id?: number; name?: string }) =>
+  /** alt_person_id / alt_name: "or" a second person, one of the two but not known which (twins). */
+  assignFaces: (face_ids: number[], who: { person_id?: number; name?: string; alt_person_id?: number; alt_name?: string }) =>
     call<BatchOut>("/faces/assign", { method: "POST", body: JSON.stringify({ face_ids, ...who }) }),
   faceReview: () => call<ReviewGroup[]>("/faces/review"),
   acceptFaces: (face_ids: number[]) => call<BatchOut>("/faces/accept", { method: "POST", body: JSON.stringify({ face_ids }) }),
-  rejectFaces: (face_ids: number[]) => call<BatchOut>("/faces/reject", { method: "POST", body: JSON.stringify({ face_ids }) }),
+  /** person_id: on a one-of-two face, which of the two it isn't (the other stays); omitted = neither. */
+  rejectFaces: (face_ids: number[], person_id?: number) =>
+    call<BatchOut>("/faces/reject", { method: "POST", body: JSON.stringify({ face_ids, person_id }) }),
   revertRun: (runId: string) => call<BatchOut>(`/runs/${runId}/revert`, { method: "POST" }),
   ignoreFaces: (face_ids: number[], ignored = true) =>
     call<BatchOut>("/faces/ignore", { method: "POST", body: JSON.stringify({ face_ids, ignored }) }),
@@ -159,6 +162,10 @@ export function setCollection(id: string) {
   document.cookie = `shoebox_collection=${id}; path=/; max-age=31536000; SameSite=Lax`;
 }
 // Face ids repeat across collections, so the collection is part of a face crop's URL (and cache key).
+/** A face's name: "Ana", or "Ana or Ben" when it's one of the two and not known which (twins). */
+export const faceName = (f: Face): string | null =>
+  f.person_name && f.alt_name ? `${f.person_name} or ${f.alt_name}` : (f.person_name ?? null);
+
 export const faceUrl = (id: number) => `/api/face/${id}.jpg?c=${currentCollection()}`;
 
 export const imgUrl = (sha: string, kind: "thumb" | "preview", rotation = 0) =>

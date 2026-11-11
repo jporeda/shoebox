@@ -755,6 +755,10 @@ export interface components {
             person_id?: number | null;
             /** Name */
             name?: string | null;
+            /** Alt Person Id */
+            alt_person_id?: number | null;
+            /** Alt Name */
+            alt_name?: string | null;
         };
         /** BackDate */
         BackDate: {
@@ -981,6 +985,10 @@ export interface components {
             person_id: number | null;
             /** Person Name */
             person_name: string | null;
+            /** Alt Person Id */
+            alt_person_id?: number | null;
+            /** Alt Name */
+            alt_name?: string | null;
             /** Source */
             source: string;
             /** Ignored */
@@ -1309,6 +1317,13 @@ export interface components {
             city: string | null;
             /** Count */
             count: number;
+        };
+        /** RejectIn */
+        RejectIn: {
+            /** Face Ids */
+            face_ids: number[];
+            /** Person Id */
+            person_id?: number | null;
         };
         /** ReviewGroup */
         ReviewGroup: {
@@ -2604,7 +2619,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["FaceIds"];
+                "application/json": components["schemas"]["RejectIn"];
             };
         };
         responses: {

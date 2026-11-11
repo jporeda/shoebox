@@ -182,7 +182,8 @@ def shared_people_evidence(p: Photo, anchors: list[Anchor], faces_by_photo: dict
 
 
 def _trusted_people(faces: Iterable[Face]) -> set[int]:
-    return {f.person_id for f in faces if f.person_id and not f.ignored and f.source in TRUSTED_FACE_SOURCES}
+    # A "one of two" face (twins) doesn't say which person is in the photo.
+    return {f.person_id for f in faces if f.person_id and not f.alt_person_id and not f.ignored and f.source in TRUSTED_FACE_SOURCES}
 
 
 def file_name_evidence(p: Photo) -> list[Evidence]:

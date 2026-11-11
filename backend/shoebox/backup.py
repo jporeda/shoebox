@@ -144,6 +144,7 @@ def build_truth() -> dict:
                     "detector_ver": f.detector_ver,
                     "source": f.source,
                     "person": people[f.person_id].name if f.person_id else None,
+                    **({"or": people[f.alt_person_id].name} if f.alt_person_id else {}),
                     "ignored": f.ignored,
                     "not": sorted(people[i].name for i in f.rejected_person_ids or [] if i in people),
                 }
@@ -359,7 +360,9 @@ def _restore_faces(s, p: Photo, entries: list[dict]) -> None:
             s.flush()
             existing.append(match)
         person_id = get_or_create_person(s, e["person"]).id if e.get("person") else None
-        changes = [(match, "person_id", person_id), (match, "ignored", bool(e.get("ignored")))]
+        alt_id = get_or_create_person(s, e["or"]).id if e.get("or") and person_id else None
+        changes = [(match, "person_id", person_id), (match, "alt_person_id", alt_id),
+                   (match, "ignored", bool(e.get("ignored")))]
         if e.get("not"):
             changes.append((match, "rejected_person_ids", sorted(get_or_create_person(s, n).id for n in e["not"])))
         if e.get("source") in ("manual", "drawn", "accepted", "reverted"):

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, faceUrl, imgUrl, type Face } from "./api";
+import { api, ApiError, faceName, faceUrl, imgUrl, type Face } from "./api";
 import { useTouch } from "./hooks";
 import { NameInput } from "./People";
 
@@ -65,6 +65,8 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
   // Boxes come back in the photo's current rotation, so a rotate must fetch them again.
   const faces = useQuery({ queryKey: ["photoFaces", photoId, rotation], queryFn: () => api.photoFaces(photoId) });
   const [active, setActive] = useState<number | null>(null);
+  const [orOpen, setOrOpen] = useState(false); // the "Or…" box for a second person (twins)
+  useEffect(() => setOrOpen(false), [active]);
   const [drawing, setDrawing] = useState(false);
   // "Draw several": stays in drawing mode after each box, until switched off (or another photo opens).
   const [drawMany, setDrawMany] = useState(false);
@@ -272,7 +274,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
                         {guess}?{matchPercent(f)} <span className="muted small">{f.source === "auto" && f.person_name ? "named by the app" : "suggested"}</span>
                       </span>
                     ) : f.person_name ? (
-                      <span className="facelist__confirmed">{f.person_name}</span>
+                      <span className="facelist__confirmed">{faceName(f)}</span>
                     ) : (
                       <span className="muted">Unnamed</span>
                     )}
@@ -290,7 +292,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
               ? `Looks like ${current.person_name}${matchPercent(current)}`
               : current.suggested_name
                 ? `Maybe ${current.suggested_name}?${matchPercent(current)}`
-                : (current.person_name ?? "Unnamed face")}
+                : (faceName(current) ?? "Unnamed face")}
           </span>
           {((current.source === "auto" && current.person_name) || current.suggested_name) && (
             <>
@@ -304,10 +306,36 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
           )}
           {/* On touch, don't pop the keyboard up over Yes / No on every tap of a face. */}
           <NameInput autoFocus={!touch} onSubmit={(name) => act(() => api.assignFaces([current.id], { name }))} placeholder={current.person_name ? "Rename to…" : "Who is this?"} />
-          {current.person_name && current.source !== "auto" && (
+          {current.person_name && current.source !== "auto" && !current.alt_person_id && (
             <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
               Not {current.person_name}
             </button>
+          )}
+          {/* Twins: "one of these two, not sure which". Once you know, pick one; or neither. */}
+          {current.person_id != null && current.source !== "auto" && !current.alt_person_id && !orOpen && (
+            <button className="btn btn--ghost" onClick={() => setOrOpen(true)} title="One of two people, not sure which (e.g. twins)">
+              Or…
+            </button>
+          )}
+          {orOpen && current.person_id != null && (
+            <NameInput
+              autoFocus
+              placeholder={`${current.person_name} or who?`}
+              onSubmit={(alt_name) => act(() => api.assignFaces([current.id], { person_id: current.person_id!, alt_name }))}
+            />
+          )}
+          {current.alt_person_id != null && current.person_id != null && (
+            <>
+              <button className="btn btn--ghost" onClick={() => act(() => api.assignFaces([current.id], { person_id: current.person_id! }))}>
+                It's {current.person_name}
+              </button>
+              <button className="btn btn--ghost" onClick={() => act(() => api.assignFaces([current.id], { person_id: current.alt_person_id! }))}>
+                It's {current.alt_name}
+              </button>
+              <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
+                Neither
+              </button>
+            </>
           )}
           {current.ignored ? (
             <button className="btn btn--ghost" onClick={() => act(() => api.ignoreFaces([current.id], false))}>
@@ -415,7 +443,7 @@ function FaceBox({ face, active, onClick }: { face: Face; active: boolean; onCli
         onClick();
       }}
     >
-      <span className="facebox__label">{guess ? `${guess}?${matchPercent(face)}` : (face.person_name ?? "?")}</span>
+      <span className="facebox__label">{guess ? `${guess}?${matchPercent(face)}` : (faceName(face) ?? "?")}</span>
     </button>
   );
 }

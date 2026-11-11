@@ -164,6 +164,11 @@ Anything that identifies your family stays out of git:
   page. Pets are exported under `Pets|Name` keywords and as "Pet" regions (not as people in
   the image), and their birth year isn't used to date photos. The face detector only finds
   human faces, so draw boxes around pets by hand.
+- **Twins (one of two, not sure which):** name the face, then *Or…* and the other name.
+  It shows as "Ana or Ben" on both people's pages and in the filters, and is exported
+  as one name, "Ana or Ben", never as either alone. It doesn't teach the name matcher or
+  date photos by who's in them. When you find out, pick *It's Ana* / *It's Ben*
+  (or *Not Ana* on Ana's page, which leaves Ben), or *Neither*.
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as

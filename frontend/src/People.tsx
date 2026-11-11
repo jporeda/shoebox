@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, faceUrl, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
+import { api, ApiError, faceName, faceUrl, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
 import { useLongPress, useTouch } from "./hooks";
 import { gridHref, navigate, photoHref } from "./route";
 
@@ -90,7 +90,7 @@ export function FaceThumb({
   /** The list Prev/Next walk through when a double-click opens the face's photo. */
   photoList?: ListParams;
 }) {
-  const who = face.person_name ?? ""; // no "age ≈N": the face-age model is unreliable on old scans
+  const who = faceName(face) ?? ""; // no "age ≈N": the face-age model is unreliable on old scans
   const open = () => navigate(photoHref(face.photo_id, photoList));
   // Finger: tap toggles as with a mouse click; press and hold opens the photo (mouse: double-click).
   const press = useLongPress(open);
@@ -493,7 +493,7 @@ export function PersonPage({ id }: { id: number }) {
             key={f.id}
             face={f}
             selected={selected.has(f.id)}
-            caption={`${f.source === "auto" ? "? " : ""}${f.year_label || "undated"}`}
+            caption={`${f.source === "auto" ? "? " : ""}${orOther(f, id)}${f.year_label || "undated"}`}
             photoList={{ person_id: id, order: "chrono" }}
             onClick={() =>
               setSelected((prev) => {
@@ -511,7 +511,7 @@ export function PersonPage({ id }: { id: number }) {
           <button className="btn btn--ghost" onClick={() => act(() => api.acceptFaces([...selected]))}>
             Confirm
           </button>
-          <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([...selected]))}>
+          <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([...selected], id))}>
             Not {person.name}
           </button>
           <NameInput placeholder="Move to…" onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} />
@@ -522,6 +522,12 @@ export function PersonPage({ id }: { id: number }) {
       )}
     </div>
   );
+}
+
+/** "or Ben · " on Ana's page for a face that's one of the two (twins); "" otherwise. */
+function orOther(f: Face, personId: number): string {
+  if (!f.alt_person_id) return "";
+  return `or ${f.person_id === personId ? f.alt_name : f.person_name} · `;
 }
 
 export type { Person };
