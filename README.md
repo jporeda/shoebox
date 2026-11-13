@@ -31,13 +31,30 @@ By default only this Mac can open Shoebox. To use it from other devices on your 
 1. In `private/.env`, set `SHOEBOX_BIND=0.0.0.0`, then run `docker compose up -d --build`.
 2. Find this Mac's local name in *System Settings → General → Sharing* (under "Local
    hostname", e.g. `Family-Mac.local`).
-3. On the phone or tablet, open `http://Family-Mac.local:8000`. If macOS asks whether
-   Docker may accept incoming connections, allow it. Many Android phones can't open
-   `.local` names: use the Mac's IP address instead, e.g. `http://192.168.1.20:8000`
-   (*System Settings → Wi-Fi → Details* shows it).
+3. On the phone or tablet, open **`http://Family-Mac.local:8001`**: the touch app (below). If
+   macOS asks whether Docker may accept incoming connections, allow it. Many Android phones
+   can't open `.local` names: use the Mac's IP address instead, e.g. `http://192.168.1.20:8001`
+   (*System Settings → Wi-Fi → Details* shows it). Port 8000 is the full desktop site.
 4. The Mac has to be awake, with Docker Desktop running, for other devices to reach it.
    *System Settings → Battery → Options* can keep it from sleeping on power, and Docker
    Desktop's *Start Docker Desktop when you sign in* setting brings Shoebox back after a restart.
+
+**The touch app (port 8001)** is a separate, simpler Shoebox made for fingers, for the jobs
+you'd do on the sofa. It runs alongside the desktop site on the same photos and database; nothing
+detects your device, the port decides. In Safari, *Share → Add to Home Screen* makes it an app.
+- **Photos:** pinch to change the size, tap a photo to open it, press and hold to select several
+  (then Date… / Event… / rotate). The bar at the top shows what's filtered; tap ✕ to drop a filter.
+- **A photo:** swipe for the next one, double-tap to zoom. Under it: **Date** (use the estimate,
+  a nearby photo's date, the previous photo's, a year then a month, an exact day, or type one),
+  **People** (yes / no on the app's guesses, name a face, "Ana or Ben" for twins) and **Info**
+  (caption, place, the back of the photo).
+- **Date:** one undated (or least sure) photo at a time; one tap dates it and the next comes up.
+- **People:** groups of faces to name (the name box is on top), then everyone named.
+- **Check:** the app's name guesses; tap the wrong ones, then Confirm.
+- After each change, **Undo** shows at the bottom for a few seconds.
+
+Drawing face boxes, duplicates, backs, jobs and settings stay on the desktop site (*⋯ → Open
+the desktop site*). On an iPad the photo and its panel sit side by side.
 
 Browsers show "Not Secure" in the address bar because this is plain `http` on your own
 network; that's expected.
@@ -54,7 +71,7 @@ network; that's expected.
 
 **There is no login.** Anyone on the same Wi-Fi can view every photo and change anything,
 including Restore and Export. Put guests and smart-home devices on a separate guest network,
-never forward port 8000 on your router, and set `SHOEBOX_BIND` back to `127.0.0.1` before
+never forward ports 8000 or 8001 on your router, and set `SHOEBOX_BIND` back to `127.0.0.1` before
 taking a laptop onto someone else's Wi-Fi (a café, a hotel).
 
 **Undo on phones and tablets.** The Undo button on each browser takes back that browser's own
@@ -287,8 +304,8 @@ names, so a page using DNS rebinding still gets nothing. It only accepts changes
 (anything but GET) that carry the `X-Shoebox: 1` header, which the UI sends. A web
 page open in another tab can't add that header, so it can't drive the app. As a second
 layer, a change whose `Origin` header names any other page (another site, another local
-port, or `null`) is refused. The UI's own origin (on an allowed name) and the Vite dev server on port 5173 are
-allowed, and so are clients that send no `Origin` at all (scripts, curl).
+port, or `null`) is refused. The UI's own origin (on an allowed name) and the Vite dev servers on ports 5173 (desktop,
+`npm run dev`) and 5174 (touch app, `npm run dev:touch`) are allowed, and so are clients that send no `Origin` at all (scripts, curl).
 
 ## Licensing note
 

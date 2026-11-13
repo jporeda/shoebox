@@ -4,6 +4,7 @@
 private
 **/node_modules
 frontend/dist
+frontend/dist-touch
 *.tsbuildinfo
 **/__pycache__
 .pytest_cache

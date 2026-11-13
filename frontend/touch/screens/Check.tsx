@@ -1,0 +1,97 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api, faceUrl, pairLabel, type ReviewGroup } from "../../src/api";
+import { useLongPress } from "../../src/hooks";
+import { useTwins, type Pair } from "../../src/peopleData";
+import { useFaceAction } from "../faces";
+import { go, viewerHref } from "../route";
+
+/** The app's name guesses, by person and age bracket: tap the wrong ones, then Confirm. */
+export function CheckScreen() {
+  const review = useQuery({ queryKey: ["faceReview"], queryFn: api.faceReview });
+  const [help, setHelp] = useState(false);
+  return (
+    <div className="t-check">
+      <div className="t-check__intro">
+        <span className="t-muted">Tap the faces that are wrong, then Confirm the rest.</span>
+        <button className="t-btn t-btn--icon" aria-expanded={help} aria-label="More about checking" onClick={() => setHelp((h) => !h)}>
+          ?
+        </button>
+      </div>
+      {help && (
+        <p className="t-muted t-small t-pad">
+          These are faces the app thinks it recognizes, grouped by person and 5-year bracket (their age if you've set a
+          birth year, otherwise the photos' years), most sure first. “Guess” means the app named the face itself;
+          “maybe” means it wasn't sure enough (and always for young children). Confirmed faces teach it; the ones you tap
+          are remembered as “not them”. Press and hold a face to open its photo.
+        </p>
+      )}
+      {review.isLoading && <p className="t-muted t-pad">Loading…</p>}
+      {review.data?.length === 0 && <p className="t-empty">Nothing to check. Name more faces under People.</p>}
+      <div className="t-cards">
+        {review.data?.map((g) => <CheckCard key={`${g.person_id}:${g.age_lo ?? "-"}:${g.year_lo ?? "-"}`} group={g} />)}
+      </div>
+    </div>
+  );
+}
+
+const bracket = (g: ReviewGroup) =>
+  g.age_lo != null ? `age ${g.age_lo}–${g.age_lo + 4}` : g.year_lo != null ? `${g.year_lo}–${String(g.year_lo + 4).slice(-2)}` : "undated";
+
+function CheckCard({ group }: { group: ReviewGroup }) {
+  const { run, busy, error } = useFaceAction();
+  const { twinsOf } = useTwins();
+  const [wrong, setWrong] = useState<Set<number>>(new Set());
+  const good = group.faces.filter((f) => !wrong.has(f.id)).map((f) => f.id);
+  const bad = group.faces.filter((f) => wrong.has(f.id)).map((f) => f.id);
+  const confirm = (pair?: Pair) =>
+    run(async () => {
+      if (bad.length) await api.rejectFaces(bad);
+      if (good.length) await (pair ? api.assignFaces(good, pair) : api.acceptFaces(good));
+    }).then(() => setWrong(new Set()));
+  return (
+    <div className="t-card t-checkcard">
+      <div className="t-checkcard__head">
+        <span className="t-checkcard__name">{group.name}</span>
+        <span className="t-muted">{bracket(group)}</span>
+        <span className="t-muted t-small">
+          {good.length} of {group.faces.length} look right
+        </span>
+      </div>
+      <div className="t-group__faces">
+        {group.faces.map((f) => (
+          <CheckFace
+            key={f.id}
+            src={faceUrl(f.id)}
+            dim={wrong.has(f.id)}
+            caption={`${f.source === "auto" && f.person_id ? "guess" : "maybe"} ${Math.round((f.confidence ?? 0) * 100)}%${
+              f.suggested_name && f.suggested_alt_name ? ` · ${pairLabel(f.suggested_name, f.suggested_alt_name)}?` : ""}`}
+            onTap={() => setWrong((s) => { const n = new Set(s); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n; })}
+            onHold={() => go(viewerHref(f.photo_id, { ids: group.faces.map((x) => x.photo_id).join(",") }))}
+          />
+        ))}
+      </div>
+      <div className="t-checkcard__actions">
+        <button className="t-btn t-btn--primary" disabled={busy} onClick={() => confirm()}>
+          Confirm
+        </button>
+        {twinsOf(group.person_id).map((t) => (
+          <button key={t.id} className="t-btn" disabled={busy || !good.length} onClick={() => confirm({ person_id: group.person_id, alt_person_id: t.id })}>
+            Confirm as {pairLabel(group.name, t.name)}
+          </button>
+        ))}
+      </div>
+      {error && <p className="t-error">{error}</p>}
+    </div>
+  );
+}
+
+function CheckFace({ src, caption, dim, onTap, onHold }: { src: string; caption: string; dim: boolean; onTap: () => void; onHold: () => void }) {
+  const press = useLongPress(onHold, undefined, { anyPointer: true });
+  return (
+    <button className={`t-gface ${dim ? "is-dim is-wrong" : ""}`} {...press.handlers} onClick={() => !press.consumeLongPress() && onTap()}>
+      <img src={src} alt="" loading="lazy" />
+      <span>{caption}</span>
+    </button>
+  );
+}

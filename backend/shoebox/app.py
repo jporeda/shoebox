@@ -42,7 +42,8 @@ CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
 # <img> requests carry it too). Unknown or missing means the main collection.
 COLLECTION_COOKIE = "shoebox_collection"
 COLLECTION_HEADER = "X-Shoebox-Collection"
-VITE_DEV_PORT = 5173  # `npm run dev` proxies /api here and keeps the page's Origin
+# `npm run dev` (5173) and `npm run dev:touch` (5174) proxy /api here and keep the page's Origin.
+VITE_DEV_PORTS = {5173, 5174}
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
@@ -93,7 +94,7 @@ def _is_own_origin(origin: str, request: Request) -> bool:
         return False  # a browser's Origin is only scheme://host[:port]
     o_host, own_host = _norm_host(o.hostname), _norm_host(request.url.hostname or "")
     loopback = o_host in LOCAL_HOSTS and own_host in LOCAL_HOSTS
-    if o_port == VITE_DEV_PORT:
+    if o_port in VITE_DEV_PORTS:
         return loopback
     return o_port == own_port and (o_host == own_host or loopback)
 

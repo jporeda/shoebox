@@ -29,6 +29,18 @@ services:
       # network (the app reads the same setting and then accepts .local names and private IPs).
       - "${SHOEBOX_BIND:-127.0.0.1}:8000:8000"
 
+  # The phone and iPad app: the same API on its own port, with its own touch UI. Add
+  # http://<this Mac>.local:8001 to the Home Screen (SHOEBOX_BIND opens it to the network too).
+  touch:
+    <<: *common
+    command: ["python", "-m", "shoebox.cli", "serve", "--port", "8001"]
+    environment:
+      SHOEBOX_FRONTEND: /app/frontend/dist-touch
+    ports:
+      - "${SHOEBOX_BIND:-127.0.0.1}:8001:8001"
+    depends_on:
+      - app
+
   worker:
     <<: *common
     command: ["python", "-m", "shoebox.cli", "worker"]

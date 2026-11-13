@@ -29,6 +29,7 @@ def undo(client: TestClient, origin: str | None = None):
         "http://127.0.0.1",
         "http://localhost:5173",  # `npm run dev`: Vite proxies /api and keeps the page's Origin
         "http://127.0.0.1:5173",
+        "http://localhost:5174",  # `npm run dev:touch`: the phone and iPad app
     ],
 )
 def test_own_pages_may_make_changes(env, origin):

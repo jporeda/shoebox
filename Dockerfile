@@ -49,5 +49,6 @@ COPY pyproject.toml alembic.ini ./
 COPY backend/ backend/
 COPY tests/ tests/
 COPY --from=frontend /fe/dist frontend/dist
+COPY --from=frontend /fe/dist-touch frontend/dist-touch
 EXPOSE 8000
 CMD ["python", "-m", "shoebox.cli", "serve"]

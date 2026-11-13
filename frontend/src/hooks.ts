@@ -92,7 +92,7 @@ export const LONG_PRESS_MS = 450;
  *  Spread `handlers` on the element; in its onClick, `consumeLongPress()` returns true (once) for
  *  the click that ends a long press, which should then be ignored, and `wasTouch()` says whether
  *  the last press was a finger. */
-export function useLongPress(onLongPress: () => void, ms = LONG_PRESS_MS) {
+export function useLongPress(onLongPress: () => void, ms = LONG_PRESS_MS, opts: { anyPointer?: boolean } = {}) {
   const timer = useRef<number | undefined>(undefined);
   const start = useRef<[number, number] | null>(null);
   const fired = useRef(false);
@@ -110,7 +110,8 @@ export function useLongPress(onLongPress: () => void, ms = LONG_PRESS_MS) {
       touch.current = e.pointerType === "touch";
       fired.current = false;
       cancel();
-      if (!touch.current || !e.isPrimary) return;
+      // The touch app treats every pointer as a finger (so it also works with a mouse).
+      if ((!touch.current && !opts.anyPointer) || !e.isPrimary) return;
       start.current = [e.clientX, e.clientY];
       timer.current = window.setTimeout(() => {
         timer.current = undefined;
