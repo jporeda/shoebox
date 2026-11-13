@@ -4,62 +4,82 @@ import { api, faceUrl, type Cluster } from "../../src/api";
 import { useLongPress } from "../../src/hooks";
 import { usePeople, useTwins } from "../../src/peopleData";
 import { NameField, useFaceAction } from "../faces";
-import { go, photosHref, viewerHref } from "../route";
+import { openPhoto, personHref, pushScreen, replaceScreen } from "../route";
 import { plural } from "../ui";
 
-/** Groups of unnamed faces to name (name box first, faces below), then everyone named so far. */
-export function PeopleScreen() {
+/** "To name": groups of unnamed faces (name box first, faces below). "Everyone": each person named. */
+export function PeopleScreen({ tab }: { tab: "name" | "everyone" }) {
   const clusters = useQuery({ queryKey: ["clusters", false], queryFn: () => api.clusters(false) });
   const singles = useQuery({ queryKey: ["clusters", true], queryFn: () => api.clusters(true) });
   const people = usePeople();
-  const { twinsOf } = useTwins();
-  const [showSingles, setShowSingles] = useState(false);
   const groups = clusters.data ?? [];
-  const loners = singles.data?.[0];
-  if (clusters.isLoading || people.isLoading) return <p className="t-empty">Loading…</p>;
+  const toName = groups.reduce((n, c) => n + c.size, 0) + (singles.data?.[0]?.size ?? 0);
   return (
     <div className="t-people">
-      {(groups.length > 0 || loners) && (
-        <section className="t-section">
-          <h2 className="t-h2">To name</h2>
-          {groups.length === 0 && <p className="t-muted">No groups left to name.</p>}
-          <div className="t-cards">
-            {groups.map((c) => <NameGroup key={c.cluster_id} cluster={c} />)}
-          </div>
-          {loners && loners.faces.length > 0 && (
-            <>
-              <button className="t-btn t-btn--block" onClick={() => setShowSingles((s) => !s)}>
-                {showSingles ? "Hide" : "Show"} {plural(loners.size, "face")} that didn't group with anyone
-              </button>
-              {showSingles && <NameGroup cluster={loners} loners />}
-            </>
-          )}
-        </section>
-      )}
-      <section className="t-section">
-        <h2 className="t-h2">Everyone named</h2>
-        {people.data?.length === 0 && <p className="t-muted">Nobody named yet.</p>}
-        <div className="t-persons">
-          {people.data?.map((p) => (
-            <a key={p.id} className="t-person" href={photosHref({ person_id: p.id, order: "chrono" })}>
-              {p.cover_face_id ? <img src={faceUrl(p.cover_face_id)} alt="" loading="lazy" /> : <span className="t-person__blank" />}
-              <span className="t-person__name">{p.name}</span>
-              <span className="t-muted t-small">
-                {plural(p.photo_count ?? p.face_count, "photo")}
-                {p.first_year ? ` · ${p.first_year}${p.last_year !== p.first_year ? `–${p.last_year}` : ""}` : ""}
-                {twinsOf(p.id).length > 0 && ` · twin of ${twinsOf(p.id).map((t) => t.name).join(", ")}`}
-                {p.kind === "pet" && " · pet"}
-              </span>
-            </a>
-          ))}
-        </div>
-      </section>
+      <div className="t-seg t-people__tabs" role="tablist">
+        {/* Replacing the entry: switching between the two isn't something Back should step through. */}
+        <button role="tab" aria-selected={tab === "name"} className={tab === "name" ? "is-on" : ""}
+          onClick={() => replaceScreen("#/people")}>
+          To name{clusters.data ? ` (${toName})` : ""}
+        </button>
+        <button role="tab" aria-selected={tab === "everyone"} className={tab === "everyone" ? "is-on" : ""}
+          onClick={() => replaceScreen("#/people?tab=everyone")}>
+          Everyone{people.data ? ` (${people.data.length})` : ""}
+        </button>
+      </div>
+      {tab === "name" ? <ToName groups={groups} loners={singles.data?.[0]} loading={clusters.isLoading} /> : <Everyone />}
     </div>
   );
 }
 
-/** One group of look-alike faces: the name box on top; tap a face to leave it out, press and hold
- *  to open its photo. */
+function ToName({ groups, loners, loading }: { groups: Cluster[]; loners?: Cluster; loading: boolean }) {
+  const [showSingles, setShowSingles] = useState(false);
+  if (loading) return <p className="t-empty">Loading…</p>;
+  return (
+    <section className="t-section">
+      {groups.length === 0 && <p className="t-muted">No groups left to name.</p>}
+      <div className="t-cards">
+        {groups.map((c) => <NameGroup key={c.cluster_id} cluster={c} />)}
+      </div>
+      {loners && loners.faces.length > 0 && (
+        <>
+          <button className="t-btn t-btn--block" onClick={() => setShowSingles((s) => !s)}>
+            {showSingles ? "Hide" : "Show"} {plural(loners.size, "face")} that didn't group with anyone
+          </button>
+          {showSingles && <NameGroup cluster={loners} loners />}
+        </>
+      )}
+    </section>
+  );
+}
+
+function Everyone() {
+  const people = usePeople();
+  const { twinsOf } = useTwins();
+  if (people.isLoading) return <p className="t-empty">Loading…</p>;
+  return (
+    <section className="t-section">
+      {people.data?.length === 0 && <p className="t-muted">Nobody named yet.</p>}
+      <div className="t-persons">
+        {people.data?.map((p) => (
+          <a key={p.id} className="t-person" href={personHref(p.id)} onClick={(e) => (e.preventDefault(), pushScreen(personHref(p.id)))}>
+            {p.cover_face_id ? <img src={faceUrl(p.cover_face_id)} alt="" loading="lazy" /> : <span className="t-person__blank" />}
+            <span className="t-person__name">{p.name}</span>
+            <span className="t-muted t-small">
+              {plural(p.photo_count ?? p.face_count, "photo")}
+              {p.first_year ? ` · ${p.first_year}${p.last_year !== p.first_year ? `–${p.last_year}` : ""}` : ""}
+              {twinsOf(p.id).length > 0 && ` · twin of ${twinsOf(p.id).map((t) => t.name).join(", ")}`}
+              {p.kind === "pet" && " · pet"}
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** One group of look-alike faces: the name box on top; tap a face to leave it out, "Photos ›" (or
+ *  press and hold a face) to see them in their photos. */
 function NameGroup({ cluster, loners }: { cluster: Cluster; loners?: boolean }) {
   const { run, busy, error } = useFaceAction();
   const [out, setOut] = useState<Set<number>>(new Set());
@@ -67,6 +87,8 @@ function NameGroup({ cluster, loners }: { cluster: Cluster; loners?: boolean }) 
   const chosen = loners ? cluster.faces.filter((f) => out.has(f.id)).map((f) => f.id) : cluster.member_ids.filter((id) => !out.has(id));
   const toggle = (id: number) => setOut((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const assign = (who: Parameters<typeof api.assignFaces>[1]) => run(() => api.assignFaces(chosen, who)).then(() => setOut(new Set()));
+  const photoIds = [...new Set(cluster.faces.map((f) => f.photo_id))];
+  const look = (photoId: number) => openPhoto({ id: photoId, ids: photoIds, faces: cluster.faces.map((f) => f.id) });
   return (
     <div className="t-card t-group">
       <div className="t-group__head">
@@ -78,6 +100,9 @@ function NameGroup({ cluster, loners }: { cluster: Cluster; loners?: boolean }) 
             {cluster.suggestion.name}? {Math.round(cluster.suggestion.similarity * 100)}%
           </button>
         )}
+        <button className="t-btn t-photos-btn" onClick={() => look(photoIds[0])}>
+          Photos ›
+        </button>
       </div>
       <NameField busy={busy || !chosen.length} onName={(name) => assign({ name })} onPair={assign} />
       <div className="t-group__faces">
@@ -88,7 +113,7 @@ function NameGroup({ cluster, loners }: { cluster: Cluster; loners?: boolean }) 
             caption={f.year_label}
             dim={loners ? !out.has(f.id) : out.has(f.id)}
             onTap={() => toggle(f.id)}
-            onHold={() => go(viewerHref(f.photo_id, { ids: String(f.photo_id) }))}
+            onHold={() => look(f.photo_id)}
           />
         ))}
         {!loners && cluster.size > cluster.faces.length && <span className="t-muted t-small">+{cluster.size - cluster.faces.length} more, named with them</span>}

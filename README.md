@@ -44,13 +44,17 @@ you'd do on the sofa. It runs alongside the desktop site on the same photos and 
 detects your device, the port decides. In Safari, *Share → Add to Home Screen* makes it an app.
 - **Photos:** pinch to change the size, tap a photo to open it, press and hold to select several
   (then Date… / Event… / rotate). The bar at the top shows what's filtered; tap ✕ to drop a filter.
-- **A photo:** swipe for the next one, double-tap to zoom. Under it: **Date** (use the estimate,
+- **A photo** opens over the screen you were on, and "‹ Back" (named: Check, To name, a person,
+  Date, Photos) or a swipe down returns you exactly there: same place, same marks, same half-typed
+  name. Swipe sideways for the next one, double-tap to zoom, tap to fold the panel away. Under it: **Date** (use the estimate,
   a nearby photo's date, the previous photo's, a year then a month, an exact day, or type one),
   **People** (yes / no on the app's guesses, name a face, "Ana or Ben" for twins) and **Info**
   (caption, place, the back of the photo).
 - **Date:** one undated (or least sure) photo at a time; one tap dates it and the next comes up.
-- **People:** groups of faces to name (the name box is on top), then everyone named.
-- **Check:** the app's name guesses; tap the wrong ones, then Confirm.
+- **People:** *To name* (groups of faces; the name box is on top) and *Everyone* (tap a person for
+  their photos).
+- **Check:** the app's name guesses; tap the wrong ones, then Confirm. **Photos ›** on a group (or
+  holding a face) opens its photos with that face picked out.
 - After each change, **Undo** shows at the bottom for a few seconds.
 
 Drawing face boxes, duplicates, backs, jobs and settings stay on the desktop site (*⋯ → Open

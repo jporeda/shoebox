@@ -49,7 +49,10 @@ img { -webkit-touch-callout: none; user-select: none; }
 a { color: var(--accent); }
 
 /* ---- shell ---- */
-.t-app { height: 100dvh; display: flex; flex-direction: column; }
+.t-app { height: 100dvh; }
+.t-screen { height: 100%; display: flex; flex-direction: column; }
+/* An open photo covers the screen, which stays loaded underneath. */
+.t-layer { position: fixed; inset: 0; z-index: 40; background: #000; }
 .t-top {
   display: flex; align-items: center; gap: 8px;
   padding: calc(var(--safe-t) + 6px) 12px 6px 16px;
@@ -58,7 +61,6 @@ a { color: var(--accent); }
 .t-top__title { font-weight: 700; font-size: 20px; flex: 1; }
 .t-top__menu { font-size: 24px; min-width: var(--tap); }
 .t-main { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; }
-.t-app.is-viewer .t-main { overflow: hidden; }
 .t-tabs {
   display: flex; border-top: 1px solid var(--border); background: var(--panel);
   padding-bottom: var(--safe-b);
@@ -193,7 +195,8 @@ a { color: var(--accent); }
 .t-viewer__bar > * { pointer-events: auto; }
 .t-viewer__counter { flex: 1; text-align: center; color: #fff; font-size: 14px; text-shadow: 0 1px 3px #000; }
 .t-viewer__nav { display: flex; gap: 6px; }
-.t-viewer.no-chrome .t-viewer__bar, .t-viewer.no-chrome .t-panel { display: none; }
+/* A tap folds the panel and the arrows away; Back always stays. */
+.t-viewer.no-chrome .t-panel, .t-viewer.no-chrome .t-viewer__nav { display: none; }
 .t-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; position: relative; }
 .t-frame { position: relative; transition: transform 0.2s ease-out; }
 .t-frame img { width: 100%; height: 100%; display: block; }
@@ -319,3 +322,13 @@ a { color: var(--accent); }
   .t-grid { --cols-default: 7; }
   .t-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* ---- person page, People tabs, photo buttons, last photo viewed ---- */
+.t-subhead { display: flex; align-items: center; gap: 8px; padding: calc(var(--safe-t) + 6px) 12px 6px 4px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.t-subhead__title { font-weight: 700; font-size: 20px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-subhead__back { font-weight: 400; }
+.t-people__tabs { padding: 0 16px; }
+.t-photos-btn { margin-left: auto; }
+.t-tile.is-recent { outline: 3px solid var(--accent); outline-offset: -3px; transition: outline-color 1.2s ease-out; }
+.t-person-page { height: 100%; display: flex; flex-direction: column; }
+.t-person-page .t-photos { flex: 1; min-height: 0; }

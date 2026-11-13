@@ -4,12 +4,21 @@ import { albumLabel, api, imgUrl, type Face, type ListParams, type PhotoDetail, 
 import { useMedia, usePhotos, usePlaces, useUpdatePhotos } from "../../src/hooks";
 import { DatePanel, DATE_SOURCE, EventPanel } from "../dating";
 import { FacesPanel, guessOf } from "../faces";
-import { go, goReplace, photosHref, viewerHref } from "../route";
+import { LAST_PHOTO_EVENT, stepPhoto } from "../route";
 import { plural } from "../ui";
 
 type Tab = "date" | "people" | "info";
 
-export function Viewer({ id, list }: { id: number; list: ListParams }) {
+export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
+  id: number;
+  /** The photos to swipe through. */
+  list: ListParams;
+  /** Opened from faces (Check, To name): open on People with the face on this photo highlighted. */
+  faces?: number[];
+  /** Where Back goes, by name: "Check", "Mom", "Date", "Photos". */
+  backLabel: string;
+  onClose: () => void;
+}) {
   const detail = useQuery({ queryKey: ["photo", id], queryFn: () => api.photo(id) });
   const faces = useQuery({ queryKey: ["photoFaces", id, detail.data?.rotation], queryFn: () => api.photoFaces(id), enabled: !!detail.data });
   const photos = usePhotos(list);
@@ -19,14 +28,23 @@ export function Viewer({ id, list }: { id: number; list: ListParams }) {
   const next = idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
   const wide = useMedia("(min-width: 768px)");
   // Phones start with the sheet folded down to a summary; iPads keep the side panel open.
-  const [tab, setTab] = useState<Tab | null>(null);
+  const [tab, setTab] = useState<Tab | null>(focus?.length ? "people" : null);
   const shown: Tab | null = tab ?? (wide ? "date" : null);
   const [activeFace, setActiveFace] = useState<number | null>(null);
+  // A tap on the photo folds the panel away (never the Back button) for a clear view.
   const [chrome, setChrome] = useState(true);
-  useEffect(() => setActiveFace(null), [id]);
+  // On each photo, point out the face it was opened for (if any).
+  useEffect(() => {
+    const want = new Set(focus ?? []);
+    setActiveFace(faces.data?.find((f) => want.has(f.id))?.id ?? null);
+  }, [id, faces.data, focus]);
 
-  const step = (to: { id: number } | null) => to && goReplace(viewerHref(to.id, list));
-  const close = () => go(photosHref(list));
+  const step = (to: { id: number } | null) => to && stepPhoto(to.id);
+  const close = () => {
+    // The screen underneath scrolls to the photo you ended on.
+    window.dispatchEvent(new CustomEvent(LAST_PHOTO_EVENT, { detail: id }));
+    onClose();
+  };
   useEffect(() => {
     for (const n of [prev, next]) if (n) new Image().src = imgUrl(n.sha256, "preview", n.rotation);
   }, [prev, next]);
@@ -48,8 +66,8 @@ export function Viewer({ id, list }: { id: number; list: ListParams }) {
   return (
     <div className={`t-viewer ${shown ? "has-panel" : ""} ${chrome ? "" : "no-chrome"}`}>
       <div className="t-viewer__bar">
-        <button className="t-btn t-btn--glass" onClick={close} aria-label="Back to photos">
-          ‹ Photos
+        <button className="t-btn t-btn--glass t-viewer__back" onClick={close} aria-label={`Back to ${backLabel}`}>
+          ‹ {backLabel}
         </button>
         <span className="t-viewer__counter">{counter}</span>
         <span className="t-viewer__nav">
@@ -70,6 +88,7 @@ export function Viewer({ id, list }: { id: number; list: ListParams }) {
           onPrev={() => step(prev)}
           onNext={() => step(next)}
           onTap={() => setChrome((c) => !c)}
+          onDown={close}
         />
       ) : (
         <div className="t-stage">
@@ -133,7 +152,7 @@ function Summary({ photo: p, faces, named }: { photo: PhotoDetail; faces: number
 }
 
 /** The photo, fitted to the space, with face boxes; swipe for next/previous, double-tap to zoom. */
-function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap }: {
+function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onDown }: {
   photo: PhotoSummary;
   boxes: { id: number; x: number; y: number; w: number; h: number; person_name?: string | null }[];
   activeFace: number | null;
@@ -141,6 +160,8 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap }: {
   onPrev: () => void;
   onNext: () => void;
   onTap: () => void;
+  /** Swipe down: close, like the Photos app. */
+  onDown: () => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -184,6 +205,10 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap }: {
         if (!zoom && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && e.timeStamp - s.t < 800) {
           if (dx < 0) onNext();
           else onPrev();
+          return;
+        }
+        if (!zoom && dy > 90 && dy > Math.abs(dx) * 1.5 && e.timeStamp - s.t < 800) {
+          onDown();
           return;
         }
         if (Math.hypot(dx, dy) > 10) return;

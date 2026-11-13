@@ -4,7 +4,7 @@ import { api, faceUrl, pairLabel, type ReviewGroup } from "../../src/api";
 import { useLongPress } from "../../src/hooks";
 import { useTwins, type Pair } from "../../src/peopleData";
 import { useFaceAction } from "../faces";
-import { go, viewerHref } from "../route";
+import { openPhoto } from "../route";
 
 /** The app's name guesses, by person and age bracket: tap the wrong ones, then Confirm. */
 export function CheckScreen() {
@@ -23,7 +23,7 @@ export function CheckScreen() {
           These are faces the app thinks it recognizes, grouped by person and 5-year bracket (their age if you've set a
           birth year, otherwise the photos' years), most sure first. “Guess” means the app named the face itself;
           “maybe” means it wasn't sure enough (and always for young children). Confirmed faces teach it; the ones you tap
-          are remembered as “not them”. Press and hold a face to open its photo.
+          are remembered as “not them”. “Photos ›” (or pressing and holding a face) shows them in their photos.
         </p>
       )}
       {review.isLoading && <p className="t-muted t-pad">Loading…</p>}
@@ -44,6 +44,9 @@ function CheckCard({ group }: { group: ReviewGroup }) {
   const [wrong, setWrong] = useState<Set<number>>(new Set());
   const good = group.faces.filter((f) => !wrong.has(f.id)).map((f) => f.id);
   const bad = group.faces.filter((f) => wrong.has(f.id)).map((f) => f.id);
+  // The card's photos to swipe through, and its faces to point out on them.
+  const photoIds = [...new Set(group.faces.map((f) => f.photo_id))];
+  const look = (photoId: number) => openPhoto({ id: photoId, ids: photoIds, faces: group.faces.map((f) => f.id) });
   const confirm = (pair?: Pair) =>
     run(async () => {
       if (bad.length) await api.rejectFaces(bad);
@@ -57,6 +60,9 @@ function CheckCard({ group }: { group: ReviewGroup }) {
         <span className="t-muted t-small">
           {good.length} of {group.faces.length} look right
         </span>
+        <button className="t-btn t-photos-btn" onClick={() => look(photoIds[0])}>
+          Photos ›
+        </button>
       </div>
       <div className="t-group__faces">
         {group.faces.map((f) => (
@@ -67,7 +73,7 @@ function CheckCard({ group }: { group: ReviewGroup }) {
             caption={`${f.source === "auto" && f.person_id ? "guess" : "maybe"} ${Math.round((f.confidence ?? 0) * 100)}%${
               f.suggested_name && f.suggested_alt_name ? ` · ${pairLabel(f.suggested_name, f.suggested_alt_name)}?` : ""}`}
             onTap={() => setWrong((s) => { const n = new Set(s); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n; })}
-            onHold={() => go(viewerHref(f.photo_id, { ids: group.faces.map((x) => x.photo_id).join(",") }))}
+            onHold={() => look(f.photo_id)}
           />
         ))}
       </div>

@@ -3,7 +3,7 @@ import { albumLabel, imgUrl, type ListParams, type PhotoSummary } from "../../sr
 import { useGridPinch } from "../../src/gridPinch";
 import { useAlbums, useEventInstances, useLongPress, useMedia, usePhotos, useUpdatePhotos, useYears } from "../../src/hooks";
 import { usePeople } from "../../src/peopleData";
-import { go, photosHref, viewerHref } from "../route";
+import { go, LAST_PHOTO_EVENT, openPhoto, photosHref } from "../route";
 import { DatePanel, EventPanel } from "../dating";
 import { plural, Sheet, StatusDot } from "../ui";
 
@@ -34,7 +34,8 @@ const STATUS: { value: ListParams["status"]; label: string }[] = [
 // Scroll position per list, so coming back from a photo lands where you were.
 const scrollMemory = new Map<string, number>();
 
-export function Photos({ list }: { list: ListParams }) {
+/** The photo grid. `bare`: without the filter bar (a person's page, which has its own header). */
+export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
   const photos = usePhotos(list);
   const items = photos.data?.items ?? [];
   const gridEl = useRef<HTMLDivElement>(null);
@@ -55,6 +56,23 @@ export function Photos({ list }: { list: ListParams }) {
     setSelected(new Set());
     setSelecting(false);
   }, [key]);
+  // Back from a photo: show (and briefly outline) the one you ended on, wherever swiping took you.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const id = (e as CustomEvent<number>).detail;
+      requestAnimationFrame(() => {
+        const grid = gridEl.current;
+        const tile = grid?.querySelector<HTMLElement>(`.t-tile[data-id="${id}"]`);
+        if (!grid || !tile) return;
+        const g = grid.getBoundingClientRect(), t = tile.getBoundingClientRect();
+        if (t.top < g.top || t.bottom > g.bottom) tile.scrollIntoView({ block: "center" });
+        tile.classList.add("is-recent");
+        window.setTimeout(() => tile.classList.remove("is-recent"), 1500);
+      });
+    };
+    window.addEventListener(LAST_PHOTO_EVENT, on);
+    return () => window.removeEventListener(LAST_PHOTO_EVENT, on);
+  }, []);
 
   const toggle = (id: number) =>
     setSelected((prev) => {
@@ -66,7 +84,7 @@ export function Photos({ list }: { list: ListParams }) {
 
   return (
     <div className="t-photos">
-      <FilterBar list={list} total={photos.data?.total} onOpen={() => setFilters(true)} />
+      {!bare && <FilterBar list={list} total={photos.data?.total} onOpen={() => setFilters(true)} />}
       <div
         ref={gridEl}
         className={`t-grid ${pinch.className}`}
@@ -83,7 +101,7 @@ export function Photos({ list }: { list: ListParams }) {
             onTap={() => {
               if (pinch.suppressed()) return;
               if (selecting) toggle(p.id);
-              else go(viewerHref(p.id, list));
+              else openPhoto({ id: p.id });
             }}
             onLongPress={() => {
               if (pinch.suppressed()) return;
