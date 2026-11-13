@@ -53,7 +53,7 @@ export function AcceptGuesses({ photoId, rotation }: { photoId: number; rotation
     <>
       {error && <span className="error">{error}</span>}
       <button className="btn btn--primary" onClick={accept} disabled={busy}>
-        Accept {guesses.length === 1 ? "the guess" : `all ${guesses.length} guesses`}
+        Accept {guesses.length === 1 ? "the name guess" : `all ${guesses.length} name guesses`}
       </button>
     </>
   );
@@ -91,7 +91,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
           ? "The photo was rotated during the scan; nothing was saved. Try again."
           : r.found === 0
             ? `No faces found.${scanLevel < 5 ? " Try a higher sensitivity." : ""}`
-            : `Found ${r.found} face(s): ${r.added} new${r.updated ? `, ${r.updated} already boxed` : ""}.`,
+            : `Found ${plural(r.found, "face")}: ${r.added} new${r.updated ? `, ${r.updated} already boxed` : ""}.`,
       );
       refresh();
     } catch (e) {
@@ -209,7 +209,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
       </div>
       <div className="facelayer__bar">
         <span className="muted small">
-          {faces.data ? `${visible.filter((f) => !f.ignored).length} face(s)` : ""}
+          {faces.data ? plural(visible.filter((f) => !f.ignored).length, "face") : ""}
           {hidden > 0 && (
             <button className="linkish" onClick={() => setShowIgnored((v) => !v)}>
               {showIgnored ? "hide" : "show"} {hidden} ignored
@@ -458,4 +458,9 @@ function FaceBox({ face, active, onClick }: { face: Face; active: boolean; onCli
       <span className="facebox__label">{guess ? `${guess}?${matchPercent(face)}` : (faceName(face) ?? "?")}</span>
     </button>
   );
+}
+
+/** "1 face", "3 faces". */
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }

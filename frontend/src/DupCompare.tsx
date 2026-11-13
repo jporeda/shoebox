@@ -36,12 +36,12 @@ export function DupCompare({ ids, list, onClose }: { ids: number[]; list: ListPa
       <div className="compare__bar">
         <strong>Possible duplicates · {ids.length} photos</strong>
         <span className="muted">
-          {allKept ? "All are kept for export." : keepers === 1 ? "One is kept for export." : "Export keeps the first one unless you pick."}
+          {allKept ? "All are exported." : keepers === 1 ? "One is exported." : "Export keeps the first one unless you pick."}
         </span>
         <span className="compare__actions">
           {!allKept && (
             <button className="btn" onClick={() => act(api.keepAll(ids[0]))}>
-              {ids.length === 2 ? "Keep both" : `Keep all ${ids.length}`}
+              {ids.length === 2 ? "Export both" : `Export all ${ids.length}`}
             </button>
           )}
           <button
@@ -81,11 +81,11 @@ export function DupCompare({ ids, list, onClose }: { ids: number[]; list: ListPa
                 </dl>
                 <div className="compare__buttons">
                   {p.is_dup_keeper ? (
-                    <span className="badge badge--ok">kept for export</span>
+                    <span className="badge badge--ok">exported</span>
                   ) : null}
                   {!(p.is_dup_keeper && keepers === 1) && (
                     <button className="btn btn--ghost" onClick={() => act(api.keeper(p.id))}>
-                      {keepers > 0 ? "Keep only this one" : "Keep this one"}
+                      {keepers > 0 ? "Export only this one" : "Export this one"}
                     </button>
                   )}
                   {ids.length > 2 && (

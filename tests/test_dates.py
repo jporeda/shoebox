@@ -41,3 +41,13 @@ def test_export_rules():
     assert export_calendar_date(1986, None, None, "range") == (1986, 7, 1)
     assert xmp_partial(1987, None, None, "year") == "1987"
     assert xmp_partial(1987, 6, None, "month") == "1987:06"
+
+
+@pytest.mark.parametrize("text", ["1987", "1987-06", "1987-06-14", "1980s", "1985-1988", "~1987"])
+def test_a_shown_date_reads_back_as_the_same_date(text):
+    """The photo page starts its date box with the photo's date as shown: it must parse to itself."""
+    pd = parse_partial_date(text)
+    shown = format_partial(pd.year, pd.month, pd.day, pd.precision, pd.min, pd.max)
+    again = parse_partial_date(shown)
+    assert (again.year, again.month, again.day, again.min, again.max, again.precision) == (
+        pd.year, pd.month, pd.day, pd.min, pd.max, pd.precision)

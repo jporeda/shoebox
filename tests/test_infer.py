@@ -211,7 +211,7 @@ def test_ocr_back_dates_are_weaker_anchors_and_not_double_counted(album):
         services.bulk_update(s, [album[9]], date="1976")
     run_estimates()
     four = p(album[4])
-    assert four.i_year == 1975 and "between 1975 (ocr) and 1975 (ocr)" in four.i_source
+    assert four.i_year == 1975 and "between photos dated 1975 (ocr)" in four.i_source
     with session_scope() as s:  # same gap but confirmed anchors -> more confident
         services.bulk_update(s, [album[0], album[8]], date="1975")
     run_estimates()

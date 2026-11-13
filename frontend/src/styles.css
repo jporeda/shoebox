@@ -497,3 +497,5 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .settings__field input[type="number"] { width: 4.5em; }
 .settings__field input[type="range"] { flex: 1 1 160px; }
 .settings__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 16px 10px; }
+.active-filters__chip span { margin-left: 4px; opacity: 0.7; }

@@ -135,7 +135,8 @@ def neighbour_evidence(p: Photo, anchors: list[Anchor], skip_within: int = -1) -
             year = round((left.year + right.year) / 2)
         lo, hi = min(left.lo, right.lo), max(left.hi, right.hi)
         w = _clamp(NEIGHBOUR_BOTH - 0.07 * span - 0.005 * gap, 0.25, NEIGHBOUR_BOTH) * min(left.trust, right.trust)
-        text = f"between {left.label} and {right.label} in this album"
+        text = (f"between photos dated {left.label} in this album" if left.label == right.label
+                else f"between {left.label} and {right.label} in this album")
         return [Evidence("neighbours", year, None, lo, hi, round(w, 2), text)]
     a = left or right
     d = abs(p.list_index - a.index)

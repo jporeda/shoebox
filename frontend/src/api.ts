@@ -178,6 +178,12 @@ export function pairLabel(a: string, b: string): string {
   return aFirst ? `${a} or ${b}` : `${b} or ${a}`;
 }
 
+/** An album's name as you'd find it: its folder path, so nested folders with the same name
+ *  ("Box 1 / Envelope A", "Box 2 / Envelope A") can be told apart. */
+export function albumLabel(a: { name: string; rel_path: string }): string {
+  return a.rel_path && a.rel_path !== "." ? a.rel_path.split("/").join(" / ") : a.name;
+}
+
 export const faceUrl = (id: number) => `/api/face/${id}.jpg?c=${currentCollection()}`;
 
 export const imgUrl = (sha: string, kind: "thumb" | "preview", rotation = 0) =>

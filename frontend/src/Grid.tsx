@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { imgUrl, type ListParams, type PhotoSummary } from "./api";
+import { albumLabel, imgUrl, type ListParams, type PhotoSummary } from "./api";
 import { FiltersButton, SidebarDrawer } from "./Drawer";
 import { DateEventEditor, PlaceEditor } from "./Editor";
 import { useGridPinch } from "./gridPinch";
@@ -16,33 +16,11 @@ const STATUS_FILTERS: { value: ListParams["status"]; label: string }[] = [
 ];
 
 function Sidebar({ list, open, onClose }: { list: ListParams; open: boolean; onClose: () => void }) {
-  const albums = useAlbums();
   const touch = useTouch();
   const go = (patch: Partial<ListParams>) => navigate(gridHref({ ...list, ...patch }));
   return (
     <SidebarDrawer open={open} onClose={onClose}>
       <FilterSection list={list} />
-      {(() => {
-        // Backs belong to one album: offered when exactly one album is ticked.
-        const chosen = chosenAlbums(list);
-        const a = chosen.size === 1 ? albums.data?.find((x) => chosen.has(x.id)) : undefined;
-        return a && a.loose_backs + a.paired_backs > 0 ? (
-          <section className="stack">
-            {a.paired_backs > 0 && (
-              <a className="btn btn--ghost btn--block" href={backsHref(a.id, false, "paired")}>
-                {a.paired_backs} backs with their front
-                {a.paired_backs_undated > 0 && <span className="muted"> · {a.paired_backs_undated} to do</span>}
-              </a>
-            )}
-            {a.loose_backs > 0 && (
-              <a className="btn btn--ghost btn--block" href={backsHref(a.id)}>
-                {a.loose_backs} loose backs
-                {a.loose_backs_undated > 0 && <span className="muted"> · {a.loose_backs_undated} to do</span>}
-              </a>
-            )}
-          </section>
-        ) : null;
-      })()}
       <section>
         <h3 className="sidebar__heading">Show</h3>
         <div className="segmented">
@@ -149,7 +127,7 @@ function FilterSection({ list }: { list: ListParams }) {
                   checked={chosenAlbumSet.has(a.id)}
                   onChange={() => go({ albums: toggle(chosenAlbumSet, a.id), album_id: undefined })}
                 />
-                <span className="filters__name">{a.name}</span>
+                <span className="filters__name" title={albumLabel(a)}>{albumLabel(a)}</span>
                 <Progress done={a.dated} total={a.count} />
               </label>
             </li>
@@ -223,6 +201,80 @@ function FilterSection({ list }: { list: ListParams }) {
   );
 }
 
+/** The list with every filter off (the order is kept). */
+function clearedFilters(list: ListParams): ListParams {
+  return { order: list.order };
+}
+
+function filterCount(list: ListParams): number {
+  const people = idSet(list.people);
+  if (list.person_id !== undefined) people.add(list.person_id);
+  return chosenAlbums(list).size + idSet(list.years).size + people.size + idSet(list.events).size
+    + (list.status ? 1 : 0) + (list.duplicates ? 1 : 0) + (list.ids ? 1 : 0);
+}
+
+const STATUS_NAMES: Record<string, string> = { untagged: "Undated", inferred: "Estimated", reviewed: "Confirmed" };
+
+/** What the grid is showing, as removable chips over the photos: always in view (the sidebar may be
+ *  scrolled or, on a phone, closed), and one tap takes any of them off. */
+function ActiveFilters({ list }: { list: ListParams }) {
+  const albums = useAlbums();
+  const people = usePeople();
+  const events = useEventInstances();
+  const go = (patch: Partial<ListParams>) => navigate(gridHref({ ...list, ...patch }));
+  const chosenAlbumSet = chosenAlbums(list);
+  const chosenPeople = idSet(list.people);
+  if (list.person_id !== undefined) chosenPeople.add(list.person_id);
+  const without = (set: Set<number>, id: number) => idText(new Set([...set].filter((x) => x !== id)));
+  const chips: { key: string; label: string; off: () => void }[] = [];
+  for (const id of chosenAlbumSet) {
+    const a = albums.data?.find((x) => x.id === id);
+    chips.push({ key: `a${id}`, label: a ? albumLabel(a) : "Album", off: () => go({ albums: without(chosenAlbumSet, id), album_id: undefined }) });
+  }
+  for (const y of idSet(list.years)) chips.push({ key: `y${y}`, label: String(y), off: () => go({ years: without(idSet(list.years), y) }) });
+  for (const id of chosenPeople) {
+    const name = people.data?.find((p) => p.id === id)?.name ?? "Person";
+    chips.push({ key: `p${id}`, label: name, off: () => go({ people: without(chosenPeople, id), person_id: undefined }) });
+  }
+  for (const id of idSet(list.events)) {
+    const label = events.data?.find((e) => e.id === id)?.label ?? "Event";
+    chips.push({ key: `e${id}`, label, off: () => go({ events: without(idSet(list.events), id) }) });
+  }
+  if (list.status) chips.push({ key: "s", label: STATUS_NAMES[list.status] ?? list.status, off: () => go({ status: undefined }) });
+  if (list.duplicates) chips.push({ key: "d", label: "Possible duplicates", off: () => go({ duplicates: undefined }) });
+  if (list.ids) chips.push({ key: "i", label: `${list.ids.split(",").length} chosen photos`, off: () => go({ ids: undefined }) });
+  // Backs belong to one album: offered when exactly one album is ticked.
+  const one = chosenAlbumSet.size === 1 ? albums.data?.find((x) => chosenAlbumSet.has(x.id)) : undefined;
+  const backs = one && one.loose_backs + one.paired_backs > 0 ? one : undefined;
+  if (!chips.length && !backs) return null;
+  return (
+    <div className="active-filters">
+      {chips.map((c) => (
+        <button key={c.key} className="chip is-on active-filters__chip" onClick={c.off} title={`Stop filtering by ${c.label}`}>
+          {c.label}
+          <span aria-hidden>✕</span>
+        </button>
+      ))}
+      {chosenPeople.size > 1 && <span className="muted small">{list.people_mode === "any" ? "any of these people" : "all of these people together"}</span>}
+      {chips.length > 1 && (
+        <button className="linkish" onClick={() => go(clearedFilters(list))}>
+          Clear all
+        </button>
+      )}
+      {backs && backs.paired_backs > 0 && (
+        <a className="linkish" href={backsHref(backs.id, false, "paired")}>
+          {backs.paired_backs} backs with their front{backs.paired_backs_undated > 0 && ` (${backs.paired_backs_undated} to do)`}
+        </a>
+      )}
+      {backs && backs.loose_backs > 0 && (
+        <a className="linkish" href={backsHref(backs.id)}>
+          {backs.loose_backs} loose backs{backs.loose_backs_undated > 0 && ` (${backs.loose_backs_undated} to do)`}
+        </a>
+      )}
+    </div>
+  );
+}
+
 function Progress({ done, total }: { done: number; total: number }) {
   return (
     <span className="progress-mini" title={`${done} of ${total} dated`}>
@@ -269,7 +321,13 @@ function Tile({
     >
       <img src={imgUrl(p.sha256, big ? "preview" : "thumb", p.rotation)} loading="lazy" alt={p.rel_path} draggable={false} />
       <span className="tile__meta">
-        <span className="tile__date">
+        <span
+          className="tile__date"
+          title={
+            p.status === "reviewed" ? "Date you set" : p.status === "inferred"
+              ? `Estimated date (≈), ${Math.round((p.confidence ?? 0) * 100)}% sure` : "No date yet"
+          }
+        >
           {p.date_label || "—"}
           {p.confidence != null && <span className="tile__conf"> {Math.round(p.confidence * 100)}%</span>}
         </span>
@@ -460,10 +518,20 @@ export function Grid({ list }: { list: ListParams }) {
             </>
           )}
         </div>
+        <ActiveFilters list={list} />
         {photos.isError && <div className="error">{String(photos.error)}</div>}
         {!photos.isLoading && items.length === 0 && (
           <div className="empty">
-            No photos here yet. Run <a href="#/jobs">Import</a> to scan the photo folder.
+            {filterCount(list) > 0 ? (
+              <>
+                No photos match these filters.{" "}
+                <button className="linkish" onClick={() => navigate(gridHref(clearedFilters(list)))}>Clear filters</button>
+              </>
+            ) : (
+              <>
+                No photos here yet. Run <a href="#/jobs">Import</a> to scan the photo folder.
+              </>
+            )}
           </div>
         )}
         <div

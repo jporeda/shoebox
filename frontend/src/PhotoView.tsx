@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, imgUrl, type ListParams, type NearbyDate } from "./api";
+import { albumLabel, api, imgUrl, type ListParams, type NearbyDate } from "./api";
 import { DupCompare } from "./DupCompare";
 import { DateEventEditor, PlaceEditor } from "./Editor";
 import { AcceptGuesses, FaceLayer } from "./FaceLayer";
-import { usePhotos, useUpdatePhotos } from "./hooks";
+import { useEventInstances, usePhotos, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { gridHref, navigate, navigateReplace, photoHref, rememberPhoto } from "./route";
 
@@ -17,6 +17,8 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   const prev = idx > 0 ? items[idx - 1] : null;
   const next = idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
   const p = detail.data;
+  const instances = useEventInstances();
+  const instance = instances.data?.find((i) => i.id === p?.event_instance_id);
 
   // Stepping between photos replaces the history entry, so Back returns to the grid (which then
   // scrolls to the last photo viewed) instead of walking back through every photo.
@@ -78,7 +80,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           ← Back<span className="photo-view__back-more"> to {list.ids ? "Check" : "grid"}</span>
         </a>
         <span className="muted photo-view__where">
-          {p.album_name} · #{p.album_index + 1}
+          {albumLabel({ name: p.album_name, rel_path: p.rel_path.split("/").slice(0, -1).join("/") })} · #{p.album_index + 1}
           {idx >= 0 && ` · ${idx + 1} of ${items.length}`}
         </span>
         <span className="spacer" />
@@ -122,7 +124,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           <div>
             <span className="facts__k">Date</span>
             <span className={`facts__v status-${p.status}`}>{p.date_label || "Undated"}</span>
-            {p.date_source && <span className="muted"> ({p.date_source})</span>}
+            {p.date_source && DATE_SOURCE[p.date_source] && <span className="muted"> ({DATE_SOURCE[p.date_source]})</span>}
           </div>
           {p.inferred_label && (
             <div>
@@ -194,12 +196,24 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           currentEvent={p.event_label}
           datePicker
           currentExactDay={/^\d{4}-\d{2}-\d{2}$/.test(p.trusted_label) ? p.trusted_label : null}
+          initialDate={p.trusted_label}
+          initialKindId={instance?.kind_id ?? null}
+          initialEventLabel={instance?.label ?? null}
+          showRotate={false}
         />
         <PlaceEditor ids={[p.id]} current={{ country: p.country, state: p.state, city: p.city }} />
         <CaptionEditor id={p.id} caption={p.caption ?? ""} />
       </div>
     </div>
   );
+}
+
+/** Where a photo's date came from, in words. */
+const DATE_SOURCE: Record<string, string> = {
+  manual: "set by you",
+  accepted: "accepted estimate",
+  back: "from the back",
+  event: "from the event",
 }
 
 /** The photo's duplicate group: links to each, Compare side by side, and which to keep for export. */
@@ -219,23 +233,28 @@ function DuplicatesRow({ id, members, list }: { id: number; members: number[]; l
     <div>
       <span className="facts__k">Duplicates</span>
       <span className="facts__v dup-row">
-        {members.map((m) => (
-          <a key={m} href={photoHref(m, list)} className={m === id ? "is-current" : ""}>
-            #{m}
-          </a>
-        ))}
+        {members.map((m, i) => {
+          const d = details[i]?.data;
+          return m === id ? (
+            <span key={m} className="is-current">This photo</span>
+          ) : (
+            <a key={m} href={photoHref(m, list)} title={d?.rel_path}>
+              {d ? d.rel_path.split("/").slice(-2).join(" / ") : "…"}
+            </a>
+          );
+        })}
         <button className="btn btn--ghost" onClick={() => setComparing(true)}>
           Compare side by side
         </button>
-        {thisKept && <span className="badge badge--ok">{kept === members.length ? "all kept for export" : "kept for export"}</span>}
+        {thisKept && <span className="badge badge--ok">{kept === members.length ? "all exported" : "exported"}</span>}
         {!(thisKept && kept === 1) && (
-          <button className="btn btn--ghost" onClick={() => act(api.keeper(id))}>
-            {thisKept ? "Keep only this one" : "Keep this one"}
+          <button className="btn btn--ghost" onClick={() => act(api.keeper(id))} title="Which copy Export writes">
+            {thisKept ? "Export only this one" : "Export this one"}
           </button>
         )}
         {loaded && kept < members.length && (
           <button className="btn btn--ghost" onClick={() => act(api.keepAll(id))}>
-            {members.length === 2 ? "Keep both" : `Keep all ${members.length}`}
+            {members.length === 2 ? "Export both" : `Export all ${members.length}`}
           </button>
         )}
         <button
@@ -253,15 +272,27 @@ function DuplicatesRow({ id, members, list }: { id: number; members: number[]; l
 
 function CaptionEditor({ id, caption }: { id: number; caption: string }) {
   const update = useUpdatePhotos();
+  // Saved when you click or tab away; say so, since there's no Save button.
+  const [state, setState] = useState<"" | "editing" | "saving" | "saved" | "error">("");
+  useEffect(() => setState(""), [id]);
   return (
     <label className="field caption">
-      <span className="field__label">Caption / notes (exported as description)</span>
+      <span className="field__label">
+        Caption / notes (exported as description){" "}
+        <em className="muted small" aria-live="polite">
+          {state === "editing" ? "saved when you click away" : state === "saving" ? "saving…" : state === "saved" ? "✓ saved" : ""}
+        </em>
+        {state === "error" && <em className="error small"> not saved: {update.error instanceof Error ? update.error.message : "try again"}</em>}
+      </span>
       <textarea
         key={`${id}:${caption}`}
         defaultValue={caption}
         rows={2}
+        onChange={() => setState("editing")}
         onBlur={(e) => {
-          if (e.target.value !== caption) update.mutate({ ids: [id], caption: e.target.value });
+          if (e.target.value === caption) return setState((s) => (s === "editing" ? "" : s));
+          setState("saving");
+          update.mutate({ ids: [id], caption: e.target.value }, { onSuccess: () => setState("saved"), onError: () => setState("error") });
         }}
       />
     </label>
