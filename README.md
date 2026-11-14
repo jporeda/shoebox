@@ -262,8 +262,21 @@ Anything that identifies your family stays out of git:
 ## Viewing the exports
 
 - **Apple Photos / Google Photos:** import the `export/` folder. Dates, ordering
-  within a day, descriptions (and keywords in Apple Photos) carry over. Neither
-  app imports face names from metadata.
+  within a day, the caption, map location (and keywords in Apple Photos) carry over. Neither
+  app imports face names from metadata, so people's names are also keywords, and the caption
+  lists who is where. Each exported caption reads, one item per line:
+  ```
+  Wellfleet, Massachusetts, United States      (the place)
+  Cape Cod                                      (the event)
+  First day at the beach                        (the caption typed in Shoebox)
+  Mom - 271, 510 px                             (each named face: its centre, from the top-left)
+  ```
+- **Map location:** a photo with a city is placed at the city's centre (anything with "Disney"
+  in the place goes to Cinderella Castle at Walt Disney World). Cities come from an offline list
+  of the world's towns built into the Docker image ([GeoNames](https://www.geonames.org/),
+  CC-BY 4.0); nothing is looked up online. A city that can't be pinned down gets no location: a
+  misspelt name, or several towns of that name with no state set (Springfield). The Export job
+  lists those so you can fix them.
 - **Immich:** add `export/` as an external library; named faces are written as MWG regions
   (with `PersonInImage` and `People|Name` keywords), which Immich reads. Alternatively, keep the
   originals as the library and copy the sidecars next to them:

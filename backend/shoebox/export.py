@@ -27,11 +27,12 @@ from .db import session_scope
 from .exif import ExifTool, escape
 from .jobs_ctx import NULL_CTX, JobContext
 from .faces import rotate_box
+from . import geo
 from .models import Album, EventInstance, EventKind, Face, Person, Photo
 
 log = logging.getLogger(__name__)
 
-EXPORT_VERSION = 2  # 2: people keywords and MWG face regions
+EXPORT_VERSION = 3  # 2: people keywords and MWG face regions; 3: GPS for the city, structured caption
 FIRST_TIME = 9 * 3600  # ordinals count seconds from 09:00:00
 ROT_FROM_ORIENTATION = {1: 0, 6: 90, 3: 180, 8: 270}
 ORIENTATION_FROM_ROT = {v: k for k, v in ROT_FROM_ORIENTATION.items()}
@@ -68,6 +69,7 @@ class ExportItem:
     country: str | None = None
     state: str | None = None
     city: str | None = None  # named animals: keywords and "Pet" regions, never PersonInImage
+    gps: tuple[float, float] | None = None  # (latitude, longitude): the city's centre, or Disney's castle
     # Named faces: (name, x, y, w, h) normalized, in the display frame at the photo's rotation.
     faces: list[tuple[str, float, float, float, float]] = field(default_factory=list)
     width: int = 0  # display size at rotation 0 (after the file's own EXIF orientation)
@@ -194,6 +196,7 @@ def build_plan(session: Session) -> list[ExportItem]:
         it.width, it.height = p.width or 0, p.height or 0
         kw += it.people + it.pets
         hier += [f"People|{name}" for name in it.people] + [f"Pets|{name}" for name in it.pets]
+        it.gps = geo.locate(it.country, it.state, it.city)
         place = [v for v in (it.country, it.state, it.city) if v]
         if place:
             kw += place
@@ -218,6 +221,42 @@ def build_plan(session: Session) -> list[ExportItem]:
         n = n + 1 if it.cal == prev else 0
         it.ordinal, prev = n, it.cal
     return items
+
+
+def place_label(it: ExportItem) -> str:
+    """"Wellfleet, Massachusetts, United States": the place as one line, most specific first."""
+    return ", ".join(v for v in (it.city, it.state, it.country) if v)
+
+
+def description(it: ExportItem) -> str:
+    """The exported caption (what Apple Photos shows as the caption), one item per line:
+    the place, the event, the caption typed in Shoebox, then each named face and where it is
+    ("Mom - 412, 230 px": the face's centre, from the top-left of the photo as it's shown)."""
+    lines = []
+    if place_label(it):
+        lines.append(place_label(it))
+    if it.event_label or it.event_kind:
+        lines.append(it.event_label or it.event_kind)
+    if it.caption and it.caption.strip():
+        lines.append(it.caption.strip())
+    w, h = _dims(it, it.rotation)
+    for name, x, y, fw, fh in it.faces:
+        lines.append(f"{name} - {round((x + fw / 2) * w)}, {round((y + fh / 2) * h)} px" if w and h else name)
+    return "\n".join(lines)
+
+
+def gps_args(it: ExportItem) -> list[str]:
+    """Map coordinates in EXIF (what Apple Photos reads) and XMP; none written means any the scan
+    file carried are cleared, so a copy never keeps a stray location."""
+    if it.gps is None:
+        return [f"-{g}:{t}=" for g in ("EXIF", "XMP-exif") for t in ("GPSLatitude", "GPSLongitude")] + [
+            "-EXIF:GPSLatitudeRef=", "-EXIF:GPSLongitudeRef="]
+    lat, lon = it.gps
+    return [
+        f"-EXIF:GPSLatitude={abs(lat):.6f}", f"-EXIF:GPSLatitudeRef={'N' if lat >= 0 else 'S'}",
+        f"-EXIF:GPSLongitude={abs(lon):.6f}", f"-EXIF:GPSLongitudeRef={'E' if lon >= 0 else 'W'}",
+        f"-XMP-exif:GPSLatitude={lat:.6f}", f"-XMP-exif:GPSLongitude={lon:.6f}",
+    ]
 
 
 def _struct(value: str) -> str:
@@ -274,17 +313,19 @@ def tag_args(it: ExportItem, tz: str, ext: str) -> list[str]:
         args.append(f"-XMP-iptcExt:Event={escape(it.event_label)}")
     args.append("-XMP-iptcExt:PersonInImage=")
     args += [f"-XMP-iptcExt:PersonInImage={escape(n)}" for n in it.people]
-    if it.caption:
-        args += [f"-XMP-dc:Description={escape(it.caption)}", f"-EXIF:ImageDescription={escape(it.caption)}"]
-    # Place as text only (never GPS): XMP photoshop fields, and IPTC below for older readers.
+    text = description(it)
+    args += [f"-XMP-dc:Description={escape(text)}", f"-EXIF:ImageDescription={escape(text)}"]
+    args += gps_args(it)
+    # Place as text too: XMP photoshop fields, and IPTC below for older readers.
     for tag, value in (("Country", it.country), ("State", it.state), ("City", it.city)):
         if value:
             args.append(f"-XMP-photoshop:{tag}={escape(value)}")
     if ext in IPTC_FORMATS:
         args += ["-IPTC:CodedCharacterSet=UTF8", "-IPTC:Keywords="]
         args += [f"-IPTC:Keywords={escape(k)}" for k in it.keywords]
-        if it.caption:
-            args.append(f"-IPTC:Caption-Abstract={escape(it.caption)}")
+        # IPTC allows 2000 bytes; the XMP and EXIF descriptions above carry the whole text.
+        iptc = text.encode()[:2000].decode(errors="ignore")
+        args.append(f"-IPTC:Caption-Abstract={escape(iptc)}")
         for tag, value in (("Country-PrimaryLocationName", it.country), ("Province-State", it.state), ("City", it.city)):
             if value:
                 args.append(f"-IPTC:{tag}={escape(value)}")
@@ -418,6 +459,8 @@ def run_export(ctx: JobContext = NULL_CTX, sidecars: bool = True) -> dict:
         "removed_stale": removed,
         "failed": failed,
         "rotation_tag_only": not_baked,
+        # Cities that couldn't be put on the map (unknown, misspelt, or ambiguous without a state).
+        "no_map_location": sorted({place_label(it) for it in plan if it.city and it.gps is None}),
         "fixity": {k: fix[k] for k in ("checked", "changed", "missing")},
     }
 

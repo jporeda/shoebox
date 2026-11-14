@@ -1,9 +1,10 @@
 import json
 import subprocess
 
+import pytest
 from sqlmodel import select
 
-from conftest import make_image
+from conftest import make_image, reset_caches
 from shoebox import services
 from shoebox.db import session_scope
 from shoebox.export import run_export
@@ -222,3 +223,103 @@ def test_keep_both_exports_every_photo_in_the_duplicate_group(album_tree, env):
         services.keep_all(s, b)
     run_export()
     assert exported(env, a).exists() and exported(env, b).exists()
+
+
+# --- map coordinates and the structured caption ---------------------------------------------
+
+def _row(gid, name, ascii_name, lat, lon, cc, admin1, pop, fcode="PPL"):
+    """One line of GeoNames' cities file (19 tab-separated columns)."""
+    return "\t".join([str(gid), name, ascii_name, "", str(lat), str(lon), "P", fcode, cc, "", admin1, "", "", "",
+                      str(pop), "", "", "", "2024-01-01"])
+
+
+def num_tags(path, *names):
+    """Like tags(), with numbers as numbers (-n): GPS in signed decimal degrees."""
+    out = subprocess.run(["exiftool", "-j", "-n", "-G1", *[f"-{n}" for n in names], str(path)],
+                         check=True, capture_output=True, text=True).stdout
+    return json.loads(out)[0]
+
+
+@pytest.fixture
+def towns(env):
+    """A tiny town list in GeoNames' format, where the app looks for it."""
+    geo_dir = env.geonames_dir
+    geo_dir.mkdir(parents=True, exist_ok=True)
+    (geo_dir / "cities500.txt").write_text("\n".join([
+        _row(1, "Wellfleet", "Wellfleet", 41.9376, -70.0331, "US", "MA", 3500),
+        _row(2, "Salem", "Salem", 42.5195, -70.8967, "US", "MA", 41000),
+        _row(3, "Salem", "Salem", 44.9429, -123.0351, "US", "OR", 160000),
+        _row(4, "Montréal", "Montreal", 45.5088, -73.5878, "CA", "10", 1600000),
+        _row(5, "Back Bay", "Back Bay", 42.35, -71.08, "US", "MA", 20000, fcode="PPLX"),  # a neighbourhood
+    ]) + "\n", encoding="utf-8")
+    (geo_dir / "admin1CodesASCII.txt").write_text(
+        "US.MA\tMassachusetts\tMassachusetts\t1\nUS.OR\tOregon\tOregon\t2\nCA.10\tQuébec\tQuebec\t3\n", encoding="utf-8")
+    (geo_dir / "countryInfo.txt").write_text(
+        "#ISO\tISO3\tISO-Numeric\tfips\tCountry\n"
+        "US\tUSA\t840\tUS\tUnited States\n"
+        "CA\tCAN\t124\tCA\tCanada\n", encoding="utf-8")
+    reset_caches()
+    return geo_dir
+
+
+def test_city_centres_disney_and_places_that_cant_be_pinned_down(towns):
+    from shoebox import geo
+
+    assert geo.locate(None, None, "Wellfleet") == (41.9376, -70.0331)  # one town of that name anywhere
+    assert geo.locate("United States", "MA", "Salem") == (42.5195, -70.8967)  # state as its code
+    assert geo.locate("USA", "massachusetts", " salem ") == (42.5195, -70.8967)  # case, spacing, aliases
+    assert geo.locate("Canada", "Québec", "Montreal") == (45.5088, -73.5878)  # accents don't matter
+    assert geo.locate("United States", None, "Salem") is None  # two Salems and no state: not guessed
+    assert geo.locate(None, None, "Salem") is None
+    assert geo.locate("Canada", None, "Salem") is None  # the country doesn't match
+    assert geo.locate("Narnia", None, "Wellfleet") is None  # unknown country
+    assert geo.locate(None, None, "Atlantis") is None  # unknown city
+    assert geo.locate(None, None, "Back Bay") is None  # neighbourhoods aren't towns
+    assert geo.locate("United States", "Massachusetts", None) is None  # no city: not on the map
+    assert geo.locate("United States", "Florida", "Walt Disney World") == geo.DISNEY  # Disney anywhere
+    assert geo.locate(None, "Disneyland", None) == geo.DISNEY
+    assert geo.locate(None, None, "disney") == geo.DISNEY
+
+
+def test_export_writes_gps_and_a_caption_of_place_event_text_and_faces(album_tree, env, towns):
+    from conftest import api_client
+
+    run_ingest()
+    a, b, c = pid("Album 1980s/IMG_0001.jpg"), pid("Album 1980s/IMG_0002.jpg"), pid("Album 1990s/scan 1.jpg")
+    with session_scope() as s:
+        vacation = s.exec(select(EventKind).where(EventKind.name == "Vacation")).one()
+        services.bulk_update(s, [a], date="1979-07", event_kind_id=vacation.id, event_label="Cape Cod",
+                             caption="First day at the beach", country="United States", state="Massachusetts",
+                             city="Wellfleet")
+        services.bulk_update(s, [b], date="1979", city="Atlantis")  # can't be found
+        services.bulk_update(s, [c], date="1990", city="Walt Disney World", state="Florida")
+        width, height = s.get(Photo, a).width, s.get(Photo, a).height
+    with api_client() as client:  # two named faces, left one first
+        for x, name in ((0.5, "Dad"), (0.1, "Mom")):
+            r = client.post(f"/api/photos/{a}/faces", json={"x": x, "y": 0.2, "w": 0.2, "h": 0.3, "name": name})
+            assert r.status_code == 200, r.text
+
+    result = run_export()
+    assert not result["failed"]
+    assert result["no_map_location"] == ["Atlantis"]
+
+    t = num_tags(exported(env, a), "GPS:GPSLatitude", "GPS:GPSLongitude", "GPS:GPSLatitudeRef",
+             "GPS:GPSLongitudeRef", "XMP-exif:GPSLatitude", "XMP-exif:GPSLongitude", "XMP-dc:Description",
+             "IFD0:ImageDescription", "IPTC:Caption-Abstract", "IPTC:Keywords")
+    assert (t["GPS:GPSLatitude"], t["GPS:GPSLongitude"]) == pytest.approx((41.9376, 70.0331))
+    assert (t["GPS:GPSLatitudeRef"], t["GPS:GPSLongitudeRef"]) == ("N", "W")
+    assert (t["XMP-exif:GPSLatitude"], t["XMP-exif:GPSLongitude"]) == pytest.approx((41.9376, -70.0331))
+    caption = "\n".join([
+        "Wellfleet, Massachusetts, United States",
+        "Cape Cod",
+        "First day at the beach",
+        f"Mom - {round(0.2 * width)}, {round(0.35 * height)} px",
+        f"Dad - {round(0.6 * width)}, {round(0.35 * height)} px",
+    ])
+    assert t["XMP-dc:Description"] == t["IFD0:ImageDescription"] == t["IPTC:Caption-Abstract"] == caption
+    assert {"Mom", "Dad"} <= set(t["IPTC:Keywords"])  # people stay keywords
+
+    t = num_tags(exported(env, b), "GPS:GPSLatitude", "XMP-dc:Description")
+    assert "GPS:GPSLatitude" not in t and t["XMP-dc:Description"] == "Atlantis"
+    t = num_tags(exported(env, c), "GPS:GPSLatitude", "GPS:GPSLongitude")
+    assert (t["GPS:GPSLatitude"], t["GPS:GPSLongitude"]) == pytest.approx((28.419411, 81.5812))

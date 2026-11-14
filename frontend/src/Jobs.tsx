@@ -176,7 +176,8 @@ function summary(job: Job): string {
         : "";
     case "export":
       return r.planned !== undefined
-        ? `${r.written} written, ${r.unchanged} unchanged, ${len("failed")} failed${r.undated ? ` · ${r.undated} undated (in export/undated)` : ""}`
+        ? `${r.written} written, ${r.unchanged} unchanged, ${len("failed")} failed${r.undated ? ` · ${r.undated} undated (in export/undated)` : ""}${
+            len("no_map_location") ? ` · not on the map (city not found, or add a state): ${(r.no_map_location as string[]).join("; ")}` : ""}`
         : "";
     case "fixity":
       return r.checked !== undefined ? `${r.ok}/${r.checked} ok, ${len("changed")} changed, ${len("missing")} missing, ${len("new_files")} new` : "";
