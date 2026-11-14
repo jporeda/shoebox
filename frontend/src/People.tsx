@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, faceName, faceUrl, pairLabel, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
-import { useLongPress, useTouch } from "./hooks";
+import { useLongPress, useRemembered, useSaveOnLeave, useTouch } from "./hooks";
 import { gridHref, navigate, photoHref } from "./route";
 
 import { usePeople, useTwins, type Pair } from "./peopleData";
@@ -154,11 +154,18 @@ export function FaceThumb({
   );
 }
 
+// Scroll position of each People tab, so coming back from a photo ("View 9 photos") lands where you were.
+const peopleScroll = new Map<string, number>();
+
 export function PeoplePage({ tab }: { tab: "name" | "check" | "people" }) {
   const stats = useQuery({ queryKey: ["faceStats"], queryFn: api.faceStats });
   const s = stats.data;
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (box.current) box.current.scrollTop = peopleScroll.get(tab) ?? 0;
+  }, [tab]);
   return (
-    <div className="people pad">
+    <div className="people pad" ref={box} onScroll={(e) => peopleScroll.set(tab, e.currentTarget.scrollTop)}>
       <div className="people__head">
         <div className="segmented segmented--inline">
           <button className={tab === "name" ? "is-active" : ""} onClick={() => navigate("#/people")}>
@@ -245,7 +252,9 @@ function ViewPhotos({ faces }: { faces: Face[] }) {
 function CheckGroup({ group }: { group: ReviewGroup }) {
   const invalidate = useInvalidateFaces();
   const qc = useQueryClient();
-  const [wrong, setWrong] = useState<Set<number>>(new Set());
+  // Kept when "View photos" (or anything else) leaves the page: coming back must not lose the marks,
+  // or Confirm would confirm the faces you said were wrong.
+  const [wrong, setWrong] = useRemembered(`check:${group.person_id}:${group.age_lo ?? "-"}:${group.year_lo ?? "-"}`, new Set<number>());
   const run = useMutation({
     // pair: confirm the right-looking ones as "this person or their twin" instead of as them.
     mutationFn: async (pair?: Pair) => {
@@ -271,7 +280,7 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
         </a>
         <span className="cluster__age">{ageLabel(group)}</span>
         <span className="muted small">
-          {group.faces.length - wrong.size} of {group.faces.length} look right
+          {group.faces.filter((f) => !wrong.has(f.id)).length} of {group.faces.length} look right
           {group.person_total > group.faces.length && ` · ${group.person_total} to check in all`}
         </span>
         <button className="btn btn--primary" onClick={() => run.mutate(undefined)} disabled={run.isPending}>
@@ -460,6 +469,16 @@ export function PersonPage({ id }: { id: number }) {
     invalidate();
   };
 
+  // Saved on Enter, on clicking away, and when you leave the page with the change still typed.
+  const nameField = useSaveOnLeave((value) => {
+    const v = value.trim();
+    if (person && v && v !== person.name) save({ name: v });
+  }, id);
+  const yearField = useSaveOnLeave((value) => {
+    const v = value.trim() ? Number(value) : null;
+    if (person && v !== person.birth_year && (v === null || Number.isInteger(v))) save({ birth_year: v });
+  }, id);
+
   if (!person) return <div className="pad muted">{people.isLoading ? "Loading…" : "Person not found."}</div>;
   return (
     <div className="people pad">
@@ -473,7 +492,7 @@ export function PersonPage({ id }: { id: number }) {
           title="Click to rename"
           key={person.name}
           defaultValue={person.name}
-          onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== person.name && save({ name: e.target.value.trim() })}
+          {...nameField}
         />
         <div className="field">
           <span className="field__label">Person or pet</span>
@@ -499,10 +518,7 @@ export function PersonPage({ id }: { id: number }) {
             type="number"
             defaultValue={person.birth_year ?? ""}
             placeholder="e.g. 1972"
-            onBlur={(e) => {
-              const v = e.target.value ? Number(e.target.value) : null;
-              if (v !== person.birth_year) save({ birth_year: v });
-            }}
+            {...yearField}
           />
         </label>
         <label className="field">

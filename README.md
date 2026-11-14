@@ -57,8 +57,11 @@ detects your device, the port decides. In Safari, *Share → Add to Home Screen*
   holding a face) opens its photos with that face picked out.
 - After each change, **Undo** shows at the bottom for a few seconds.
 
-Drawing face boxes, duplicates, backs, jobs and settings stay on the desktop site (*⋯ → Open
-the desktop site*). On an iPad the photo and its panel sit side by side.
+Duplicates, backs, import, jobs and settings are only on the desktop site, and the touch app never
+links to it or mentions it: people using it only see what they can do there. A face the app missed:
+in a photo's **People** tab, *＋ Draw a face that wasn't found*, then drag a box around it with a finger
+or Apple Pencil (double-tap to zoom in first for small faces) and name it. *Remove this box* takes a
+drawn box away again. On an iPad the photo and its panel sit side by side.
 
 Browsers show "Not Secure" in the address bar because this is plain `http` on your own
 network; that's expected.

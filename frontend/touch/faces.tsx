@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, faceName, faceUrl, pairLabel, type Face } from "../src/api";
+import { useRemembered } from "../src/hooks";
 import { usePeople, useTwins, type Pair } from "../src/peopleData";
 
 /** Refetch everything a face change can touch (both apps keep these query keys). */
@@ -43,16 +44,18 @@ export function guessOf(f: Face): { name: string; personId: number; pair: boolea
 }
 
 /** A name box with the people (and known twin pairs) as suggestions. Enter or "Name" submits. */
-export function NameField({ placeholder = "Who is this?", busy, onName, onPair, autoFocus }: {
+export function NameField({ placeholder = "Who is this?", busy, onName, onPair, autoFocus, rememberAs }: {
   placeholder?: string;
   busy?: boolean;
   onName: (name: string) => void;
   onPair?: (pair: Pair) => void;
   autoFocus?: boolean;
+  /** Keep a half-typed name under this key when the field goes away (another tab) and comes back. */
+  rememberAs?: string;
 }) {
   const people = usePeople();
   const { pairs } = useTwins();
-  const [text, setText] = useState("");
+  const [text, setText] = useRemembered(rememberAs ?? null, "");
   const typed = text.trim();
   const said = typed.toLowerCase();
   const pair = onPair ? pairs.find((p) => p.label.toLowerCase() === said || p.label.toLowerCase().split(" or ").reverse().join(" or ") === said) : undefined;
@@ -94,11 +97,15 @@ export function NameField({ placeholder = "Who is this?", busy, onName, onPair, 
 }
 
 /** Every face in one photo, each with what you can do about it. `active` is highlighted on the photo. */
-export function FacesPanel({ faces, active, onActive, desktopHref }: {
+export function FacesPanel({ faces, active, onActive, drawn, drawing, onDraw }: {
   faces: Face[];
   active: number | null;
   onActive: (id: number | null) => void;
-  desktopHref: string;
+  /** A face just drawn: its row comes into view with the name box ready. */
+  drawn?: number | null;
+  drawing?: boolean;
+  /** Start drawing a box around a face that wasn't found. */
+  onDraw?: () => void;
 }) {
   const [showIgnored, setShowIgnored] = useState(false);
   const visible = faces.filter((f) => showIgnored || !f.ignored);
@@ -107,22 +114,30 @@ export function FacesPanel({ faces, active, onActive, desktopHref }: {
     <div className="t-faces">
       {visible.length === 0 && <p className="t-muted">No faces found in this photo.</p>}
       {visible.map((f) => (
-        <FaceRow key={f.id} face={f} active={f.id === active} onActive={() => onActive(f.id === active ? null : f.id)} />
+        <FaceRow key={f.id} face={f} active={f.id === active} justDrawn={f.id === drawn} onActive={() => onActive(f.id === active ? null : f.id)} />
       ))}
-      <p className="t-muted t-small">
-        {ignored > 0 && (
+      {onDraw && (
+        <button className="t-btn t-btn--block" disabled={drawing} onClick={onDraw}>
+          {drawing ? "Drag a box around the face on the photo…" : "＋ Draw a face that wasn't found"}
+        </button>
+      )}
+      {ignored > 0 && (
+        <p className="t-muted t-small">
           <button className="t-link" onClick={() => setShowIgnored((s) => !s)}>
-            {showIgnored ? "Hide" : "Show"} {ignored} ignored ·{" "}
+            {showIgnored ? "Hide" : "Show"} {ignored} ignored
           </button>
-        )}
-        A face wasn't found? Draw it on the <a href={desktopHref}>desktop site</a>.
-      </p>
+        </p>
+      )}
     </div>
   );
 }
 
-function FaceRow({ face: f, active, onActive }: { face: Face; active: boolean; onActive: () => void }) {
+function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active: boolean; justDrawn?: boolean; onActive: () => void }) {
   const { run, busy, error } = useFaceAction();
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (justDrawn) row.current?.scrollIntoView({ block: "nearest" });
+  }, [justDrawn]);
   const { twinsOf } = useTwins();
   const [renaming, setRenaming] = useState(false);
   const [orOpen, setOrOpen] = useState(false); // "one of two people, not sure which" (twins)
@@ -130,7 +145,7 @@ function FaceRow({ face: f, active, onActive }: { face: Face; active: boolean; o
   const named = f.person_name && f.source !== "auto";
   const assign = (who: Parameters<typeof api.assignFaces>[1]) => run(() => api.assignFaces([f.id], who)).then(() => setRenaming(false));
   return (
-    <div className={`t-face ${active ? "is-active" : ""} ${f.ignored ? "is-ignored" : ""}`}>
+    <div ref={row} className={`t-face ${active ? "is-active" : ""} ${f.ignored ? "is-ignored" : ""}`}>
       <button className="t-face__crop" onClick={onActive} aria-label="Show on the photo">
         <img src={faceUrl(f.id)} alt="" loading="lazy" />
       </button>
@@ -212,13 +227,18 @@ function FaceRow({ face: f, active, onActive }: { face: Face; active: boolean; o
         ) : (
           <NameField
             busy={busy}
-            autoFocus={renaming}
+            autoFocus={renaming || justDrawn}
             placeholder={renaming ? "Rename to…" : "Who is this?"}
             onName={(name) => assign({ name })}
             onPair={assign}
           />
         )}
-        {!f.ignored && (
+        {f.source === "drawn" ? (
+          // A box you drew: take it away (Undo brings it back).
+          <button className="t-link t-small" disabled={busy} onClick={() => run(() => api.deleteFace(f.id))}>
+            Remove this box
+          </button>
+        ) : !f.ignored && (
           <button className="t-link t-small" disabled={busy} onClick={() => run(() => api.ignoreFaces([f.id]))}>
             Ignore (stranger or not a face)
           </button>

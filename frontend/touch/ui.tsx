@@ -93,10 +93,10 @@ export function UndoToast() {
   );
 }
 
-/** The ⋯ menu: which collection, the desktop site, reload. */
+/** The ⋯ menu: which collection, reload. Nothing here points at the desktop site: people using this
+ *  app never need it. */
 export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const collections = useQuery({ queryKey: ["collections"], queryFn: api.collections });
-  const desktop = `${location.protocol}//${location.hostname}:8000/`;
   return (
     <Sheet open={open} onClose={onClose} title="Shoebox">
       {(collections.data?.length ?? 0) > 1 && (
@@ -122,10 +122,6 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
       )}
       <section className="t-section">
         <div className="t-list">
-          <a className="t-row" href={desktop}>
-            <span>Open the desktop site</span>
-            <span className="t-muted">Jobs, backs, settings, drawing faces</span>
-          </a>
           <button className="t-row" onClick={() => location.reload()}>
             <span>Reload</span>
           </button>

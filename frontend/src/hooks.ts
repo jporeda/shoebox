@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type BulkUpdate, type ListParams, type PhotoPage } from "./api";
 
@@ -33,6 +33,63 @@ export function useJobWatcher() {
     finished.current = now;
     if (seen && [...now].some((id) => !seen.has(id))) qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "jobs" });
   }, [jobs.data, qc]);
+}
+
+// Values kept by useRemembered, by key, for as long as the page is open.
+const remembered = new Map<string, unknown>();
+
+/** useState that outlives the component: marks, half-typed text and selections survive opening a
+ *  photo, another page or tab, and coming back. Kept per `key` (null: plain state, not kept). */
+export function useRemembered<T>(key: string | null, initial: T): [T, (next: T | ((prev: T) => T)) => void] {
+  const [local, setLocal] = useState(initial);
+  const [, redraw] = useState(0);
+  if (key !== null && !remembered.has(key)) remembered.set(key, initial);
+  const set = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      if (key === null) return setLocal(next);
+      // From the stored value, not this render's: two quick changes both count.
+      const prev = remembered.get(key) as T;
+      remembered.set(key, typeof next === "function" ? (next as (p: T) => T)(prev) : next);
+      redraw((n) => n + 1);
+    },
+    [key],
+  );
+  return key === null ? [local, setLocal] : [remembered.get(key) as T, set];
+}
+
+/** For a field that saves when you leave it: also saves what was typed when the field goes away
+ *  first (browser or phone Back, a link, the next photo), which never blurs it. `save` gets
+ *  `leaving` when the field is already gone, so it shouldn't show anything. `resetKey`: what the
+ *  field is for (a photo id). Spread the result on the input; Enter saves a one-line input. */
+export function useSaveOnLeave(save: (value: string, leaving: boolean) => void, resetKey: unknown) {
+  const pending = useRef<{ value: string; save: typeof save } | null>(null);
+  const savedOnEnter = useRef<string | null>(null); // so the blur after Enter doesn't save it twice
+  useEffect(
+    () => () => {
+      const p = pending.current;
+      pending.current = null;
+      if (p) p.save(p.value, true);
+    },
+    [resetKey],
+  );
+  return {
+    onChange: (e: { currentTarget: { value: string } }) => {
+      savedOnEnter.current = null;
+      pending.current = { value: e.currentTarget.value, save }; // this render's save: the old photo's
+    },
+    onBlur: (e: { currentTarget: { value: string } }) => {
+      pending.current = null;
+      if (savedOnEnter.current === e.currentTarget.value) return;
+      save(e.currentTarget.value, false);
+    },
+    onKeyDown: (e: { key: string; currentTarget: HTMLElement & { value?: string } }) => {
+      if (e.key !== "Enter" || e.currentTarget.tagName !== "INPUT") return;
+      const value = e.currentTarget.value ?? "";
+      pending.current = null;
+      savedOnEnter.current = value;
+      save(value, false);
+    },
+  };
 }
 
 export const usePhotos = (list: ListParams) =>

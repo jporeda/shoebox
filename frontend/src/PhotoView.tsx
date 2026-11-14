@@ -4,7 +4,7 @@ import { albumLabel, api, imgUrl, type ListParams, type NearbyDate } from "./api
 import { DupCompare } from "./DupCompare";
 import { DateEventEditor, PlaceEditor } from "./Editor";
 import { AcceptGuesses, FaceLayer } from "./FaceLayer";
-import { useEventInstances, usePhotos, useUpdatePhotos } from "./hooks";
+import { useEventInstances, usePhotos, useSaveOnLeave, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { gridHref, navigate, navigateReplace, photoHref, rememberPhoto } from "./route";
 
@@ -272,9 +272,16 @@ function DuplicatesRow({ id, members, list }: { id: number; members: number[]; l
 
 function CaptionEditor({ id, caption }: { id: number; caption: string }) {
   const update = useUpdatePhotos();
-  // Saved when you click or tab away; say so, since there's no Save button.
+  // Saved when you click or tab away; say so, since there's no Save button. Leaving the page (or going
+  // to the next photo) with it still typed saves it too.
   const [state, setState] = useState<"" | "editing" | "saving" | "saved" | "error">("");
   useEffect(() => setState(""), [id]);
+  const field = useSaveOnLeave((value, leaving) => {
+    if (value === caption) return leaving || setState((s) => (s === "editing" ? "" : s));
+    if (leaving) return update.mutate({ ids: [id], caption: value });
+    setState("saving");
+    update.mutate({ ids: [id], caption: value }, { onSuccess: () => setState("saved"), onError: () => setState("error") });
+  }, id);
   return (
     <label className="field caption">
       <span className="field__label">
@@ -288,12 +295,8 @@ function CaptionEditor({ id, caption }: { id: number; caption: string }) {
         key={`${id}:${caption}`}
         defaultValue={caption}
         rows={2}
-        onChange={() => setState("editing")}
-        onBlur={(e) => {
-          if (e.target.value === caption) return setState((s) => (s === "editing" ? "" : s));
-          setState("saving");
-          update.mutate({ ids: [id], caption: e.target.value }, { onSuccess: () => setState("saved"), onError: () => setState("error") });
-        }}
+        onChange={(e) => (field.onChange(e), setState("editing"))}
+        onBlur={field.onBlur}
       />
     </label>
   );

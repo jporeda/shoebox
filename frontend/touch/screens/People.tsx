@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, faceUrl, type Cluster } from "../../src/api";
-import { useLongPress } from "../../src/hooks";
+import { useLongPress, useRemembered } from "../../src/hooks";
 import { usePeople, useTwins } from "../../src/peopleData";
 import { NameField, useFaceAction } from "../faces";
 import { openPhoto, personHref, pushScreen, replaceScreen } from "../route";
@@ -82,7 +82,8 @@ function Everyone() {
  *  press and hold a face) to see them in their photos. */
 function NameGroup({ cluster, loners }: { cluster: Cluster; loners?: boolean }) {
   const { run, busy, error } = useFaceAction();
-  const [out, setOut] = useState<Set<number>>(new Set());
+  // Kept when you switch tabs and come back, like the half-typed name below.
+  const [out, setOut] = useRemembered(`t-out:${loners ? "loners" : cluster.cluster_id}`, new Set<number>());
   // Loners aren't one person: you pick the ones you're naming instead of the ones to leave out.
   const chosen = loners ? cluster.faces.filter((f) => out.has(f.id)).map((f) => f.id) : cluster.member_ids.filter((id) => !out.has(id));
   const toggle = (id: number) => setOut((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -104,7 +105,8 @@ function NameGroup({ cluster, loners }: { cluster: Cluster; loners?: boolean }) 
           Photos ›
         </button>
       </div>
-      <NameField busy={busy || !chosen.length} onName={(name) => assign({ name })} onPair={assign} />
+      <NameField busy={busy || !chosen.length} onName={(name) => assign({ name })} onPair={assign}
+        rememberAs={`t-name:${loners ? "loners" : cluster.cluster_id}`} />
       <div className="t-group__faces">
         {cluster.faces.map((f) => (
           <GroupFace

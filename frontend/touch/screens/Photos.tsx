@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { albumLabel, imgUrl, type ListParams, type PhotoSummary } from "../../src/api";
 import { useGridPinch } from "../../src/gridPinch";
-import { useAlbums, useEventInstances, useLongPress, useMedia, usePhotos, useUpdatePhotos, useYears } from "../../src/hooks";
+import { useAlbums, useEventInstances, useLongPress, useMedia, usePhotos, useRemembered, useUpdatePhotos, useYears } from "../../src/hooks";
 import { usePeople } from "../../src/peopleData";
 import { go, LAST_PHOTO_EVENT, openPhoto, photosHref } from "../route";
 import { DatePanel, EventPanel } from "../dating";
@@ -42,17 +42,21 @@ export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
   const phone = useMedia("(max-width: 600px)");
   const pinch = useGridPinch(gridEl, true, phone);
   const [filters, setFilters] = useState(false);
-  const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [action, setAction] = useState<"" | "date" | "event">("");
   const update = useUpdatePhotos();
   const key = photosHref(list);
+  // Kept per list when you switch tabs and come back; a new filter starts a new selection.
+  const [selecting, setSelecting] = useRemembered(`t-selecting:${key}`, false);
+  const [selected, setSelected] = useRemembered(`t-selected:${key}`, new Set<number>());
+  const shownKey = useRef(key);
 
   useLayoutEffect(() => {
     const el = gridEl.current;
     if (el && photos.data && !photos.isPlaceholderData) el.scrollTop = scrollMemory.get(key) ?? 0;
   }, [key, photos.data, photos.isPlaceholderData]);
   useEffect(() => {
+    if (shownKey.current === key) return;
+    shownKey.current = key;
     setSelected(new Set());
     setSelecting(false);
   }, [key]);
@@ -121,7 +125,7 @@ export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
                 </button>
               </>
             ) : (
-              "No photos yet. Import them on the desktop site (Jobs → Import)."
+              "No photos yet."
             )}
           </p>
         )}

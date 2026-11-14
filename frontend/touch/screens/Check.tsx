@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, faceUrl, pairLabel, type ReviewGroup } from "../../src/api";
-import { useLongPress } from "../../src/hooks";
+import { useLongPress, useRemembered } from "../../src/hooks";
 import { useTwins, type Pair } from "../../src/peopleData";
 import { useFaceAction } from "../faces";
 import { openPhoto } from "../route";
@@ -41,7 +41,8 @@ const bracket = (g: ReviewGroup) =>
 function CheckCard({ group }: { group: ReviewGroup }) {
   const { run, busy, error } = useFaceAction();
   const { twinsOf } = useTwins();
-  const [wrong, setWrong] = useState<Set<number>>(new Set());
+  // Kept when you switch tabs and come back: Confirm must never confirm faces you said were wrong.
+  const [wrong, setWrong] = useRemembered(`t-check:${group.person_id}:${group.age_lo ?? "-"}:${group.year_lo ?? "-"}`, new Set<number>());
   const good = group.faces.filter((f) => !wrong.has(f.id)).map((f) => f.id);
   const bad = group.faces.filter((f) => wrong.has(f.id)).map((f) => f.id);
   // The card's photos to swipe through, and its faces to point out on them.

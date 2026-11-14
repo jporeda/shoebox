@@ -13,6 +13,12 @@ const QUEUES: { key: "untagged" | "inferred"; label: string; list: ListParams }[
 // Skipped photos, per queue, for as long as the app is open: they survive opening a photo, other
 // tabs and coming back.
 const skippedMemory = { untagged: new Set<number>(), inferred: new Set<number>() };
+// The photo on screen, per queue. The list is refetched when a background job finishes (each dating
+// starts one) and "Least sure" then sorts differently: that may change which photo comes next, but
+// never the one you're looking at, or a tap would date a photo you never saw.
+const shownMemory: { untagged?: number; inferred?: number } = {};
+// The photo that just left the queue by being dated: if it comes back (Undo), it's shown again.
+const datedMemory: { untagged?: number; inferred?: number } = {};
 
 /** One photo at a time: one tap dates it and the next one comes up. */
 export function DateQueue({ q: chosen }: { q?: "untagged" | "inferred" }) {
@@ -29,7 +35,14 @@ export function DateQueue({ q: chosen }: { q?: "untagged" | "inferred" }) {
     () => (source.data?.items ?? []).filter((p) => p.status === q && !skipped.has(p.id)),
     [source.data, q, skipped, version],
   );
-  const current = items[0];
+  // Until it's dated (its status changes) or skipped, it stays; a photo just dated and then undone
+  // comes back on screen.
+  const pinned = shownMemory[q];
+  if (pinned !== undefined && !skipped.has(pinned) && !items.some((p) => p.id === pinned)) datedMemory[q] = pinned;
+  const undone = items.find((p) => p.id === datedMemory[q]);
+  if (undone) datedMemory[q] = undefined;
+  const current = undone ?? items.find((p) => p.id === pinned) ?? items[0];
+  shownMemory[q] = current?.id;
   const detail = useQuery({ queryKey: ["photo", current?.id], queryFn: () => api.photo(current!.id), enabled: !!current });
   // The photo before it in the album, if dated: often the same day.
   const albumList = usePhotos(current ? { albums: String(current.album_id) } : { ids: "0" });
@@ -37,9 +50,11 @@ export function DateQueue({ q: chosen }: { q?: "untagged" | "inferred" }) {
   const before = current ? album[album.findIndex((p) => p.id === current.id) - 1] : undefined;
   const p = detail.data;
   const skip = () => {
-    // Whatever is first right now (a quick second tap skips the next one, not the same one again).
-    const first = (source.data?.items ?? []).find((x) => x.status === q && !skipped.has(x.id));
-    if (first) skipped.add(first.id);
+    // The photo shown right now (a quick second tap skips the next one, not the same one again).
+    const left = (source.data?.items ?? []).filter((x) => x.status === q && !skipped.has(x.id));
+    const shown = left.find((x) => x.id === shownMemory[q]) ?? left[0];
+    if (shown) skipped.add(shown.id);
+    shownMemory[q] = left.find((x) => !skipped.has(x.id))?.id;
     redraw((n) => n + 1);
   };
 

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { albumLabel, api, imgUrl, type Face, type ListParams, type PhotoDetail, type PhotoSummary } from "../../src/api";
-import { useMedia, usePhotos, usePlaces, useUpdatePhotos } from "../../src/hooks";
+import { useMedia, usePhotos, usePlaces, useSaveOnLeave, useUpdatePhotos } from "../../src/hooks";
 import { DatePanel, DATE_SOURCE, EventPanel } from "../dating";
-import { FacesPanel, guessOf } from "../faces";
+import { FacesPanel, guessOf, useRefreshFaces } from "../faces";
 import { LAST_PHOTO_EVENT, stepPhoto } from "../route";
 import { plural } from "../ui";
 
@@ -31,12 +31,32 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
   const [tab, setTab] = useState<Tab | null>(focus?.length ? "people" : null);
   const shown: Tab | null = tab ?? (wide ? "date" : null);
   const [activeFace, setActiveFace] = useState<number | null>(null);
+  // Drawing a box around a face the detector missed: the photo stops swiping while you draw.
+  const [drawing, setDrawing] = useState(false);
+  const [drawn, setDrawn] = useState<number | null>(null); // the face just drawn: its name box comes up
+  const [drawError, setDrawError] = useState("");
+  const refreshFaces = useRefreshFaces();
+  useEffect(() => (setDrawing(false), setDrawn(null), setDrawError("")), [id]);
+  const addFace = async (box: { x: number; y: number; w: number; h: number }) => {
+    setDrawError("");
+    try {
+      const f = await api.drawFace(id, box);
+      setDrawing(false);
+      setDrawn(f.id);
+      setActiveFace(f.id);
+      setTab("people");
+      refreshFaces();
+    } catch (e) {
+      setDrawError(e instanceof Error ? e.message : String(e));
+    }
+  };
   // A tap on the photo folds the panel away (never the Back button) for a clear view.
   const [chrome, setChrome] = useState(true);
   // On each photo, point out the face it was opened for (if any).
   useEffect(() => {
     const want = new Set(focus ?? []);
-    setActiveFace(faces.data?.find((f) => want.has(f.id))?.id ?? null);
+    // Otherwise keep the one picked (or just drawn) while it's still on this photo.
+    setActiveFace((cur) => faces.data?.find((f) => want.has(f.id))?.id ?? (faces.data?.some((f) => f.id === cur) ? cur : null));
   }, [id, faces.data, focus]);
 
   const step = (to: { id: number } | null) => to && stepPhoto(to.id);
@@ -53,7 +73,7 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
       if ((e.target as HTMLElement).closest("input, textarea, select")) return;
       if (e.key === "ArrowLeft") step(prev);
       else if (e.key === "ArrowRight") step(next);
-      else if (e.key === "Escape") close();
+      else if (e.key === "Escape") drawing ? setDrawing(false) : close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -89,6 +109,10 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
           onNext={() => step(next)}
           onTap={() => setChrome((c) => !c)}
           onDown={close}
+          drawing={drawing}
+          drawError={drawError}
+          onDrawn={addFace}
+          onCancelDraw={() => (setDrawing(false), setDrawError(""))}
         />
       ) : (
         <div className="t-stage">
@@ -121,7 +145,8 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
                 </>
               )}
               {shown === "people" && (
-                <FacesPanel faces={faces.data ?? []} active={activeFace} onActive={setActiveFace} desktopHref={desktopPhoto(p.id)} />
+                <FacesPanel faces={faces.data ?? []} active={activeFace} onActive={setActiveFace} drawn={drawn}
+                  drawing={drawing} onDraw={() => (setDrawing(true), setChrome(true))} />
               )}
               {shown === "info" && <InfoPanel photo={p} />}
             </div>
@@ -132,7 +157,6 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
   );
 }
 
-const desktopPhoto = (id: number) => `${location.protocol}//${location.hostname}:8000/#/photo/${id}`;
 
 /** One line under the photo: its date, event and who's in it. */
 function Summary({ photo: p, faces, named }: { photo: PhotoDetail; faces: number; named: Face[] }) {
@@ -152,7 +176,7 @@ function Summary({ photo: p, faces, named }: { photo: PhotoDetail; faces: number
 }
 
 /** The photo, fitted to the space, with face boxes; swipe for next/previous, double-tap to zoom. */
-function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onDown }: {
+function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onDown, drawing, drawError, onDrawn, onCancelDraw }: {
   photo: PhotoSummary;
   boxes: { id: number; x: number; y: number; w: number; h: number; person_name?: string | null }[];
   activeFace: number | null;
@@ -162,12 +186,26 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
   onTap: () => void;
   /** Swipe down: close, like the Photos app. */
   onDown: () => void;
+  /** Drawing a missed face: one finger or a pen drags a box (a second finger is ignored). */
+  drawing: boolean;
+  drawError: string;
+  onDrawn: (box: { x: number; y: number; w: number; h: number }) => void;
+  onCancelDraw: () => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [zoom, setZoom] = useState<{ s: number; x: number; y: number } | null>(null);
   const pointer = useRef<{ x: number; y: number; t: number; ox: number; oy: number } | null>(null);
   const lastTap = useRef(0);
+  const frame = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ start: [number, number]; box: { x: number; y: number; w: number; h: number }; pointerId: number } | null>(null);
+  useEffect(() => setDrag(null), [p.id, drawing]);
+  // Where the finger is on the photo (0..1), measured on the shown frame, so it's right when zoomed in too.
+  const at = (e: React.PointerEvent): [number, number] => {
+    const r = frame.current!.getBoundingClientRect();
+    const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    return [clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height)];
+  };
   const turned = p.rotation === 90 || p.rotation === 270;
   const aspect = p.width && p.height ? (turned ? p.height / p.width : p.width / p.height) : 4 / 3;
   useEffect(() => setZoom(null), [p.id]);
@@ -188,16 +226,40 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
   return (
     <div
       ref={stage}
-      className="t-stage"
+      className={`t-stage ${drawing ? "is-drawing" : ""}`}
       onPointerDown={(e) => {
+        if (drawing) {
+          if (!e.isPrimary || !frame.current || (e.target as Element).closest(".t-drawbar")) return;
+          e.preventDefault();
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId); // keep drawing if the finger leaves the photo
+          } catch {
+            // not a live pointer: draw without capture
+          }
+          const s = at(e);
+          setDrag({ start: s, box: { x: s[0], y: s[1], w: 0, h: 0 }, pointerId: e.pointerId });
+          return;
+        }
         if ((e.target as Element).closest(".t-box")) return;
         pointer.current = { x: e.clientX, y: e.clientY, t: e.timeStamp, ox: zoom?.x ?? 0, oy: zoom?.y ?? 0 };
       }}
       onPointerMove={(e) => {
+        if (drawing) {
+          if (!drag || e.pointerId !== drag.pointerId) return;
+          const [x, y] = at(e), [sx, sy] = drag.start;
+          setDrag({ ...drag, box: { x: Math.min(x, sx), y: Math.min(y, sy), w: Math.abs(x - sx), h: Math.abs(y - sy) } });
+          return;
+        }
         const s = pointer.current;
         if (s && zoom) setZoom({ ...zoom, x: s.ox + e.clientX - s.x, y: s.oy + e.clientY - s.y }); // pan
       }}
       onPointerUp={(e) => {
+        if (drawing) {
+          if (!drag || e.pointerId !== drag.pointerId) return;
+          setDrag(null);
+          if (drag.box.w >= 0.02 && drag.box.h >= 0.02) onDrawn(drag.box); // a tap isn't a box
+          return;
+        }
         const s = pointer.current;
         pointer.current = null;
         if (!s) return;
@@ -222,10 +284,11 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
         lastTap.current = e.timeStamp;
         window.setTimeout(() => lastTap.current && e.timeStamp === lastTap.current && onTap(), 320);
       }}
-      onPointerCancel={() => (pointer.current = null)}
+      onPointerCancel={() => ((pointer.current = null), setDrag(null))}
     >
       {size && (
         <div
+          ref={frame}
           className="t-frame"
           style={{
             width: size.w,
@@ -243,6 +306,17 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
               aria-label={b.person_name ?? "Face"}
             />
           ))}
+          {drag && (
+            <div className="t-box is-new" style={{ left: `${drag.box.x * 100}%`, top: `${drag.box.y * 100}%`, width: `${drag.box.w * 100}%`, height: `${drag.box.h * 100}%` }} />
+          )}
+        </div>
+      )}
+      {drawing && (
+        <div className="t-drawbar" role="status">
+          <span>{drawError ? `Not saved: ${drawError}` : "Drag a box around the face"}</span>
+          <button className="t-btn t-btn--glass" onClick={onCancelDraw}>
+            Cancel
+          </button>
         </div>
       )}
     </div>
@@ -262,6 +336,29 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
     setPlaceNote("");
   }, [p.id, p.country, p.state, p.city]);
   const placeChanged = place.country !== (p.country ?? "") || place.state !== (p.state ?? "") || place.city !== (p.city ?? "");
+  // Swiping to the next photo, closing it or another panel tab never blurs a field: what's typed and
+  // not saved yet is saved then (the Undo toast shows it), not dropped.
+  const captionField = useSaveOnLeave((value, leaving) => {
+    if (value === (p.caption ?? "")) return;
+    if (leaving) return update.mutate({ ids: [p.id], caption: value });
+    setCaption("saving");
+    update.mutate({ ids: [p.id], caption: value }, { onSuccess: () => setCaption("saved"), onError: () => setCaption("error") });
+  }, p.id);
+  const placeEdit = useRef<{ id: number; place: typeof place } | null>(null);
+  useEffect(
+    () => () => {
+      const e = placeEdit.current;
+      placeEdit.current = null;
+      if (e) update.mutate({ ids: [e.id], country: e.place.country.trim(), state: e.place.state.trim(), city: e.place.city.trim() });
+    },
+    [p.id],
+  );
+  const editPlace = (next: typeof place) => {
+    setPlace(next);
+    setPlaceNote("");
+    const same = next.country === (p.country ?? "") && next.state === (p.state ?? "") && next.city === (p.city ?? "");
+    placeEdit.current = same ? null : { id: p.id, place: next };
+  };
   const options = (k: "country" | "state" | "city") => [...new Set((places.data ?? []).map((x) => x[k]).filter(Boolean) as string[])];
   return (
     <div className="t-info">
@@ -273,18 +370,15 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
           key={`${p.id}:${p.caption ?? ""}`}
           defaultValue={p.caption ?? ""}
           rows={3}
-          onBlur={(e) => {
-            if (e.target.value === (p.caption ?? "")) return;
-            setCaption("saving");
-            update.mutate({ ids: [p.id], caption: e.target.value }, { onSuccess: () => setCaption("saved"), onError: () => setCaption("error") });
-          }}
+          onChange={captionField.onChange}
+          onBlur={captionField.onBlur}
         />
       </label>
       <div className="t-place">
         {(["country", "state", "city"] as const).map((k) => (
           <label key={k} className="t-field">
             <span className="t-field__label">{k === "country" ? "Country" : k === "state" ? "State" : "City"}</span>
-            <input list={`t-place-${k}`} value={place[k]} onChange={(e) => (setPlace({ ...place, [k]: e.target.value }), setPlaceNote(""))} autoComplete="off" />
+            <input list={`t-place-${k}`} value={place[k]} onChange={(e) => editPlace({ ...place, [k]: e.target.value })} autoComplete="off" />
             <datalist id={`t-place-${k}`}>
               {options(k).map((o) => <option key={o} value={o} />)}
             </datalist>
@@ -293,12 +387,13 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
         <button
           className="t-btn t-btn--primary"
           disabled={!placeChanged || update.isPending}
-          onClick={() =>
+          onClick={() => {
+            placeEdit.current = null;
             update.mutate(
               { ids: [p.id], country: place.country.trim(), state: place.state.trim(), city: place.city.trim() },
               { onSuccess: () => setPlaceNote("✓ saved"), onError: (e) => setPlaceNote(String(e)) },
-            )
-          }
+            );
+          }}
         >
           Save place
         </button>
@@ -324,15 +419,6 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
           <>
             <dt>Scanned</dt>
             <dd>{p.scan_datetime}</dd>
-          </>
-        )}
-        {p.dup_members.length > 1 && (
-          <>
-            <dt>Duplicates</dt>
-            <dd>
-              {p.dup_members.length === 2 ? "1 other copy" : `${p.dup_members.length - 1} other copies`} ·{" "}
-              <a href={desktopPhoto(p.id)}>compare on the desktop site</a>
-            </dd>
           </>
         )}
       </dl>
