@@ -112,7 +112,7 @@ a { color: var(--accent); }
 .t-row.is-on { color: var(--accent); font-weight: 600; }
 .t-field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
 .t-field__label { font-size: 14px; font-weight: 600; }
-.t-field input, .t-field textarea, .t-namefield input, .t-typed input {
+.t-field input, .t-field textarea, .t-field select, .t-namefield input {
   min-height: var(--tap); padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); width: 100%;
 }
 .t-muted { color: var(--muted); }
@@ -211,7 +211,8 @@ a { color: var(--accent); }
 .t-summary__people { font-size: 14px; margin-top: 2px; }
 .t-panel__tabs { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .t-panel__tabs button {
-  flex: 1; min-height: 40px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel);
+  flex: 1 1 auto; min-width: 0; min-height: 40px; padding: 0 8px; white-space: nowrap;
+  border-radius: 20px; border: 1px solid var(--border); background: var(--panel);
 }
 .t-panel__tabs button.is-on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 .t-panel__body { overflow: auto; padding: 12px 16px 16px; min-width: 0; }
@@ -220,23 +221,27 @@ a { color: var(--accent); }
 .t-date { display: flex; flex-direction: column; gap: 10px; }
 .t-date__now { margin: 0; font-size: 17px; }
 .t-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.t-years {
-  display: flex; gap: 6px; overflow-x: auto; padding: 4px 0; scroll-snap-type: x proximity; scrollbar-width: none;
+/* Estimate and Exact: boxes that fold open and shut (the Advanced tab picks which start open). */
+.t-fold { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.t-fold > summary {
+  display: flex; align-items: baseline; gap: 8px; min-height: var(--tap); padding: 12px 14px; cursor: pointer;
+  list-style: none; touch-action: manipulation;
 }
-.t-years::-webkit-scrollbar { display: none; }
-.t-year {
-  min-width: 64px; min-height: var(--tap); border-radius: 10px; border: 1px solid var(--border); background: var(--panel);
-  scroll-snap-align: center; font-variant-numeric: tabular-nums;
-}
-.t-year.is-estimate { border-color: var(--warn); border-width: 2px; }
-.t-year.is-on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 700; }
-.t-months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.t-months .t-btn--primary { grid-column: 1 / -1; }
-.t-date__more { display: flex; gap: 8px; flex-wrap: wrap; }
+.t-fold > summary::-webkit-details-marker { display: none; }
+.t-fold > summary::after { content: "›"; margin-left: auto; font-size: 22px; line-height: 1; color: var(--muted); transition: transform 0.15s; }
+.t-fold[open] > summary::after { transform: rotate(90deg); }
+.t-fold__title { font-size: 17px; font-weight: 700; }
+.t-fold__body { padding: 0 14px 12px; }
+.t-fold__years { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.t-fold__exact { display: grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap: 8px; }
+.t-field input[aria-invalid="true"] { border-color: var(--bad); }
+.t-monthpick { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 6px 0 4px; }
+.t-monthpick .t-chip { padding: 6px 0; min-height: var(--tap); border-radius: 10px; }
+@media (max-width: 360px) { .t-monthpick { grid-template-columns: repeat(4, 1fr); } }
 .t-daypick { position: relative; overflow: hidden; }
 .t-daypick input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
-.t-typed { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
-.t-typed__hint { grid-column: 1 / -1; font-size: 14px; }
+.t-date__clear { align-self: flex-start; }
+@media (prefers-reduced-motion: reduce) { .t-fold > summary::after { transition: none; } }
 .t-event { display: flex; flex-direction: column; gap: 10px; }
 
 /* ---- faces ---- */
@@ -401,7 +406,7 @@ a { color: var(--accent); }
 [data-look="harvest"] .t-list { border-color: var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-1); }
 [data-look="harvest"] .t-row { border-top-color: var(--rule); }
 [data-look="harvest"] .t-row.is-on { color: var(--accent); }
-[data-look="harvest"] :is(.t-field input, .t-field textarea, .t-namefield input, .t-typed input) {
+[data-look="harvest"] :is(.t-field input, .t-field textarea, .t-field select, .t-namefield input) {
   border-color: var(--field); border-radius: var(--r-control); background: var(--panel);
 }
 [data-look="harvest"] :is(input, textarea, select, button, a):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -451,9 +456,7 @@ a { color: var(--accent); }
 [data-look="harvest"] .t-panel__tabs button.is-on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
 
 /* dating */
-[data-look="harvest"] .t-year { border-color: var(--border); border-radius: var(--r-control); background: var(--panel); box-shadow: var(--shadow-1); }
-[data-look="harvest"] .t-year.is-estimate { border: 2px dashed var(--warn); background: var(--warn-tint); }
-[data-look="harvest"] .t-year.is-on { background: var(--accent); border: 2px solid transparent; color: var(--accent-text); }
+[data-look="harvest"] .t-fold { border-color: var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-1); }
 
 /* faces, people, check */
 [data-look="harvest"] .t-face { border-color: var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-1); }
@@ -492,16 +495,14 @@ a { color: var(--accent); }
   [data-look="harvest"] .t-queue__head { margin-bottom: 4px; }
   [data-look="harvest"] .t-queue__head .t-btn { min-height: 40px; padding: 6px 14px; }
 }
-/* In the queue the guess comes first, then the years; the rest (nearby dates, exact day, typing) below. */
+/* In the queue the guess comes first, then nearby dates, then the Estimate and Exact boxes. */
 [data-look="harvest"] .t-queue .t-date { gap: 8px; }
 [data-look="harvest"] .t-queue .t-date__now:has(.t-status-inferred) { display: none; }
 [data-look="harvest"] .t-queue .t-date > .t-btn--big { order: 1; min-height: 64px; }
-[data-look="harvest"] .t-queue .t-date > .t-years { order: 2; }
-[data-look="harvest"] .t-queue .t-date > .t-months { order: 3; }
-[data-look="harvest"] .t-queue .t-date > .t-choices { order: 4; }
-[data-look="harvest"] .t-queue .t-date > .t-date__more { order: 5; }
-[data-look="harvest"] .t-queue .t-date > .t-typed { order: 6; }
-[data-look="harvest"] .t-queue .t-date > .t-error { order: 7; }
+[data-look="harvest"] .t-queue .t-date > .t-choices { order: 2; }
+[data-look="harvest"] .t-queue .t-date > .t-fold { order: 3; }
+[data-look="harvest"] .t-queue .t-date > .t-date__clear { order: 4; }
+[data-look="harvest"] .t-queue .t-date > .t-error { order: 5; }
 
 /* ---- finished lists, welcome, can't reach the photos (both looks) ---- */
 .t-done, .t-offline { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 40px 24px; }
@@ -553,7 +554,6 @@ a { color: var(--accent); }
 [data-look="harvest"] :is(.t-panel__tabs button.is-on, .t-chip.is-on, .t-seg button.is-on) {
   background: var(--accent-tint); color: var(--text); border-color: transparent; box-shadow: inset 0 0 0 2px var(--accent);
 }
-[data-look="harvest"] .t-year.is-on { background: var(--accent-tint); color: var(--text); border: 2px solid var(--accent); }
 [data-look="harvest"] .t-seg button { min-height: 44px; }
 /* Bigger small print for older eyes. */
 [data-look="harvest"] .t-btn__sub { font-size: 15px; opacity: 0.92; }
@@ -571,3 +571,10 @@ a { color: var(--accent); }
 .t-face--compact .t-face__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-face__change { min-height: 44px; padding: 6px 14px; flex: none; }
 [data-look="harvest"] .t-face--compact .t-face__name { font-size: 20px; }
+
+/* A photo's Advanced tab, and zooming in on a face from its name box (with "Enable zoom" on). */
+.t-advanced .t-h3:first-child { margin-top: 4px; }
+.t-facezoom { display: flex; flex-direction: column; gap: 8px; align-self: stretch; min-width: 0; }
+.facezoom__view { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); flex: none; }
+.facezoom__view img { position: absolute; max-width: none; }
+.facezoom__box { position: absolute; border: 2px solid var(--accent); border-radius: 3px; pointer-events: none; }

@@ -130,6 +130,8 @@ def build_truth() -> dict:
                 entry["caption"] = p.caption
             if p.country or p.state or p.city:
                 entry["place"] = {"country": p.country, "state": p.state, "city": p.city}
+            if p.location:
+                entry["location"] = p.location
             if p.rotation_source == "manual":
                 entry["rotation"] = p.rotation
             if p.is_dup_keeper:
@@ -440,7 +442,7 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
             matched += 1
             changes = []
             if "date" in e:
-                changes += [(p, f, e["date"][f[2:]]) for f in TRUSTED_FIELDS]
+                changes += [(p, f, e["date"].get(f[2:])) for f in TRUSTED_FIELDS]  # older backups: no months
             if "event" in e:
                 inst = get_or_create_instance(s, kinds[e["event"]["kind"]], None, e["event"]["label"])
                 changes.append((p, "event_instance_id", inst.id))
@@ -451,6 +453,8 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
                 changes.append((p, "caption", e["caption"]))
             if "place" in e:
                 changes += [(p, f, e["place"].get(f)) for f in ("country", "state", "city")]
+            if "location" in e:
+                changes.append((p, "location", e["location"]))
             if "rotation" in e:
                 changes += [(p, "rotation", e["rotation"]), (p, "rotation_source", "manual")]
             if e.get("dup_keeper"):

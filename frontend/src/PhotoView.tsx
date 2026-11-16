@@ -201,7 +201,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           initialEventLabel={instance?.label ?? null}
           showRotate={false}
         />
-        <PlaceEditor ids={[p.id]} current={{ country: p.country, state: p.state, city: p.city }} />
+        <PlaceEditor ids={[p.id]} current={{ location: p.location, country: p.country, state: p.state, city: p.city }} />
         <CaptionEditor id={p.id} caption={p.caption ?? ""} />
       </div>
     </div>

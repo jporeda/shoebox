@@ -22,7 +22,7 @@ from sqlmodel import Session, select
 
 from .backup import atomic_write, run_fixity
 from .config import get_settings
-from .dates import export_calendar_date, xmp_partial
+from .dates import export_calendar_date, months_label, xmp_partial
 from .db import session_scope
 from .exif import ExifTool, escape
 from .jobs_ctx import NULL_CTX, JobContext
@@ -86,6 +86,8 @@ class ExportItem:
     country: str | None = None
     state: str | None = None
     city: str | None = None  # named animals: keywords and "Pet" regions, never PersonInImage
+    months: list[int] | None = None  # some months, not known which: the date is the 1st of the first
+    location: str | None = None  # a general area ("Cape Cod"): a keyword, not an IPTC place field
     gps: tuple[float, float] | None = None  # (latitude, longitude): the city's centre, or Disney's castle
     # Named faces: (name, x, y, w, h) normalized, in the display frame at the photo's rotation.
     faces: list[tuple[str, float, float, float, float]] = field(default_factory=list)
@@ -116,7 +118,7 @@ class ExportItem:
 
     def signature(self) -> str:
         d = {k: v for k, v in self.__dict__.items()}
-        for later in ("pets", "country", "state", "city"):  # added later: photos without them keep
+        for later in ("pets", "country", "state", "city", "location", "months"):  # added later: photos without them keep
             if not d[later]:  # their fingerprint, so there's no mass re-export
                 del d[later]
         d["v"] = EXPORT_VERSION
@@ -185,6 +187,7 @@ def build_plan(session: Session) -> list[ExportItem]:
             month=p.t_month if trusted else None,
             day=p.t_day if trusted else None,
             precision=p.t_precision if trusted else None,
+            months=p.t_months if trusted else None,
             inferred=inferred,
             date_source=p.t_source if trusted else None,
             confidence=1.0 if trusted else None,
@@ -198,9 +201,10 @@ def build_plan(session: Session) -> list[ExportItem]:
             country=p.country,
             state=p.state,
             city=p.city,
+            location=p.location,
         )
         if it.dated:
-            it.cal = export_calendar_date(it.year, it.month, it.day, it.precision)
+            it.cal = export_calendar_date(it.year, it.month, it.day, it.precision, it.months)
         kw, hier = [], []
         if kind:
             kw.append(kind.name)
@@ -223,6 +227,13 @@ def build_plan(session: Session) -> list[ExportItem]:
         if place:
             kw += place
             hier.append("Places|" + "|".join(place))
+        if it.location:
+            if it.location not in kw:
+                kw.append(it.location)
+            hier.append(f"Locations|{it.location}")
+        if it.months:
+            kw.append(months_label(it.months))
+            hier.append(f"Dates|Months|{months_label(it.months)}")
         kw.append(f"Album: {album.name}")
         hier.append(f"Albums|{album.name}")
         if not it.dated:

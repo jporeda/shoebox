@@ -989,6 +989,29 @@
     }
    }
   },
+  "/api/locations": {
+   "get": {
+    "summary": "Locations",
+    "description": "Every location (general area) already used, most used first: suggestions for typing, so the\nsame area is always the same keyword.",
+    "operationId": "locations_api_locations_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array",
+         "title": "Response Locations Api Locations Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/places": {
    "get": {
     "summary": "Places",
@@ -2406,6 +2429,20 @@
       ],
       "title": "Date"
      },
+     "months": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     },
      "clear_date": {
       "type": "boolean",
       "title": "Clear Date",
@@ -2492,6 +2529,17 @@
        }
       ],
       "title": "City"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Location"
      },
      "rotate_by": {
       "anyOf": [
@@ -3759,6 +3807,17 @@
       ],
       "title": "City"
      },
+     "location": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Location"
+     },
      "scan_datetime": {
       "anyOf": [
        {
@@ -3773,6 +3832,16 @@
      "trusted_label": {
       "type": "string",
       "title": "Trusted Label"
+     },
+     "trusted": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TrustedDate"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "inferred_label": {
       "type": "string",
@@ -3897,8 +3966,10 @@
      "country",
      "state",
      "city",
+     "location",
      "scan_datetime",
      "trusted_label",
+     "trusted",
      "inferred_label",
      "inferred_confidence",
      "inferred_source",
@@ -4400,6 +4471,87 @@
      "similarity"
     ],
     "title": "Suggestion"
+   },
+   "TrustedDate": {
+    "properties": {
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "month": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Month"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "precision": {
+      "type": "string",
+      "title": "Precision"
+     },
+     "min": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Min"
+     },
+     "max": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     }
+    },
+    "type": "object",
+    "required": [
+     "year",
+     "month",
+     "day",
+     "precision",
+     "min",
+     "max",
+     "months"
+    ],
+    "title": "TrustedDate"
    },
    "UndoRequest": {
     "properties": {

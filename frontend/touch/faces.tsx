@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, faceName, faceUrl, pairLabel, type Face } from "../src/api";
 import { useRemembered } from "../src/hooks";
 import { usePeople, useTwins, type Pair } from "../src/peopleData";
+import { FaceZoom } from "../src/FaceZoom";
+import { FACE_ZOOM, useSwitch } from "./settings";
+
+/** The "Enable zoom" switch on a photo's Advanced tab. */
+export const useFaceZoomSetting = () => useSwitch(FACE_ZOOM);
+
+/** The photo a face is on, for zooming in on the face: its preview and width / height as shown. */
+export type ZoomPhoto = { src: string; aspect: number };
 
 /** Refetch everything a face change can touch (both apps keep these query keys). */
 export function useRefreshFaces() {
@@ -105,8 +113,10 @@ export function NameField({ placeholder = "Who is this?", busy, onName, onPair, 
 }
 
 /** Every face in one photo, each with what you can do about it. `active` is highlighted on the photo. */
-export function FacesPanel({ faces, active, onActive, drawn, drawing, onDraw }: {
+export function FacesPanel({ faces, active, onActive, drawn, drawing, onDraw, photo }: {
   faces: Face[];
+  /** With "Enable zoom" on (Advanced tab), each naming box can zoom in on its face in this photo. */
+  photo?: ZoomPhoto;
   active: number | null;
   onActive: (id: number | null) => void;
   /** A face just drawn: its row comes into view with the name box ready. */
@@ -116,13 +126,15 @@ export function FacesPanel({ faces, active, onActive, drawn, drawing, onDraw }: 
   onDraw?: () => void;
 }) {
   const [showIgnored, setShowIgnored] = useState(false);
+  const [zoomOn] = useFaceZoomSetting();
   const visible = faces.filter((f) => showIgnored || !f.ignored);
   const ignored = faces.filter((f) => f.ignored).length;
   return (
     <div className="t-faces">
       {visible.length === 0 && <p className="t-muted">No faces found in this photo.</p>}
       {visible.map((f) => (
-        <FaceRow key={f.id} face={f} active={f.id === active} justDrawn={f.id === drawn} onActive={() => onActive(f.id === active ? null : f.id)} />
+        <FaceRow key={f.id} face={f} active={f.id === active} justDrawn={f.id === drawn} onActive={() => onActive(f.id === active ? null : f.id)}
+          zoomPhoto={zoomOn ? photo : undefined} />
       ))}
       {onDraw && (
         <button className="t-btn t-btn--block" disabled={drawing} onClick={onDraw}>
@@ -140,7 +152,13 @@ export function FacesPanel({ faces, active, onActive, drawn, drawing, onDraw }: 
   );
 }
 
-function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active: boolean; justDrawn?: boolean; onActive: () => void }) {
+function FaceRow({ face: f, active, justDrawn, onActive, zoomPhoto }: {
+  face: Face;
+  active: boolean;
+  justDrawn?: boolean;
+  onActive: () => void;
+  zoomPhoto?: ZoomPhoto;
+}) {
   const { run, busy, error } = useFaceAction();
   const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -263,6 +281,7 @@ function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active:
             onPair={assign}
           />
         )}
+        {zoomPhoto && !f.ignored && (guess || !named || renaming) && <FaceZoomControls face={f} photo={zoomPhoto} />}
         {f.source === "drawn" ? (
           // A box you drew: take it away (Undo brings it back).
           <button className="t-link t-small" disabled={busy} onClick={() => run(() => api.deleteFace(f.id))}>
@@ -274,6 +293,45 @@ function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active:
           </button>
         )}
         {error && <p className="t-error">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** "Zoom in" under a naming box: the face and its surroundings, bigger, with Closer / Wider. */
+function FaceZoomControls({ face, photo }: { face: Face; photo: ZoomPhoto }) {
+  const [context, setContext] = useState<number | null>(null); // face-sizes across; null = closed
+  // As wide as the row has room for (a phone's sheet or an iPad's side panel), at most 240px.
+  const box = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState(0);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => setSize(Math.min(240, el.clientWidth));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [context === null]);
+  if (context === null)
+    return (
+      <button className="t-btn" onClick={() => setContext(3)}>
+        Zoom in
+      </button>
+    );
+  return (
+    <div className="t-facezoom" ref={box}>
+      {size > 0 && <FaceZoom src={photo.src} face={face} aspect={photo.aspect} context={context} size={size} />}
+      <div className="t-face__actions">
+        <button className="t-btn" onClick={() => setContext((c) => Math.max(1.5, (c ?? 3) / 1.5))} disabled={context <= 1.5}>
+          ＋ Closer
+        </button>
+        <button className="t-btn" onClick={() => setContext((c) => Math.min(10, (c ?? 3) * 1.5))} disabled={context >= 10}>
+          − Wider
+        </button>
+        <button className="t-btn t-btn--plain" onClick={() => setContext(null)}>
+          Hide zoom
+        </button>
       </div>
     </div>
   );

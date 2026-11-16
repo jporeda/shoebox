@@ -73,6 +73,8 @@ class Photo(SQLModel, table=True):
     t_year: Optional[int] = Field(default=None, index=True)
     t_month: Optional[int] = None
     t_day: Optional[int] = None
+    # Some months, not known which (summer: [6, 7, 8]), with a year, range or decade.
+    t_months: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
     t_min: Optional[int] = None
     t_max: Optional[int] = None
     t_precision: Optional[str] = None  # day | month | year | range | decade
@@ -94,6 +96,8 @@ class Photo(SQLModel, table=True):
     country: Optional[str] = None
     state: Optional[str] = None
     city: Optional[str] = None
+    # A general area ("Cape Cod", "Grandma's farm") rather than a town: exported as a keyword.
+    location: Optional[str] = None
 
     missing: bool = False
     fixity_checked_at: Optional[datetime] = None

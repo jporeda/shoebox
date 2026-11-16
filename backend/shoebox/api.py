@@ -72,6 +72,16 @@ class NearbyDate(BaseModel):
     year: int
 
 
+class TrustedDate(BaseModel):
+    year: int
+    month: Optional[int]
+    day: Optional[int]
+    precision: str  # day | month | year | range | decade
+    min: Optional[int]
+    max: Optional[int]
+    months: Optional[list[int]]
+
+
 class PhotoDetail(PhotoSummary):
     album_name: str
     # The nearest photo before and after this one in its album (within estimate.SURROUNDING
@@ -85,8 +95,11 @@ class PhotoDetail(PhotoSummary):
     country: Optional[str]
     state: Optional[str]
     city: Optional[str]
+    location: Optional[str]  # a general area, exported as a keyword
     scan_datetime: Optional[str]
     trusted_label: str
+    # The date a person set, in parts (for filling in date boxes); None when there's none.
+    trusted: Optional[TrustedDate]
     inferred_label: str
     inferred_confidence: Optional[float]
     inferred_source: Optional[str]
@@ -108,6 +121,8 @@ class PhotoPage(BaseModel):
 class BulkUpdate(BaseModel):
     ids: list[int]
     date: Optional[str] = None
+    # With a year, range or decade in `date`: the months it was in, not known which (1-12).
+    months: Optional[list[int]] = None
     clear_date: bool = False
     event_kind_id: Optional[int] = None
     event_label: Optional[str] = None
@@ -118,6 +133,7 @@ class BulkUpdate(BaseModel):
     country: Optional[str] = None
     state: Optional[str] = None
     city: Optional[str] = None
+    location: Optional[str] = None  # a general area ("Cape Cod"): omit to leave alone, "" to clear
     rotate_by: Optional[int] = None
     date_source: Literal["manual", "back", "accepted"] = "manual"
 
@@ -266,7 +282,7 @@ def _labels(s: Session) -> dict[int, str]:
 
 def summarize(p: Photo, labels: dict[int, str]) -> PhotoSummary:
     if p.t_year is not None:
-        label = format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max)
+        label = format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max, p.t_months)
         year, source = p.t_year, p.t_source
     elif p.i_year is not None:
         label = "≈" + format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max)
@@ -325,7 +341,7 @@ def _nearby_dates(s: Session, p: Photo) -> list[NearbyDate]:
     after = min((r for r in rows if r.list_index > p.list_index), key=lambda r: r.list_index, default=None)
     return [
         NearbyDate(photo_id=r.id, offset=r.list_index - p.list_index, year=r.t_year,
-                   label=format_partial(r.t_year, r.t_month, r.t_day, r.t_precision, r.t_min, r.t_max))
+                   label=format_partial(r.t_year, r.t_month, r.t_day, r.t_precision, r.t_min, r.t_max, r.t_months))
         for r in (before, after) if r is not None
     ]
 
@@ -345,8 +361,11 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
         country=p.country,
         state=p.state,
         city=p.city,
+        location=p.location,
         scan_datetime=p.scan_datetime,
-        trusted_label=format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max),
+        trusted=TrustedDate(year=p.t_year, month=p.t_month, day=p.t_day, precision=p.t_precision or "year",
+                            min=p.t_min, max=p.t_max, months=p.t_months) if p.t_year is not None else None,
+        trusted_label=format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max, p.t_months),
         inferred_label=format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max),
         inferred_confidence=p.i_confidence,
         inferred_source=p.i_source,
@@ -615,7 +634,7 @@ def parse_date(text: str):
         pd = parse_partial_date(text)
     except DateParseError as exc:
         return ParsedDate(ok=False, error=str(exc))
-    return ParsedDate(ok=True, label=format_partial(pd.year, pd.month, pd.day, pd.precision, pd.min, pd.max))
+    return ParsedDate(ok=True, label=format_partial(pd.year, pd.month, pd.day, pd.precision, pd.min, pd.max, pd.months))
 
 
 @router.get("/img/{sha}/{kind}/{rotation}.jpg")
@@ -792,6 +811,17 @@ def recent_edits(limit: int = 30, shared: bool = False, s: Session = Depends(get
 
 
 # --- events --------------------------------------------------------------------
+
+
+@router.get("/locations", response_model=list[str])
+def locations(s: Session = Depends(get_session)):
+    """Every location (general area) already used, most used first: suggestions for typing, so the
+    same area is always the same keyword."""
+    n = func.count().label("n")
+    rows = s.exec(
+        select(Photo.location, n).where(Photo.location != None).group_by(Photo.location).order_by(n.desc(), Photo.location)  # noqa: E711
+    ).all()
+    return [loc for loc, _ in rows]
 
 
 class PlaceOut(BaseModel):

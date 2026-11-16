@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import { api, ApiError, faceName, faceUrl, imgUrl, pairLabel, type Face } from "./api";
 import { useTouch } from "./hooks";
 import { NameInput, TwinChoices } from "./People";
+import { FaceZoom } from "./FaceZoom";
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -397,37 +398,6 @@ const SCAN_LEVELS: Record<number, string> = {
   4: "4 · deep (as Deep face scan)",
   5: "5 · most aggressive (more false boxes)",
 };
-
-/** On-screen size of the face zoom: 240px, or 70% of a narrow screen. */
-const zoomPx = () => Math.min(240, Math.round(window.innerWidth * 0.7));
-
-/** The face and its surroundings, cropped from the photo: `context` face-sizes across, square, with
- *  the face's box outlined. Box coordinates are fractions of the (rotated) photo. */
-function FaceZoom({ src, face, aspect, context }: { src: string; face: Face; aspect: number; context: number }) {
-  // Work in units of the photo's height so the crop is square on screen.
-  const W = aspect;
-  const side = Math.min(Math.max(face.w * W, face.h) * context, W, 1);
-  const rw = side / W;
-  const rh = side;
-  const rx = Math.min(Math.max(face.x + face.w / 2 - rw / 2, 0), 1 - rw);
-  const ry = Math.min(Math.max(face.y + face.h / 2 - rh / 2, 0), 1 - rh);
-  const px = zoomPx();
-  const scale = px / side; // screen px per photo-height unit
-  return (
-    <div className="facezoom__view" style={{ width: px, height: px }}>
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        style={{ width: W * scale, height: scale, left: -rx * W * scale, top: -ry * scale }}
-      />
-      <span
-        className="facezoom__box"
-        style={{ left: (face.x - rx) * W * scale, top: (face.y - ry) * scale, width: face.w * W * scale, height: face.h * scale }}
-      />
-    </div>
-  );
-}
 
 /** The name the app guessed for this face (its own automatic name, or a suggestion), if any. */
 /** " · 62%": how closely a guessed face matches the person (the match score), or "" if unknown. */

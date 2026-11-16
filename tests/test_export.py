@@ -213,6 +213,61 @@ def test_place_is_set_in_bulk_suggested_backed_up_and_exported(album_tree, env):
         assert c.get(f"/api/photos/{b}").json()["city"] == "Salem"
 
 
+def test_location_is_suggested_backed_up_and_exported_as_a_keyword(album_tree, env):
+    from conftest import api_client
+    from shoebox import backup
+
+    run_ingest()
+    a, b = pid("Album 1980s/IMG_0001.jpg"), pid("Album 1980s/IMG_0002.jpg")
+    with api_client() as c:
+        assert c.patch("/api/photos", json={"ids": [a, b], "date": "1987", "location": "  Cape   Cod "}).status_code == 200
+        assert c.get(f"/api/photos/{a}").json()["location"] == "Cape Cod"
+        assert c.get("/api/locations").json() == ["Cape Cod"]
+
+        truth = backup.build_truth()
+        assert sum(e.get("location") == "Cape Cod" for e in truth["photos"]) == 2
+
+        run_export()
+        t = tags(exported(env, a), "XMP-dc:Subject", "XMP-lr:HierarchicalSubject", "IPTC:Keywords", "XMP-photoshop:City")
+        assert "Cape Cod" in t["XMP-dc:Subject"] and "Cape Cod" in t["IPTC:Keywords"]
+        assert "Locations|Cape Cod" in t["XMP-lr:HierarchicalSubject"]
+        assert "XMP-photoshop:City" not in t  # a general area, not a town
+
+        assert c.patch("/api/photos", json={"ids": [b], "location": ""}).status_code == 200
+        assert c.get(f"/api/photos/{b}").json()["location"] is None
+        c.post("/api/undo", json={})
+        assert c.get(f"/api/photos/{b}").json()["location"] == "Cape Cod"
+
+
+def test_a_set_of_months_is_saved_backed_up_and_exported(album_tree, env):
+    from conftest import api_client
+    from shoebox import backup
+
+    run_ingest()
+    a, b = pid("Album 1980s/IMG_0001.jpg"), pid("Album 1980s/IMG_0002.jpg")
+    with api_client() as c:
+        assert c.patch("/api/photos", json={"ids": [a], "date": "1985-1987", "months": [8, 6, 7]}).status_code == 200
+        d = c.get(f"/api/photos/{a}").json()
+        assert d["date_label"] == "1985-1987 · Jun–Aug"
+        assert d["trusted"]["months"] == [6, 7, 8] and (d["trusted"]["min"], d["trusted"]["max"]) == (1985, 1987)
+        # A label used as a date again (Same as previous, a nearby photo's date) means the same thing.
+        assert c.patch("/api/photos", json={"ids": [b], "date": d["date_label"]}).status_code == 200
+        assert c.get(f"/api/photos/{b}").json()["trusted"]["months"] == [6, 7, 8]
+        assert c.patch("/api/photos", json={"ids": [b], "months": [6]}).status_code == 422  # months need a year
+        assert c.patch("/api/photos", json={"ids": [b], "date": "1986-06", "months": [7]}).status_code == 422
+
+        truth = backup.build_truth()
+        assert next(e["date"] for e in truth["photos"] if e.get("date", {}).get("months"))["months"] == [6, 7, 8]
+
+        run_export()
+        t = tags(exported(env, a), "ExifIFD:DateTimeOriginal", "IPTC:Keywords", "XMP-lr:HierarchicalSubject")
+        assert t["ExifIFD:DateTimeOriginal"].startswith("1986:06:01")  # the middle year, the first month
+        assert "Jun–Aug" in t["IPTC:Keywords"] and "Dates|Months|Jun–Aug" in t["XMP-lr:HierarchicalSubject"]
+
+        c.patch("/api/photos", json={"ids": [a], "date": "1986-06-14"})  # an exact day drops the months
+        assert c.get(f"/api/photos/{a}").json()["trusted"]["months"] is None
+
+
 def test_keep_both_exports_every_photo_in_the_duplicate_group(album_tree, env):
     make_image(album_tree / "Album 1990s" / "rescan.jpg", 2, size=(640, 480), quality=60)  # a rescan of IMG_0002
     run_ingest()

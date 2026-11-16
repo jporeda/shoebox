@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type ParsedDate } from "./api";
-import { useEventKinds, usePlaces, useUpdatePhotos } from "./hooks";
+import { useEventKinds, useLocations, usePlaces, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 
 function useParsedDate(text: string): ParsedDate | null {
@@ -211,22 +211,27 @@ export function DateEventEditor({
   );
 }
 
-type PlaceFields = { country: string; state: string; city: string };
+type PlaceFields = { location: string; country: string; state: string; city: string };
 const PLACE_FIELDS: { key: keyof PlaceFields; label: string; hint: string }[] = [
+  // A general area rather than a town: exported as a keyword, not a map location.
+  { key: "location", label: "Location", hint: "e.g. Cape Cod" },
   { key: "country", label: "Country", hint: "e.g. United States" },
   { key: "state", label: "State", hint: "e.g. Massachusetts" },
   { key: "city", label: "City", hint: "e.g. Salem" },
 ];
 
-/** Country / state / city for one photo (pre-filled) or a selection (blank = leave as is). Suggests
+/** Location (a general area) and country / state / city for one photo (pre-filled) or a selection (blank = leave as is). Suggests
  *  places already used; only fields you change are sent, so a blank field in bulk changes nothing. */
 export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?: Partial<Record<keyof PlaceFields, string | null>>; compact?: boolean }) {
-  const initial: PlaceFields = { country: current?.country ?? "", state: current?.state ?? "", city: current?.city ?? "" };
+  const initial: PlaceFields = {
+    location: current?.location ?? "", country: current?.country ?? "", state: current?.state ?? "", city: current?.city ?? "",
+  };
   const [values, setValues] = useState<PlaceFields>(initial);
   const [error, setError] = useState("");
   const places = usePlaces();
+  const locations = useLocations();
   const update = useUpdatePhotos();
-  const key = `${ids.join(",")}|${initial.country}|${initial.state}|${initial.city}`;
+  const key = `${ids.join(",")}|${initial.location}|${initial.country}|${initial.state}|${initial.city}`;
   useEffect(() => {
     setValues(initial);
     setError("");
@@ -235,6 +240,7 @@ export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?
   const changed = PLACE_FIELDS.filter(({ key: k }) => values[k].trim() !== initial[k].trim());
   // Suggestions narrow to what fits the fields already typed (a state within the chosen country, …).
   const options = (k: keyof PlaceFields) => {
+    if (k === "location") return locations.data ?? [];
     const rows = (places.data ?? []).filter(
       (p) => (k === "country" || !values.country || p.country === values.country) && (k !== "city" || !values.state || p.state === values.state),
     );
@@ -262,6 +268,7 @@ export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?
           <span className="field__label">{label}</span>
           <input
             list={listId(k)}
+            title={k === "location" ? "A general area (Cape Cod, Grandma's farm): exported as a keyword" : undefined}
             value={values[k]}
             onChange={(e) => setValues((v) => ({ ...v, [k]: e.target.value }))}
             placeholder={current ? hint : "leave as is"}
@@ -284,8 +291,8 @@ export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?
           <button
             className="btn btn--ghost"
             type="button"
-            disabled={update.isPending || (!!current && !initial.country && !initial.state && !initial.city)}
-            onClick={() => save({ country: "", state: "", city: "" })}
+            disabled={update.isPending || (!!current && !initial.location && !initial.country && !initial.state && !initial.city)}
+            onClick={() => save({ location: "", country: "", state: "", city: "" })}
           >
             Clear place
           </button>

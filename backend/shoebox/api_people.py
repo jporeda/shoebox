@@ -139,7 +139,7 @@ class BatchOut(BaseModel):
 
 def _year_label(p: Photo) -> str:
     if p.t_year is not None:
-        return format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max)
+        return format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max, p.t_months)
     if p.i_year is not None:
         return "≈" + format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max)
     return ""

@@ -108,6 +108,7 @@ export const api = {
   edits: () => call<EditBatch[]>("/edits"),
   eventKinds: () => call<EventKind[]>("/event-kinds"),
   places: () => call<Place[]>("/places"),
+  locations: () => call<string[]>("/locations"),
   addEventKind: (name: string) =>
     call<EventKind>("/event-kinds", { method: "POST", body: JSON.stringify({ name }) }),
   eventInstances: () => call<EventInstance[]>("/event-instances"),

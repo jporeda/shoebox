@@ -312,6 +312,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Locations
+         * @description Every location (general area) already used, most used first: suggestions for typing, so the
+         *     same area is always the same keyword.
+         */
+        get: operations["locations_api_locations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places": {
         parameters: {
             query?: never;
@@ -855,6 +876,8 @@ export interface components {
             ids: number[];
             /** Date */
             date?: string | null;
+            /** Months */
+            months?: number[] | null;
             /**
              * Clear Date
              * @default false
@@ -879,6 +902,8 @@ export interface components {
             state?: string | null;
             /** City */
             city?: string | null;
+            /** Location */
+            location?: string | null;
             /** Rotate By */
             rotate_by?: number | null;
             /**
@@ -1292,10 +1317,13 @@ export interface components {
             state: string | null;
             /** City */
             city: string | null;
+            /** Location */
+            location: string | null;
             /** Scan Datetime */
             scan_datetime: string | null;
             /** Trusted Label */
             trusted_label: string;
+            trusted: components["schemas"]["TrustedDate"] | null;
             /** Inferred Label */
             inferred_label: string;
             /** Inferred Confidence */
@@ -1467,6 +1495,23 @@ export interface components {
             name: string;
             /** Similarity */
             similarity: number;
+        };
+        /** TrustedDate */
+        TrustedDate: {
+            /** Year */
+            year: number;
+            /** Month */
+            month: number | null;
+            /** Day */
+            day: number | null;
+            /** Precision */
+            precision: string;
+            /** Min */
+            min: number | null;
+            /** Max */
+            max: number | null;
+            /** Months */
+            months: number[] | null;
         };
         /** UndoRequest */
         UndoRequest: {
@@ -2110,6 +2155,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    locations_api_locations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
                 };
             };
         };

@@ -1,14 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { albumLabel, api, ApiError, imgUrl, type Face, type ListParams, type PhotoDetail, type PhotoSummary } from "../../src/api";
-import { useMedia, usePhotos, usePlaces, useSaveOnLeave, useUpdatePhotos } from "../../src/hooks";
+import { useLocations, useMedia, usePhotos, usePlaces, useSaveOnLeave, useUpdatePhotos } from "../../src/hooks";
 import { DatePanel, DATE_SOURCE, EventPanel } from "../dating";
-import { FacesPanel, guessOf, useRefreshFaces } from "../faces";
+import { FacesPanel, guessOf, useFaceZoomSetting, useRefreshFaces } from "../faces";
 import { stepPhoto } from "../route";
 import { saveOrKeep } from "../pending";
+import { OPEN_ESTIMATE, OPEN_EXACT, useSwitch } from "../settings";
 import { plural } from "../ui";
 
-type Tab = "date" | "people" | "info";
+type Tab = "date" | "people" | "info" | "advanced";
+const TAB_LABEL: Record<Tab, string> = { date: "Date", people: "People", info: "Info", advanced: "Advanced" };
 
 export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
   id: number;
@@ -122,7 +124,7 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
         <div className="t-panel">
           <Summary photo={p} faces={faces.data?.filter((f) => !f.ignored).length ?? 0} named={faces.data ?? []} onDate={() => setTab("date")} />
           <div className="t-panel__tabs" role="tablist">
-            {(["date", "people", "info"] as Tab[]).map((t) => (
+            {(["date", "people", "info", "advanced"] as Tab[]).map((t) => (
               <button
                 key={t}
                 role="tab"
@@ -130,7 +132,7 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
                 className={shown === t ? "is-on" : ""}
                 onClick={() => setTab(shown === t && !wide ? null : t)}
               >
-                {t === "date" ? "Date" : t === "people" ? `People${faces.data ? ` (${faces.data.filter((f) => !f.ignored).length})` : ""}` : "Info"}
+                {t === "people" && faces.data ? `People (${faces.data.filter((f) => !f.ignored).length})` : TAB_LABEL[t]}
               </button>
             ))}
           </div>
@@ -145,9 +147,11 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
               )}
               {shown === "people" && (
                 <FacesPanel faces={faces.data ?? []} active={activeFace} onActive={setActiveFace} drawn={drawn}
-                  drawing={drawing} onDraw={() => (setDrawing(true), setChrome(true))} />
+                  drawing={drawing} onDraw={() => (setDrawing(true), setChrome(true))}
+                  photo={{ src: imgUrl(p.sha256, "preview", p.rotation), aspect: aspectOf(p) }} />
               )}
               {shown === "info" && <InfoPanel photo={p} />}
+              {shown === "advanced" && <AdvancedPanel photo={p} />}
             </div>
           )}
         </div>
@@ -156,6 +160,54 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
   );
 }
 
+
+/** Width / height of the photo as shown (turned a quarter, a portrait scan is landscape). */
+function aspectOf(p: PhotoSummary): number {
+  const turned = p.rotation === 90 || p.rotation === 270;
+  return p.width && p.height ? (turned ? p.height / p.width : p.width / p.height) : 4 / 3;
+}
+
+/** Turning the photo, and settings for the rest of the panel. */
+function AdvancedPanel({ photo: p }: { photo: PhotoDetail }) {
+  const update = useUpdatePhotos();
+  const [zoom, setZoom] = useFaceZoomSetting();
+  const [openEstimate, setOpenEstimate] = useSwitch(OPEN_ESTIMATE);
+  const [openExact, setOpenExact] = useSwitch(OPEN_EXACT);
+  const rotate = (by: number) => update.mutate({ ids: [p.id], rotate_by: by });
+  return (
+    <div className="t-advanced">
+      <h3 className="t-h3">Rotation</h3>
+      <div className="t-face__actions">
+        <button className="t-btn" disabled={update.isPending} onClick={() => rotate(270)}>
+          ⟲ Rotate left
+        </button>
+        <button className="t-btn" disabled={update.isPending} onClick={() => rotate(90)}>
+          ⟳ Rotate right
+        </button>
+      </div>
+      {update.isError && <p className="t-error">Not turned: {update.error instanceof Error ? update.error.message : String(update.error)}</p>}
+      <h3 className="t-h3">Faces</h3>
+      <div className="t-list">
+        <label className="t-row">
+          <span>Enable zoom</span>
+          <input type="checkbox" className="t-switch" checked={zoom} onChange={(e) => setZoom(e.target.checked)} />
+        </label>
+      </div>
+      <p className="t-muted t-small">Adds “Zoom in” to the name box on the People tab, for small or blurry faces.</p>
+      <h3 className="t-h3">Date</h3>
+      <div className="t-list">
+        <label className="t-row">
+          <span>Open the estimate by default</span>
+          <input type="checkbox" className="t-switch" checked={openEstimate} onChange={(e) => setOpenEstimate(e.target.checked)} />
+        </label>
+        <label className="t-row">
+          <span>Open the exact by default</span>
+          <input type="checkbox" className="t-switch" checked={openExact} onChange={(e) => setOpenExact(e.target.checked)} />
+        </label>
+      </div>
+    </div>
+  );
+}
 
 /** One line under the photo: its date, event and who's in it. */
 function Summary({ photo: p, faces, named, onDate }: { photo: PhotoDetail; faces: number; named: Face[]; onDate: () => void }) {
@@ -210,8 +262,7 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
     const clamp = (v: number) => Math.min(1, Math.max(0, v));
     return [clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height)];
   };
-  const turned = p.rotation === 90 || p.rotation === 270;
-  const aspect = p.width && p.height ? (turned ? p.height / p.width : p.width / p.height) : 4 / 3;
+  const aspect = aspectOf(p);
   useEffect(() => setZoom(null), [p.id]);
 
   useLayoutEffect(() => {
@@ -331,6 +382,8 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
 function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
   const update = useUpdatePhotos();
   const places = usePlaces();
+  const locations = useLocations();
+  const [location, setLocation] = useState<"" | "saving" | "saved" | "waiting" | "error">("");
   const [caption, setCaption] = useState<"" | "saving" | "saved" | "waiting" | "error">("");
   // Saved now, or kept on this device and saved once the photos can be reached (never just dropped).
   const keep = (key: string, body: Parameters<typeof update.mutateAsync>[0]) => saveOrKeep(key, body, (b) => update.mutateAsync(b));
@@ -339,6 +392,7 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
   useEffect(() => {
     setPlace({ country: p.country ?? "", state: p.state ?? "", city: p.city ?? "" });
     setCaption("");
+    setLocation("");
     setPlaceNote("");
   }, [p.id, p.country, p.state, p.city]);
   const placeChanged = place.country !== (p.country ?? "") || place.state !== (p.state ?? "") || place.city !== (p.city ?? "");
@@ -350,6 +404,13 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
     if (leaving) return void saving.catch(() => {}); // kept and retried if it failed; the app says so
     setCaption("saving");
     saving.then(() => setCaption("saved"), (e) => setCaption(e instanceof ApiError ? "error" : "waiting"));
+  }, p.id);
+  const locationField = useSaveOnLeave((value, leaving) => {
+    if (value.trim().split(/\s+/).join(" ") === (p.location ?? "")) return;
+    const saving = keep(`${p.id}:location`, { ids: [p.id], location: value });
+    if (leaving) return void saving.catch(() => {}); // kept and retried if it failed; the app says so
+    setLocation("saving");
+    saving.then(() => setLocation("saved"), (e) => setLocation(e instanceof ApiError ? "error" : "waiting"));
   }, p.id);
   const placeEdit = useRef<{ id: number; place: typeof place } | null>(null);
   useEffect(
@@ -382,6 +443,22 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
           onChange={captionField.onChange}
           onBlur={captionField.onBlur}
         />
+      </label>
+      <label className="t-field">
+        <span className="t-field__label">
+          Location <span className="t-muted">{location === "saving" ? "saving…" : location === "saved" ? "✓ saved" : location === "error" ? "not saved" : location === "waiting" ? "not saved yet: it will save when the photos can be reached" : "a general area, like “Cape Cod” or “Grandma’s farm”"}</span>
+        </span>
+        <input
+          key={`${p.id}:${p.location ?? ""}`}
+          defaultValue={p.location ?? ""}
+          list="t-locations"
+          autoComplete="off"
+          enterKeyHint="done"
+          {...locationField}
+        />
+        <datalist id="t-locations">
+          {(locations.data ?? []).map((o) => <option key={o} value={o} />)}
+        </datalist>
       </label>
       <div className="t-place">
         {(["country", "state", "city"] as const).map((k) => (

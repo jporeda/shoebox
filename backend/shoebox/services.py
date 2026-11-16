@@ -7,10 +7,10 @@ from typing import Any, Optional
 from sqlmodel import Session, select
 
 from . import editlog
-from .dates import PartialDate, parse_partial_date
+from .dates import PartialDate, parse_partial_date, with_months
 from .models import EventInstance, EventKind, Photo
 
-TRUSTED_FIELDS = ("t_year", "t_month", "t_day", "t_min", "t_max", "t_precision", "t_source")
+TRUSTED_FIELDS = ("t_year", "t_month", "t_day", "t_min", "t_max", "t_precision", "t_months", "t_source")
 
 
 def with_dup_group(session: Session, photos: list[Photo]) -> list[Photo]:
@@ -74,6 +74,7 @@ def bulk_update(
     photo_ids: list[int],
     *,
     date: Optional[str] = None,
+    months: Optional[list[int]] = None,
     clear_date: bool = False,
     event_kind_id: Optional[int] = None,
     event_label: Optional[str] = None,
@@ -83,6 +84,7 @@ def bulk_update(
     country: Optional[str] = None,
     state: Optional[str] = None,
     city: Optional[str] = None,
+    location: Optional[str] = None,
     rotate_by: Optional[int] = None,
     source: str = "manual",
     description: str = "",
@@ -94,7 +96,9 @@ def bulk_update(
     tagged = with_dup_group(session, photos)
     changes: list[tuple[Any, str, Any]] = []
 
-    pd = parse_partial_date(date) if date else None
+    pd = with_months(parse_partial_date(date), months) if date else None
+    if months and not date:
+        raise ValueError("months need a year")
 
     inst: Optional[EventInstance] = None
     if event_instance_id is not None:
@@ -133,7 +137,7 @@ def bulk_update(
             changes.append((p, "caption", caption.strip() or None))
 
     # Place: None leaves a field alone, "" clears it.
-    place = {"country": country, "state": state, "city": city}
+    place = {"country": country, "state": state, "city": city, "location": location}
     for field, value in place.items():
         if value is not None:
             for p in tagged:
