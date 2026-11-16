@@ -158,7 +158,7 @@ def test_failed_re_export_keeps_the_last_good_copy(album_tree, env, monkeypatch)
     assert not good.exists() and "1990" in str(exported(env, a))
 
 
-def test_undated_photos_are_exported_without_an_invented_date(album_tree, env):
+def test_undated_photos_are_exported_on_the_no_date_placeholder(album_tree, env):
     run_ingest()
     a = pid("Album 1980s/IMG_0002.jpg")
     with session_scope() as s:
@@ -170,7 +170,8 @@ def test_undated_photos_are_exported_without_an_invented_date(album_tree, env):
     assert copy.relative_to(env.backup_dir / "export").as_posix() == "undated/Album-1980s_0002_IMG-0002.jpg"
     t = tags(copy, "ExifIFD:DateTimeOriginal", "XMP-photoshop:DateCreated", "XMP-dc:Subject", "XMP-dc:Description",
              "XMP-shoebox:DatePrecision")
-    assert "ExifIFD:DateTimeOriginal" not in t and "XMP-photoshop:DateCreated" not in t  # no date made up
+    # 1 Jan 1900: an impossible date that keeps undated photos together at the start of a library.
+    assert t["ExifIFD:DateTimeOriginal"].startswith("1900:01:01 ") and "XMP-photoshop:DateCreated" not in t
     assert "date:unknown" in t["XMP-dc:Subject"] and t["XMP-dc:Description"] == "On the porch"
     assert t["XMP-shoebox:DatePrecision"] == "unknown"
 
@@ -323,3 +324,40 @@ def test_export_writes_gps_and_a_caption_of_place_event_text_and_faces(album_tre
     assert "GPS:GPSLatitude" not in t and t["XMP-dc:Description"] == "Atlantis"
     t = num_tags(exported(env, c), "GPS:GPSLatitude", "GPS:GPSLongitude")
     assert (t["GPS:GPSLatitude"], t["GPS:GPSLongitude"]) == pytest.approx((28.419411, 81.5812))
+
+
+def test_only_set_or_accepted_dates_export_and_scanner_dates_are_removed(env):
+    """Scans of old prints: the scanner's clock and the app's own estimates aren't dates. Only a
+    date a person set or accepted is written; every other photo exports with no date at all."""
+    from PIL import Image
+
+    root = env.photos_root
+    for i in range(3):
+        path = make_image(root / "A1" / f"p{i}.jpg", i)
+        img = Image.open(path)
+        exif = img.getexif()
+        exif[0x0132] = "2023:05:01 10:00:00"  # ModifyDate
+        exif.get_ifd(0x8769)[0x9003] = "2023:05:01 10:00:00"  # DateTimeOriginal: when it was scanned
+        exif.get_ifd(0x8769)[0x9004] = "2023:05:01 10:00:00"  # CreateDate
+        img.save(path, exif=exif)
+    run_ingest()
+    a, b, c = pid("A1/p0.jpg"), pid("A1/p1.jpg"), pid("A1/p2.jpg")
+    with session_scope() as s:
+        services.bulk_update(s, [a], date="1985")  # set by a person
+        services.bulk_update(s, [b], date="1979", source="back")  # from the back: not exported
+        p = s.get(Photo, c)
+        p.i_year, p.i_month, p.i_precision, p.i_confidence = 1980, 6, "month", 0.9  # an estimate
+        s.add(p)
+
+    result = run_export()
+    assert result["undated"] == 2 and not result["failed"]
+    dated = tags(exported(env, a), "ExifIFD:DateTimeOriginal", "ExifIFD:CreateDate", "IFD0:ModifyDate")
+    assert dated["ExifIFD:DateTimeOriginal"].startswith("1985:07:01")
+    assert "ExifIFD:CreateDate" not in dated and "IFD0:ModifyDate" not in dated  # the scan date is gone
+    for pid_ in (b, c):
+        copy = exported(env, pid_)
+        assert copy.relative_to(env.backup_dir / "export").parts[0] == "undated"
+        t = tags(copy, "Time:All", "XMP-dc:Subject")
+        dates = {k: v for k, v in t.items() if "Date" in k and not k.startswith(("System:", "File:"))}
+        assert dates and all(str(v).startswith("1900:01:01") for v in dates.values()), t  # only NO_DATE
+        assert "date:unknown" in t["XMP-dc:Subject"]

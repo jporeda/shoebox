@@ -286,8 +286,14 @@ Anything that identifies your family stays out of git:
   (This writes into your photo folder, so only do it if you want that.)
 - Year-only dates are written as July 1 (decades as Jan 1), and the true precision
   is kept in `XMP-photoshop:DateCreated` (e.g. `1987`). Photos from the same date
-  get consecutive seconds from 09:00:00, so apps keep album order. Estimated
-  dates also get the keyword `date:estimated`.
+  get consecutive seconds from 09:00:00, so apps keep album order. Ranges and
+  decades also get the keyword `date:estimated`.
+- **Only dates a person set or accepted are exported.** Estimates, dates from the back or an
+  event, and the scanner's own dates (when each print was scanned) are never written: those
+  photos go to `export/undated/` with the keyword `date:unknown` and the impossible date
+  **1 January 1900**, so Apple Photos (which always shows some date) keeps them together at the
+  start of the library instead of on the day they were scanned or exported. Accept an estimate in
+  the app to export it with its real date.
 
 ## Development
 

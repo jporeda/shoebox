@@ -32,11 +32,28 @@ from .models import Album, EventInstance, EventKind, Face, Person, Photo
 
 log = logging.getLogger(__name__)
 
-EXPORT_VERSION = 3  # 2: people keywords and MWG face regions; 3: GPS for the city, structured caption
+EXPORT_VERSION = 5  # 2: people keywords and MWG face regions; 3: GPS for the city, structured caption;
+# 4: only dates set or accepted by a person, and no scanner dates; 5: undated copies on 1 Jan 1900
 FIRST_TIME = 9 * 3600  # ordinals count seconds from 09:00:00
 ROT_FROM_ORIENTATION = {1: 0, 6: 90, 3: 180, 8: 270}
 ORIENTATION_FROM_ROT = {v: k for k, v in ROT_FROM_ORIENTATION.items()}
 IPTC_FORMATS = {".jpg", ".jpeg", ".tif", ".tiff"}
+# The only dates that leave the app: typed or picked by a person, or an estimate a person accepted.
+# Every other date (estimates, the back, an event's date, the scanner's own dates) has no value for
+# scans of old prints, so those photos export with no date at all.
+EXPORTED_DATE_SOURCES = {"manual", "accepted"}
+# Date tags a scan file may carry (the scanner's clock): cleared on every copy before ours are written.
+# Photos with no date a person set: an impossible date, so apps like Apple Photos (which always
+# show some date, falling back to the file's own) keep them together at the start of the library
+# instead of on the day they were scanned or exported. Marked date:unknown, precision "unknown".
+NO_DATE = (1900, 1, 1)
+SCAN_DATE_TAGS = [
+    "-AllDates=", "-EXIF:OffsetTime=", "-EXIF:OffsetTimeOriginal=", "-EXIF:OffsetTimeDigitized=",
+    "-EXIF:SubSecTime=", "-EXIF:SubSecTimeOriginal=", "-EXIF:SubSecTimeDigitized=",
+    "-XMP-exif:DateTimeOriginal=", "-XMP-exif:DateTimeDigitized=", "-XMP-xmp:CreateDate=", "-XMP-xmp:ModifyDate=",
+    "-XMP-xmp:MetadataDate=", "-XMP-photoshop:DateCreated=", "-IPTC:DateCreated=", "-IPTC:TimeCreated=",
+    "-IPTC:DigitalCreationDate=", "-IPTC:DigitalCreationTime=",
+]
 
 
 @dataclass
@@ -79,7 +96,10 @@ class ExportItem:
 
     @property
     def clock(self) -> time:
-        secs = min(FIRST_TIME + self.ordinal, 24 * 3600 - 1)
+        # Undated (NO_DATE): each album gets its own stretch of the day, in album order, so the
+        # time never changes when other photos are dated (no mass re-export).
+        start = FIRST_TIME + self.ordinal if self.dated else self.album_order * 2000 + self.album_index
+        secs = min(start, 24 * 3600 - 1)
         return time(secs // 3600, secs % 3600 // 60, secs % 60)
 
     @property
@@ -146,8 +166,10 @@ def build_plan(session: Session) -> list[ExportItem]:
     for p in photos:
         if p.id in skip:
             continue
-        inferred = p.t_year is None
-        year = p.i_year if inferred else p.t_year
+        # Only a person's date counts; anything else is exported as no date (see EXPORTED_DATE_SOURCES).
+        trusted = p.t_year is not None and p.t_source in EXPORTED_DATE_SOURCES
+        inferred = False
+        year = p.t_year if trusted else None
         album = albums[p.album_id]
         inst = instances.get(p.event_instance_id) if p.event_instance_id else None
         kind = kinds[inst.kind_id] if inst else None
@@ -160,13 +182,13 @@ def build_plan(session: Session) -> list[ExportItem]:
             album_order=album.sort_order,
             album_index=p.album_index,
             year=year,
-            month=p.i_month if inferred else p.t_month,
-            day=None if inferred else p.t_day,
-            precision=p.i_precision if inferred else p.t_precision,
+            month=p.t_month if trusted else None,
+            day=p.t_day if trusted else None,
+            precision=p.t_precision if trusted else None,
             inferred=inferred,
-            date_source=None if year is None else "inferred" if inferred else p.t_source,
-            confidence=None if year is None else p.i_confidence if inferred else 1.0,
-            run_id=p.i_run_id if inferred else None,
+            date_source=p.t_source if trusted else None,
+            confidence=1.0 if trusted else None,
+            run_id=None,
             exif_orientation=p.exif_orientation,
             rotation=p.rotation,
             scan_datetime=p.scan_datetime,
@@ -217,7 +239,7 @@ def build_plan(session: Session) -> list[ExportItem]:
     prev, n = None, 0
     for it in items:
         if not it.dated:
-            break  # undated copies keep their own dates, so no clock ordinal
+            break  # undated copies: NO_DATE, timed by album and place in it (see ExportItem.clock)
         n = n + 1 if it.cal == prev else 0
         it.ordinal, prev = n, it.cal
     return items
@@ -286,27 +308,25 @@ def _dims(it: ExportItem, rot: int) -> tuple[int, int]:
 
 
 def tag_args(it: ExportItem, tz: str, ext: str) -> list[str]:
-    args = []
-    if it.dated:
-        y, m, d = it.cal
-        c = it.clock
-        stamp = f"{y:04d}:{m:02d}:{d:02d} {c.hour:02d}:{c.minute:02d}:{c.second:02d}"
-        args += [
-            f"-EXIF:DateTimeOriginal={stamp}",
-            f"-EXIF:OffsetTimeOriginal={tz}",
-            f"-XMP-exif:DateTimeOriginal={stamp}{tz}",
-            f"-XMP-xmp:CreateDate={stamp}{tz}",
-            f"-FileModifyDate={stamp}{tz}",
-        ]
-    # Undated: no date is invented; the copy keeps whatever dates the scan file itself carries.
+    # The scanner's dates are cleared first (SCAN_DATE_TAGS); then the person's date, or NO_DATE.
+    y, m, d = it.cal if it.dated else NO_DATE
+    c = it.clock
+    stamp = f"{y:04d}:{m:02d}:{d:02d} {c.hour:02d}:{c.minute:02d}:{c.second:02d}"
+    args = [
+        *SCAN_DATE_TAGS,
+        f"-EXIF:DateTimeOriginal={stamp}",
+        f"-EXIF:OffsetTimeOriginal={tz}",
+        f"-XMP-exif:DateTimeOriginal={stamp}{tz}",
+        f"-XMP-xmp:CreateDate={stamp}{tz}",
+    ]
+    if it.dated:  # an 1900 file date is left alone: some file systems and tools mishandle it
+        args.append(f"-FileModifyDate={stamp}{tz}")
     args += [
         "-XMP-dc:Subject=",
         "-XMP-lr:HierarchicalSubject=",
         "-XMP-iptcExt:Event=",
         "-XMP-dc:Description=",
     ]
-    if it.scan_datetime:
-        args.append(f"-EXIF:CreateDate={it.scan_datetime}")  # = DateTimeDigitized
     args += [f"-XMP-dc:Subject={escape(k)}" for k in it.keywords]
     args += [f"-XMP-lr:HierarchicalSubject={escape(h)}" for h in it.hierarchical]
     if it.event_label:

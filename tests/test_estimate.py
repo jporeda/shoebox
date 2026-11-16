@@ -104,7 +104,7 @@ def test_manual_loose_back_date_via_api_updates_neighbours_and_undoes(env):
         assert photos()["Album7_0006"].i_year is None
 
 
-def test_estimated_month_exported_and_loose_back_in_truth(env):
+def test_estimated_month_not_exported_and_loose_back_in_truth(env):
     build(env.photos_root)
     with api_client() as client:
         lb = [b for b in client.get("/api/loose-backs").json() if b["rel_path"].endswith("0004_b.jpg")][0]
@@ -113,7 +113,9 @@ def test_estimated_month_exported_and_loose_back_in_truth(env):
     assert not result["failed"]
     index = json.loads((env.backup_dir / "export" / "export-index.json").read_text())
     names = sorted(v["path"] for v in index.values())
-    assert "1978/1978-10-01_0000_A7_Album7-0001.jpg" in names
+    # The estimate from the loose back isn't a date anyone set: the photo exports undated.
+    assert photos()["Album7_0001"].i_year == 1978
+    assert "undated/A7_0001_Album7-0001.jpg" in names and not any(n.startswith("1978/") for n in names)
     truth = backup.build_truth()
     assert truth["loose_backs"][0]["date"] == {"year": 1978, "month": 10}
 
