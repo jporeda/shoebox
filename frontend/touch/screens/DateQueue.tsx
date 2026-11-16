@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api, imgUrl, type ListParams } from "../../src/api";
 import { usePhotos } from "../../src/hooks";
 import { DatePanel } from "../dating";
-import { openPhoto, replaceScreen } from "../route";
+import { go, openPhoto, replaceScreen } from "../route";
+import { Done, Placeholder } from "../ui";
 
 const QUEUES: { key: "untagged" | "inferred"; label: string; list: ListParams }[] = [
   { key: "untagged", label: "Undated", list: { status: "untagged" } },
@@ -73,16 +74,25 @@ export function DateQueue({ q: chosen }: { q?: "untagged" | "inferred" }) {
         })}
       </div>
       {source.isLoading ? (
-        <p className="t-muted t-pad">Loading…</p>
+        <Placeholder kind="queue" />
       ) : !current ? (
-        <div className="t-empty">
-          <p>{skipped.size ? "That's all of them, apart from the ones you skipped." : q === "untagged" ? "Every photo has at least an estimated date." : "No estimated dates left to check."}</p>
-          {skipped.size > 0 && (
-            <button className="t-btn" onClick={() => (skipped.clear(), redraw((n) => n + 1))}>
-              Go through the skipped ones
+        skipped.size ? (
+          <Done title="That’s all of them" action={
+            <button className="t-btn t-btn--big" onClick={() => (skipped.clear(), redraw((n) => n + 1))}>
+              Go through the {skipped.size} you skipped
             </button>
-          )}
-        </div>
+          }>
+            Apart from the ones you skipped.
+          </Done>
+        ) : (
+          <Done title="All done. Thank you!" action={
+            <button className="t-btn t-btn--big" onClick={() => go("#/check")}>
+              Check some names next
+            </button>
+          }>
+            {q === "untagged" ? "Every photo has at least a guessed date now." : "There are no guessed dates left to check."}
+          </Done>
+        )
       ) : (
         <div className="t-card t-queue__card">
           <button className="t-queue__photo" onClick={() => openPhoto({ id: current.id })} aria-label="Open this photo">
@@ -100,7 +110,7 @@ export function DateQueue({ q: chosen }: { q?: "untagged" | "inferred" }) {
             {p && p.id === current.id ? (
               <DatePanel ids={[p.id]} photo={p} previous={before?.status === "reviewed" ? before.date_label : null} />
             ) : (
-              <p className="t-muted">Loading…</p>
+              <Placeholder kind="lines" />
             )}
           </div>
         </div>

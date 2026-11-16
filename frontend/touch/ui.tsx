@@ -98,7 +98,7 @@ export function UndoToast() {
  *  app never need it. */
 export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const collections = useQuery({ queryKey: ["collections"], queryFn: api.collections });
-  const look = useNewGrid();
+  const look = useNewGrid(true);
   return (
     <Sheet open={open} onClose={onClose} title="Shoebox">
       {(collections.data?.length ?? 0) > 1 && (
@@ -125,7 +125,7 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
       <section className="t-section">
         <div className="t-list">
           <label className="t-row">
-            <span>New photo grid</span>
+            <span>New look</span>
             <input type="checkbox" className="t-switch" checked={look.on} onChange={look.toggle} />
           </label>
           <button className="t-row" onClick={() => location.reload()}>
@@ -139,3 +139,108 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
 
 /** "1 photo", "3 photos". */
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** A finished list: a big check, a warm title and what happens next. */
+export function Done({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="t-done" role="status">
+      <span className="t-done__mark" aria-hidden>✓</span>
+      <h2 className="t-done__title">{title}</h2>
+      {children && <p className="t-done__text">{children}</p>}
+      {action}
+    </div>
+  );
+}
+
+const WELCOMED = "shoebox.welcomed";
+
+/** Shown once on each phone or tablet: what this is, and the one obvious place to start. */
+export function Welcome({ onStart }: { onStart: () => void }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return !localStorage.getItem(WELCOMED);
+    } catch {
+      return false;
+    }
+  });
+  const close = () => {
+    try {
+      localStorage.setItem(WELCOMED, "1");
+    } catch {
+      // private window: it shows again next time, which is harmless
+    }
+    setOpen(false);
+  };
+  return (
+    <Sheet open={open} onClose={close} title="Welcome">
+      <div className="t-welcome">
+        <h2 className="t-welcome__title">The family photos</h2>
+        <p>
+          Help put dates and names on our old photos. Pick a year, say who someone is, or tap a face that’s wrong. Every
+          change can be undone.
+        </p>
+        <button className="t-btn t-btn--primary t-btn--big" onClick={() => (close(), onStart())}>
+          Start with dates
+        </button>
+        <button className="t-btn t-btn--plain t-btn--block" onClick={close}>
+          Look around first
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** The photos can't be reached: the Mac that holds them is asleep or this device is on other Wi-Fi.
+ *  `stale`: something is on screen already, so a slim banner instead of the whole screen. */
+export function CantReach({ stale, onRetry, busy, waiting = 0 }: { stale: boolean; onRetry: () => void; busy: boolean; waiting?: number }) {
+  if (stale)
+    return (
+      <div className="t-offline-banner" role="alert">
+        <span>
+          Can’t reach the photos right now.
+          {waiting > 0 && ` ${waiting === 1 ? "1 change is" : `${waiting} changes are`} kept and will save then.`}
+        </span>
+        <button className="t-btn t-btn--plain" disabled={busy} onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    );
+  return (
+    <div className="t-offline" role="alert">
+      <h2 className="t-done__title">Can’t reach the family photos</h2>
+      <p className="t-done__text">
+        The computer that keeps them may be asleep, or this phone may be on a different Wi-Fi. Check you’re on the home
+        Wi-Fi, then try again.
+      </p>
+      <button className="t-btn t-btn--primary t-btn--big" disabled={busy} onClick={onRetry}>
+        {busy ? "Trying…" : "Try again"}
+      </button>
+    </div>
+  );
+}
+
+/** While a screen loads: soft shapes where its content will be, instead of the word "Loading…". */
+export function Placeholder({ kind }: { kind: "grid" | "cards" | "queue" | "lines" }) {
+  const n = (count: number) => Array.from({ length: count }, (_, i) => i);
+  return (
+    <div className={`t-ph t-ph--${kind}`} role="status" aria-label="Loading">
+      {kind === "grid" && n(12).map((i) => <span key={i} className="t-ph__block" />)}
+      {kind === "cards" &&
+        n(2).map((i) => (
+          <div key={i} className="t-ph__card">
+            <span className="t-ph__line t-ph__line--title" />
+            <div className="t-ph__faces">{n(4).map((j) => <span key={j} className="t-ph__block" />)}</div>
+            <span className="t-ph__line t-ph__line--button" />
+          </div>
+        ))}
+      {kind === "queue" && (
+        <div className="t-ph__card">
+          <span className="t-ph__block t-ph__block--photo" />
+          <span className="t-ph__line t-ph__line--button" />
+          <span className="t-ph__line" />
+        </div>
+      )}
+      {kind === "lines" && n(3).map((i) => <span key={i} className="t-ph__line" />)}
+    </div>
+  );
+}

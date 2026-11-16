@@ -363,3 +363,211 @@ a { color: var(--accent); }
 .t-switch:checked::after { transform: translateX(20px); }
 .t-switch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .t-switch, .t-switch::after { transition: none; } }
+
+/* ===================================================================================================
+   "Harvest Table" (the New look, ⋯ menu): a re-skin of the same screens. Colours, type, shape and depth
+   come from src/tokens.css; nothing here changes what a screen does. Rules only apply under
+   <html data-look="harvest">, so the classic look is untouched.
+   =================================================================================================== */
+[data-look="harvest"] body { font-family: var(--font-text); }
+[data-look="harvest"] :is(button, .t-btn, .t-chip, .t-row, .t-tab) { font-weight: 600; }
+
+/* shell: solid warm bars (no glass on touch: steady contrast, cheap for older iPads) */
+[data-look="harvest"] .t-top { background: var(--bg); border-bottom: 1px solid var(--rule); padding-top: calc(var(--safe-t) + 10px); }
+[data-look="harvest"] .t-top__title { font-family: var(--font-display); font-size: var(--title-md); font-weight: 700; letter-spacing: -0.01em; }
+[data-look="harvest"] .t-top__menu { color: var(--accent); }
+[data-look="harvest"] .t-tabs { background: color-mix(in oklch, var(--panel) 97%, transparent); border-top: 1px solid var(--rule); box-shadow: 0 -1px 0 oklch(1 0 0 / 0.4) inset; }
+[data-look="harvest"] .t-tab { font-size: var(--text-sm); color: var(--muted); gap: 3px; }
+[data-look="harvest"] .t-tab.is-on { color: var(--accent); }
+[data-look="harvest"] .t-tab__count { background: var(--accent); color: var(--accent-text); font-weight: 700; box-shadow: 0 0 0 2px var(--panel); }
+
+/* controls */
+[data-look="harvest"] .t-btn {
+  border-radius: var(--r-control); border-color: var(--border); background: var(--panel); box-shadow: var(--shadow-1);
+  transition: transform var(--fast) var(--ease), background var(--fast);
+}
+[data-look="harvest"] .t-btn:active:not(:disabled) { transform: scale(0.97); }
+[data-look="harvest"] .t-btn--primary { background: var(--accent); border-color: transparent; color: var(--accent-text); box-shadow: var(--shadow-2); }
+[data-look="harvest"] .t-btn--plain { background: none; box-shadow: none; color: var(--accent); }
+[data-look="harvest"] .t-btn--glass { background: var(--glass); color: oklch(0.975 0.016 85); border-color: transparent; box-shadow: none; }
+[data-look="harvest"] .t-btn--big { font-size: 19px; border-radius: 14px; }
+[data-look="harvest"] .t-link { color: var(--accent); font-weight: 600; }
+[data-look="harvest"] .t-chip { border-radius: 999px; border-color: var(--border); background: var(--panel); }
+[data-look="harvest"] .t-chip.is-on { background: var(--accent); border-color: transparent; color: var(--accent-text); }
+/* segmented choices: a parchment track with the chosen one raised on paper (no colour fill) */
+[data-look="harvest"] .t-seg { border: 0; background: var(--panel-2); border-radius: 12px; padding: 3px; gap: 3px; }
+[data-look="harvest"] .t-seg button { border: 0; border-radius: 9px; background: transparent; color: var(--muted); min-height: 40px; }
+[data-look="harvest"] .t-seg button.is-on { background: var(--panel); color: var(--text); box-shadow: var(--shadow-1); }
+[data-look="harvest"] .t-list { border-color: var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-1); }
+[data-look="harvest"] .t-row { border-top-color: var(--rule); }
+[data-look="harvest"] .t-row.is-on { color: var(--accent); }
+[data-look="harvest"] :is(.t-field input, .t-field textarea, .t-namefield input, .t-typed input) {
+  border-color: var(--field); border-radius: var(--r-control); background: var(--panel);
+}
+[data-look="harvest"] :is(input, textarea, select, button, a):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+[data-look="harvest"] .t-field__label { color: var(--muted); }
+[data-look="harvest"] .t-h2 { font-family: var(--font-display); font-size: var(--title-sm); }
+[data-look="harvest"] .t-h3 { color: var(--muted); font-size: var(--text-sm); }
+[data-look="harvest"] .t-card { border-color: var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-1); }
+[data-look="harvest"] .t-switch { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border); }
+[data-look="harvest"] .t-switch:checked { background: var(--switch-on); box-shadow: none; }
+
+/* dates: confirmed is sage; estimated is never a pumpkin-like fill but an outlined gold chip */
+[data-look="harvest"] .t-status-reviewed { color: var(--ok); }
+[data-look="harvest"] .t-status-inferred {
+  color: var(--warn); background: var(--warn-tint); border: 1.5px solid var(--warn); border-radius: 999px; padding: 0 10px;
+  display: inline-block;
+}
+[data-look="harvest"] .t-status-untagged { color: var(--muted); }
+
+/* sheets and toasts */
+[data-look="harvest"] .t-sheet-wrap { background: var(--scrim); }
+[data-look="harvest"] .t-sheet { background: var(--bg); border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--shadow-3); }
+[data-look="harvest"] .t-sheet__head { border-bottom-color: var(--rule); padding-top: 12px; }
+[data-look="harvest"] .t-sheet__title { font-family: var(--font-display); font-size: var(--title-sm); }
+[data-look="harvest"] .t-toast { background: var(--toast); color: var(--toast-text); border-radius: 14px; box-shadow: var(--shadow-3); }
+[data-look="harvest"] .t-toast__undo { color: var(--toast-action); }
+
+/* photos */
+[data-look="harvest"] .t-filterbar { background: var(--bg); border-bottom-color: var(--rule); }
+[data-look="harvest"] .t-filterbar__count { font-size: var(--text-sm); }
+[data-look="harvest"] .t-selbar { background: var(--panel); border-top-color: var(--rule); box-shadow: var(--shadow-2); }
+[data-look="harvest"] .t-dot { border-color: var(--panel); box-shadow: var(--shadow-1); }
+[data-look="harvest"] .t-dot--untagged { background: var(--panel); box-shadow: inset 0 0 0 2px var(--muted); }
+[data-look="harvest"] .t-grid.grid--new .jtile { border-radius: 3px; }
+[data-look="harvest"] .t-grid.grid--new .jsec__head { font-family: var(--font-display); font-size: var(--title-sm); font-weight: 700; }
+[data-look="harvest"] .jsec__head { background: color-mix(in oklch, var(--bg) 96%, transparent); backdrop-filter: none; -webkit-backdrop-filter: none; }
+[data-look="harvest"] .jtile__date, [data-look="harvest"] .jtile__icons > span { background: var(--glass); color: oklch(0.975 0.016 85); }
+[data-look="harvest"] .jtile--reviewed .jtile__dot { background: oklch(0.76 0.12 145); }
+[data-look="harvest"] .jtile--inferred .jtile__dot { background: transparent; box-shadow: inset 0 0 0 2px oklch(0.81 0.13 85); }
+[data-look="harvest"] .jtile--untagged .jtile__dot { background: transparent; box-shadow: inset 0 0 0 1.5px oklch(0.94 0.02 85 / 0.8); }
+
+/* the viewer: photos on a deep warm night, a paper panel */
+[data-look="harvest"] :is(.t-layer, .t-viewer) { background: var(--night); }
+[data-look="harvest"] .t-panel { background: var(--bg); border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--shadow-3); }
+[data-look="harvest"] .t-summary__date { font-size: 19px; }
+[data-look="harvest"] .t-panel__tabs { border-bottom-color: var(--rule); }
+[data-look="harvest"] .t-panel__tabs button { border-color: var(--border); background: var(--panel); }
+[data-look="harvest"] .t-panel__tabs button.is-on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+
+/* dating */
+[data-look="harvest"] .t-year { border-color: var(--border); border-radius: var(--r-control); background: var(--panel); box-shadow: var(--shadow-1); }
+[data-look="harvest"] .t-year.is-estimate { border: 2px dashed var(--warn); background: var(--warn-tint); }
+[data-look="harvest"] .t-year.is-on { background: var(--accent); border: 2px solid transparent; color: var(--accent-text); }
+
+/* faces, people, check */
+[data-look="harvest"] .t-face { border-color: var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-1); }
+[data-look="harvest"] .t-face__crop, [data-look="harvest"] .t-gface { border-radius: 12px; }
+[data-look="harvest"] .t-face__name, [data-look="harvest"] .t-checkcard__name { font-family: var(--font-display); font-size: var(--title-sm); }
+[data-look="harvest"] .t-gface span { background: var(--glass); color: oklch(0.975 0.016 85); font-size: 12px; }
+[data-look="harvest"] .t-gface.is-dim img { opacity: 0.25; }
+[data-look="harvest"] .t-person { border-color: var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-1); }
+[data-look="harvest"] .t-person img { border-radius: 50%; }
+[data-look="harvest"] .t-namefield__hint { color: var(--warn); }
+[data-look="harvest"] .t-queue__photo { background: var(--panel-2); }
+[data-look="harvest"] .t-queue__photo img { border-radius: var(--r-photo); box-shadow: var(--shadow-2); }
+@media (min-width: 768px) and (orientation: portrait) {
+  [data-look="harvest"] .t-queue { max-width: 720px; }
+  [data-look="harvest"] .t-queue__photo { height: 46dvh; }
+}
+@media (prefers-reduced-motion: reduce) { [data-look="harvest"] .t-btn { transition: none; } }
+
+/* Harvest: the Date screen on a phone. The photo, the best guess, Yes and the years all fit above the
+   tab bar; the photo box has a fixed height so the buttons never jump from one photo to the next. */
+/* Phones, and iPads held upright: stacked, the photo on top. */
+@media (max-width: 767px), (orientation: portrait) {
+  [data-look="harvest"] .t-queue__card { flex-direction: column; align-items: stretch; }
+  [data-look="harvest"] .t-queue__photo { flex: none; min-height: 0; }
+  [data-look="harvest"] .t-queue__controls { flex: none; }
+  [data-look="harvest"] .t-queue { padding: 4px 12px 12px; }
+  [data-look="harvest"] .t-queue__switch { margin: 4px 0 8px; }
+  [data-look="harvest"] .t-queue__card { gap: 8px; }
+  [data-look="harvest"] .t-queue__photo {
+    height: 38dvh; max-height: none; align-items: center; padding: 12px; background: var(--panel-2);
+  }
+  [data-look="harvest"] .t-queue__photo img {
+    max-width: 100%; max-height: 100%; border-radius: var(--r-photo); box-shadow: var(--shadow-2);
+  }
+  [data-look="harvest"] .t-queue__controls { padding: 0 12px 12px; }
+  [data-look="harvest"] .t-queue__head { margin-bottom: 4px; }
+  [data-look="harvest"] .t-queue__head .t-btn { min-height: 40px; padding: 6px 14px; }
+}
+/* In the queue the guess comes first, then the years; the rest (nearby dates, exact day, typing) below. */
+[data-look="harvest"] .t-queue .t-date { gap: 8px; }
+[data-look="harvest"] .t-queue .t-date__now:has(.t-status-inferred) { display: none; }
+[data-look="harvest"] .t-queue .t-date > .t-btn--big { order: 1; min-height: 64px; }
+[data-look="harvest"] .t-queue .t-date > .t-years { order: 2; }
+[data-look="harvest"] .t-queue .t-date > .t-months { order: 3; }
+[data-look="harvest"] .t-queue .t-date > .t-choices { order: 4; }
+[data-look="harvest"] .t-queue .t-date > .t-date__more { order: 5; }
+[data-look="harvest"] .t-queue .t-date > .t-typed { order: 6; }
+[data-look="harvest"] .t-queue .t-date > .t-error { order: 7; }
+
+/* ---- finished lists, welcome, can't reach the photos (both looks) ---- */
+.t-done, .t-offline { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 40px 24px; }
+.t-done__mark {
+  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; font-weight: 700;
+  color: var(--ok); background: var(--ok-tint, var(--panel-2));
+}
+.t-done__title { margin: 4px 0 0; font-size: 24px; }
+.t-done__text { margin: 0; max-width: 34ch; color: var(--muted); font-size: 17px; line-height: 1.45; }
+.t-done .t-btn--big, .t-offline .t-btn--big { max-width: 360px; margin-top: 8px; }
+.t-offline { position: fixed; inset: 0; z-index: 70; justify-content: center; background: var(--bg); }
+.t-offline-banner {
+  position: fixed; left: 12px; right: 12px; top: calc(var(--safe-t) + 8px); z-index: 70; max-width: 560px; margin: 0 auto;
+  display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 14px;
+  background: var(--toast, #2b2a28); color: var(--toast-text, #fff); font-weight: 600; box-shadow: inset 4px 0 0 var(--bad);
+}
+.t-offline-banner .t-btn--plain { color: var(--toast-action, #8fb4ff); }
+.t-welcome { display: flex; flex-direction: column; gap: 10px; padding-bottom: 8px; }
+.t-welcome__title { margin: 0; font-size: 26px; }
+.t-welcome p { margin: 0 0 6px; font-size: 17px; line-height: 1.45; }
+[data-look="harvest"] :is(.t-done__title, .t-welcome__title) { font-family: var(--font-display); font-size: var(--title-md); }
+
+/* ---- loading placeholders: soft shapes that gently pulse (still under reduced motion) ---- */
+.t-ph { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.t-ph--grid { display: grid; grid-template-columns: repeat(var(--cols-default, 3), 1fr); gap: 2px; padding: 2px; }
+.t-ph__block, .t-ph__line { display: block; background: var(--panel-2); border-radius: 6px; animation: t-ph 1.4s ease-in-out infinite; }
+.t-ph--grid .t-ph__block { aspect-ratio: 4 / 3; border-radius: 3px; }
+.t-ph__card { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); }
+.t-ph__faces { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.t-ph__faces .t-ph__block { aspect-ratio: 1; border-radius: 12px; }
+.t-ph__block--photo { height: 38dvh; border-radius: 6px; }
+.t-ph__line { height: 16px; width: 70%; }
+.t-ph__line--title { height: 26px; width: 40%; }
+.t-ph__line--button { height: 56px; width: 100%; border-radius: 12px; }
+@keyframes t-ph { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .t-ph__block, .t-ph__line { animation: none; } }
+
+/* Two equal answers to a guess (both looks): neither looks already chosen. */
+.t-face__actions .t-btn--answer { flex: 1 1 0; min-width: 96px; min-height: 48px; font-size: 17px; font-weight: 600; }
+/* The photo's date in the summary is a button: it opens the Date tab. */
+.t-summary__datebtn {
+  display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px; min-height: 44px; padding: 0; border: 0;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.t-summary__change { margin-left: 6px; color: var(--accent); font-weight: 600; font-size: 15px; }
+
+/* Harvest, after Rosie's re-walk: a pumpkin fill only ever means "do this"; "chosen" is a pumpkin
+   outline on a light tint, everywhere (panel tabs, chips, years, segments). */
+[data-look="harvest"] :is(.t-panel__tabs button.is-on, .t-chip.is-on, .t-seg button.is-on) {
+  background: var(--accent-tint); color: var(--text); border-color: transparent; box-shadow: inset 0 0 0 2px var(--accent);
+}
+[data-look="harvest"] .t-year.is-on { background: var(--accent-tint); color: var(--text); border: 2px solid var(--accent); }
+[data-look="harvest"] .t-seg button { min-height: 44px; }
+/* Bigger small print for older eyes. */
+[data-look="harvest"] .t-btn__sub { font-size: 15px; opacity: 0.92; }
+[data-look="harvest"] .t-queue .t-btn__sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+[data-look="harvest"] .t-gface span { font-size: 14px; padding: 2px 4px; }
+[data-look="harvest"] .t-grid .jtile__date { font-size: 14px; }
+[data-look="harvest"] .t-tab { font-size: 14px; }
+[data-look="harvest"] .t-link.t-small, [data-look="harvest"] .t-small { font-size: 15px; }
+/* Ignore and Remove this box: cranberry, a full tap target, and space from the name field above. */
+[data-look="harvest"] :is(.t-face__body, .t-group) > .t-link { color: var(--bad); min-height: 44px; margin-top: 8px; }
+
+/* A confirmed face of someone with no twin: one short line (face, name, Change). */
+.t-face--compact { align-items: center; gap: 12px; padding: 6px 8px 6px 6px; }
+.t-face--compact .t-face__crop { width: 44px; height: 44px; border-radius: 10px; }
+.t-face--compact .t-face__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-face__change { min-height: 44px; padding: 6px 14px; flex: none; }
+[data-look="harvest"] .t-face--compact .t-face__name { font-size: 20px; }

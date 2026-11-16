@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { api, faceUrl, pairLabel, type ReviewGroup } from "../../src/api";
 import { useLongPress, useRemembered } from "../../src/hooks";
 import { useTwins, type Pair } from "../../src/peopleData";
-import { useFaceAction } from "../faces";
-import { openPhoto } from "../route";
+import { sureness, useFaceAction } from "../faces";
+import { go, openPhoto } from "../route";
+import { Done, Placeholder } from "../ui";
 
 /** The app's name guesses, by person and age bracket: tap the wrong ones, then Confirm. */
 export function CheckScreen() {
@@ -20,14 +21,21 @@ export function CheckScreen() {
       </div>
       {help && (
         <p className="t-muted t-small t-pad">
-          These are faces the app thinks it recognizes, grouped by person and 5-year bracket (their age if you've set a
-          birth year, otherwise the photos' years), most sure first. “Guess” means the app named the face itself;
-          “maybe” means it wasn't sure enough (and always for young children). Confirmed faces teach it; the ones you tap
-          are remembered as “not them”. “Photos ›” (or pressing and holding a face) shows them in their photos.
+          These are faces the app thinks it recognizes, grouped by person and age, the surest first. Under each face it
+          says how sure it is: “Probably”, “Maybe” or “Not sure”. Confirmed faces help it recognize people; the ones you
+          tap are remembered as “not them”. “Photos ›” (or pressing and holding a face) shows them in their photos.
         </p>
       )}
-      {review.isLoading && <p className="t-muted t-pad">Loading…</p>}
-      {review.data?.length === 0 && <p className="t-empty">Nothing to check. Name more faces under People.</p>}
+      {review.isLoading && <Placeholder kind="cards" />}
+      {review.data?.length === 0 && (
+        <Done title="All checked. Thank you!" action={
+          <button className="t-btn t-btn--big" onClick={() => go("#/people")}>
+            Name some faces
+          </button>
+        }>
+          New guesses show up here as more faces get names.
+        </Done>
+      )}
       <div className="t-cards">
         {review.data?.map((g) => <CheckCard key={`${g.person_id}:${g.age_lo ?? "-"}:${g.year_lo ?? "-"}`} group={g} />)}
       </div>
@@ -71,8 +79,9 @@ function CheckCard({ group }: { group: ReviewGroup }) {
             key={f.id}
             src={faceUrl(f.id)}
             dim={wrong.has(f.id)}
-            caption={`${f.source === "auto" && f.person_id ? "guess" : "maybe"} ${Math.round((f.confidence ?? 0) * 100)}%${
-              f.suggested_name && f.suggested_alt_name ? ` · ${pairLabel(f.suggested_name, f.suggested_alt_name)}?` : ""}`}
+            caption={f.suggested_name && f.suggested_alt_name
+              ? `${pairLabel(f.suggested_name, f.suggested_alt_name)}?`
+              : sureness(f.confidence)}
             onTap={() => setWrong((s) => { const n = new Set(s); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n; })}
             onHold={() => look(f.photo_id)}
           />

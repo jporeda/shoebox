@@ -25,12 +25,17 @@ const write = (key: string, value: string) => {
 
 const CHANGED = "shoebox:gridlook"; // the switch is in one place (the touch app's menu), the grid in another
 
-/** Whether this browser shows the new grid, and the row height (photo size) it uses on the desktop. */
-export function useNewGrid() {
-  const [on, setOn] = useState(() => read(LOOK_KEY) === "new");
+/** Whether this browser shows the new look (and grid), and the row height it uses on the desktop.
+ *  `defaultOn`: the choice before anyone switches (the touch app starts in the new look). */
+export function useNewGrid(defaultOn = false) {
+  const isOn = () => {
+    const v = read(LOOK_KEY);
+    return v ? v === "new" : defaultOn;
+  };
+  const [on, setOn] = useState(isOn);
   const [row, setRow] = useState(() => Number(read(ROW_KEY)) || 190);
   useEffect(() => {
-    const sync = () => setOn(read(LOOK_KEY) === "new");
+    const sync = () => setOn(isOn());
     window.addEventListener(CHANGED, sync);
     return () => window.removeEventListener(CHANGED, sync);
   }, []);
@@ -60,6 +65,43 @@ const ICONS = {
       <path d="M21 3v5h-5" />
     </>
   ),
+  photos: (
+    <>
+      <path d="M18 22H4a2 2 0 0 1-2-2V6" />
+      <path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18" />
+      <circle cx="12" cy="8" r="2" />
+      <rect width="16" height="16" x="6" y="2" rx="2" />
+    </>
+  ),
+  calendar: (
+    <>
+      <path d="M8 2v4" />
+      <path d="M16 2v4" />
+      <rect width="18" height="18" x="3" y="4" rx="2" />
+      <path d="M3 10h18" />
+    </>
+  ),
+  people: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
+  confirm: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
+    </>
+  ),
   back: (
     <>
       <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
@@ -69,9 +111,10 @@ const ICONS = {
     </>
   ),
 };
-export function Icon({ name, size = 14 }: { name: keyof typeof ICONS; size?: number }) {
+export type IconName = keyof typeof ICONS;
+export function Icon({ name, size = 14, stroke = 2.2 }: { name: IconName; size?: number; stroke?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       {ICONS[name]}
     </svg>

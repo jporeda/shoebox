@@ -5,7 +5,7 @@ import { useLongPress, useRemembered } from "../../src/hooks";
 import { usePeople, useTwins } from "../../src/peopleData";
 import { NameField, useFaceAction } from "../faces";
 import { openPhoto, personHref, pushScreen, replaceScreen } from "../route";
-import { plural } from "../ui";
+import { Placeholder, plural } from "../ui";
 
 /** "To name": groups of unnamed faces (name box first, faces below). "Everyone": each person named. */
 export function PeopleScreen({ tab }: { tab: "name" | "everyone" }) {
@@ -34,7 +34,7 @@ export function PeopleScreen({ tab }: { tab: "name" | "everyone" }) {
 
 function ToName({ groups, loners, loading }: { groups: Cluster[]; loners?: Cluster; loading: boolean }) {
   const [showSingles, setShowSingles] = useState(false);
-  if (loading) return <p className="t-empty">Loading…</p>;
+  if (loading) return <Placeholder kind="cards" />;
   return (
     <section className="t-section">
       {groups.length === 0 && <p className="t-muted">No groups left to name.</p>}
@@ -56,7 +56,7 @@ function ToName({ groups, loners, loading }: { groups: Cluster[]; loners?: Clust
 function Everyone() {
   const people = usePeople();
   const { twinsOf } = useTwins();
-  if (people.isLoading) return <p className="t-empty">Loading…</p>;
+  if (people.isLoading) return <Placeholder kind="cards" />;
   return (
     <section className="t-section">
       {people.data?.length === 0 && <p className="t-muted">Nobody named yet.</p>}

@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { albumLabel, api, imgUrl, type Face, type ListParams, type PhotoDetail, type PhotoSummary } from "../../src/api";
+import { albumLabel, api, ApiError, imgUrl, type Face, type ListParams, type PhotoDetail, type PhotoSummary } from "../../src/api";
 import { useMedia, usePhotos, usePlaces, useSaveOnLeave, useUpdatePhotos } from "../../src/hooks";
 import { DatePanel, DATE_SOURCE, EventPanel } from "../dating";
 import { FacesPanel, guessOf, useRefreshFaces } from "../faces";
-import { LAST_PHOTO_EVENT, stepPhoto } from "../route";
+import { stepPhoto } from "../route";
+import { saveOrKeep } from "../pending";
 import { plural } from "../ui";
 
 type Tab = "date" | "people" | "info";
@@ -60,11 +61,9 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
   }, [id, faces.data, focus]);
 
   const step = (to: { id: number } | null) => to && stepPhoto(to.id);
-  const close = () => {
-    // The screen underneath scrolls to the photo you ended on.
-    window.dispatchEvent(new CustomEvent(LAST_PHOTO_EVENT, { detail: id }));
-    onClose();
-  };
+  // The screen underneath then scrolls to the photo you ended on: App tells it, however the photo
+  // closes (this Back, swipe down, or the phone's own Back).
+  const close = () => onClose();
   useEffect(() => {
     for (const n of [prev, next]) if (n) new Image().src = imgUrl(n.sha256, "preview", n.rotation);
   }, [prev, next]);
@@ -121,7 +120,7 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
       )}
       {p && (
         <div className="t-panel">
-          <Summary photo={p} faces={faces.data?.filter((f) => !f.ignored).length ?? 0} named={faces.data ?? []} />
+          <Summary photo={p} faces={faces.data?.filter((f) => !f.ignored).length ?? 0} named={faces.data ?? []} onDate={() => setTab("date")} />
           <div className="t-panel__tabs" role="tablist">
             {(["date", "people", "info"] as Tab[]).map((t) => (
               <button
@@ -159,13 +158,18 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
 
 
 /** One line under the photo: its date, event and who's in it. */
-function Summary({ photo: p, faces, named }: { photo: PhotoDetail; faces: number; named: Face[] }) {
+function Summary({ photo: p, faces, named, onDate }: { photo: PhotoDetail; faces: number; named: Face[]; onDate: () => void }) {
   const names = named.filter((f) => !f.ignored && f.person_name && f.source !== "auto").map((f) => (f.alt_name ? `${f.person_name} or ${f.alt_name}` : f.person_name));
   const guesses = named.filter((f) => !f.ignored && guessOf(f)).length;
   return (
     <div className="t-summary">
-      <span className={`t-summary__date t-status-${p.status}`}>{p.date_label || "No date"}</span>
-      {p.date_source && <span className="t-muted"> {DATE_SOURCE[p.date_source]}</span>}
+      {/* The date is a button: it opens the Date tab, where it can be changed. */}
+      <button className="t-summary__datebtn" onClick={onDate}
+        aria-label={`${p.date_label || "No date"}${p.date_source ? `, ${DATE_SOURCE[p.date_source]}` : ""}. Change the date`}>
+        <span className={`t-summary__date t-status-${p.status}`}>{p.date_label || "No date"}</span>
+        {p.date_source && <span className="t-muted"> {DATE_SOURCE[p.date_source]}</span>}
+        <span className="t-summary__change">Change</span>
+      </button>
       {p.event_label && <span> · {p.event_label}</span>}
       <div className="t-summary__people t-muted">
         {names.length ? names.join(", ") : faces ? plural(faces, "face") : "No faces"}
@@ -327,7 +331,9 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
 function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
   const update = useUpdatePhotos();
   const places = usePlaces();
-  const [caption, setCaption] = useState<"" | "saving" | "saved" | "error">("");
+  const [caption, setCaption] = useState<"" | "saving" | "saved" | "waiting" | "error">("");
+  // Saved now, or kept on this device and saved once the photos can be reached (never just dropped).
+  const keep = (key: string, body: Parameters<typeof update.mutateAsync>[0]) => saveOrKeep(key, body, (b) => update.mutateAsync(b));
   const [place, setPlace] = useState({ country: p.country ?? "", state: p.state ?? "", city: p.city ?? "" });
   const [placeNote, setPlaceNote] = useState("");
   useEffect(() => {
@@ -340,16 +346,19 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
   // not saved yet is saved then (the Undo toast shows it), not dropped.
   const captionField = useSaveOnLeave((value, leaving) => {
     if (value === (p.caption ?? "")) return;
-    if (leaving) return update.mutate({ ids: [p.id], caption: value });
+    const saving = keep(`${p.id}:caption`, { ids: [p.id], caption: value });
+    if (leaving) return void saving.catch(() => {}); // kept and retried if it failed; the app says so
     setCaption("saving");
-    update.mutate({ ids: [p.id], caption: value }, { onSuccess: () => setCaption("saved"), onError: () => setCaption("error") });
+    saving.then(() => setCaption("saved"), (e) => setCaption(e instanceof ApiError ? "error" : "waiting"));
   }, p.id);
   const placeEdit = useRef<{ id: number; place: typeof place } | null>(null);
   useEffect(
     () => () => {
       const e = placeEdit.current;
       placeEdit.current = null;
-      if (e) update.mutate({ ids: [e.id], country: e.place.country.trim(), state: e.place.state.trim(), city: e.place.city.trim() });
+      if (e)
+        keep(`${e.id}:place`, { ids: [e.id], country: e.place.country.trim(), state: e.place.state.trim(), city: e.place.city.trim() })
+          .catch(() => {}); // kept and retried if it failed; the app says so
     },
     [p.id],
   );
@@ -364,7 +373,7 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
     <div className="t-info">
       <label className="t-field">
         <span className="t-field__label">
-          Caption <span className="t-muted">{caption === "saving" ? "saving…" : caption === "saved" ? "✓ saved" : caption === "error" ? "not saved" : "saved when you're done typing"}</span>
+          Caption <span className="t-muted">{caption === "saving" ? "saving…" : caption === "saved" ? "✓ saved" : caption === "error" ? "not saved" : caption === "waiting" ? "not saved yet: it will save when the photos can be reached" : "saved when you're done typing"}</span>
         </span>
         <textarea
           key={`${p.id}:${p.caption ?? ""}`}
@@ -389,9 +398,9 @@ function InfoPanel({ photo: p }: { photo: PhotoDetail }) {
           disabled={!placeChanged || update.isPending}
           onClick={() => {
             placeEdit.current = null;
-            update.mutate(
-              { ids: [p.id], country: place.country.trim(), state: place.state.trim(), city: place.city.trim() },
-              { onSuccess: () => setPlaceNote("✓ saved"), onError: (e) => setPlaceNote(String(e)) },
+            keep(`${p.id}:place`, { ids: [p.id], country: place.country.trim(), state: place.state.trim(), city: place.city.trim() }).then(
+              () => setPlaceNote("✓ saved"),
+              (e) => setPlaceNote(e instanceof ApiError ? String(e.message) : "Not saved yet: it will save when the photos can be reached."),
             );
           }}
         >

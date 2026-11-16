@@ -6,7 +6,7 @@ import { useAlbums, useEventInstances, useLongPress, useMedia, usePhotos, useRem
 import { usePeople } from "../../src/peopleData";
 import { go, LAST_PHOTO_EVENT, openPhoto, photosHref } from "../route";
 import { DatePanel, EventPanel } from "../dating";
-import { plural, Sheet, StatusDot } from "../ui";
+import { Placeholder, plural, Sheet, StatusDot } from "../ui";
 
 const ids = (text?: string) => new Set((text ?? "").split(",").filter(Boolean).map(Number));
 const text = (set: Set<number>) => (set.size ? [...set].sort((a, b) => a - b).join(",") : undefined);
@@ -44,7 +44,7 @@ export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
   const wide = useMedia("(min-width: 1100px)");
   // The new grid (a preview, switched on in the ⋯ menu): pinching changes how many photos fill a
   // row, which sets the row height; the same column steps as the classic grid.
-  const look = useNewGrid();
+  const look = useNewGrid(true);
   const defaultCols = phone ? 3 : wide ? 7 : 5;
   const pinch = useGridPinch(gridEl, true, phone, look.on ? defaultCols : undefined);
   const perRow = pinch.cols ?? defaultCols;
@@ -136,7 +136,7 @@ export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
             }}
           />
         ))}
-        {photos.isLoading && <p className="t-empty">Loading…</p>}
+        {photos.isLoading && <Placeholder kind="grid" />}
         {!photos.isLoading && items.length === 0 && (
           <p className="t-empty">
             {Object.values(list).some((v) => v !== undefined && v !== "album") ? (

@@ -33,6 +33,14 @@ export function useFaceAction() {
   return { run, busy, error };
 }
 
+/** How sure the app is, in words a first-time visitor reads at a glance (no percentages). */
+export const sureness = (confidence: number | null | undefined) =>
+  (confidence ?? 0) >= 0.8 ? "Probably" : (confidence ?? 0) >= 0.65 ? "Maybe" : "Not sure";
+
+/** The guess as a question: "Probably Sam?", "Maybe Sam?", "Could this be Sam?". */
+export const guessQuestion = (name: string, confidence: number | null | undefined) =>
+  (confidence ?? 0) >= 0.65 ? `${sureness(confidence)} ${name}?` : `Could this be ${name}?`;
+
 /** The app's guess for a face: its own automatic name, a suggestion, or "Ana or Ben?". */
 export function guessOf(f: Face): { name: string; personId: number; pair: boolean } | null {
   if (f.source === "auto" && f.person_name && f.person_id) return { name: f.person_name, personId: f.person_id, pair: false };
@@ -144,6 +152,22 @@ function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active:
   const guess = guessOf(f);
   const named = f.person_name && f.source !== "auto";
   const assign = (who: Parameters<typeof api.assignFaces>[1]) => run(() => api.assignFaces([f.id], who)).then(() => setRenaming(false));
+  // A face a person confirmed, of someone with no twin: settled, so it takes one short line. "Change"
+  // opens the rest (Not …, Rename, Or…, Ignore). Twins keep the full card: which one is often in doubt.
+  const [open, setOpen] = useState(false);
+  const settled = !!named && !f.ignored && !f.alt_person_id && twinsOf(f.person_id).length === 0;
+  if (settled && !open && !renaming)
+    return (
+      <div ref={row} className={`t-face t-face--compact ${active ? "is-active" : ""}`}>
+        <button className="t-face__crop" onClick={onActive} aria-label={`Show ${f.person_name} on the photo`}>
+          <img src={faceUrl(f.id)} alt="" loading="lazy" />
+        </button>
+        <span className="t-face__name">{faceName(f)}</span>
+        <button className="t-btn t-face__change" onClick={() => setOpen(true)} aria-expanded={false} aria-label={`Change ${f.person_name}`}>
+          Change
+        </button>
+      </div>
+    );
   return (
     <div ref={row} className={`t-face ${active ? "is-active" : ""} ${f.ignored ? "is-ignored" : ""}`}>
       <button className="t-face__crop" onClick={onActive} aria-label="Show on the photo">
@@ -159,15 +183,14 @@ function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active:
           </>
         ) : guess ? (
           <>
-            <span className="t-face__q">
-              {guess.name}? <span className="t-muted">{Math.round((f.confidence ?? 0) * 100)}% match</span>
-            </span>
+            <span className="t-face__q">{guessQuestion(guess.name, f.confidence)}</span>
             <div className="t-face__actions">
-              <button className="t-btn t-btn--primary" disabled={busy} onClick={() => run(() => api.acceptFaces([f.id]))}>
-                Yes
+              {/* Two equal answers (neither looks already chosen): the pumpkin fill is for "do this". */}
+              <button className="t-btn t-btn--answer" disabled={busy} onClick={() => run(() => api.acceptFaces([f.id]))}>
+                ✓ Yes
               </button>
-              <button className="t-btn" disabled={busy} onClick={() => run(() => api.rejectFaces([f.id]))}>
-                No
+              <button className="t-btn t-btn--answer" disabled={busy} onClick={() => run(() => api.rejectFaces([f.id]))}>
+                ✕ No
               </button>
               {!guess.pair &&
                 twinsOf(guess.personId).map((t) => (
@@ -176,7 +199,8 @@ function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active:
                   </button>
                 ))}
             </div>
-            <NameField placeholder="Or someone else…" busy={busy} onName={(name) => assign({ name })} onPair={assign} />
+            <NameField placeholder="Or someone else…" busy={busy} onName={(name) => assign({ name })} onPair={assign}
+              rememberAs={`t-face-or:${f.id}`} />
           </>
         ) : named && !renaming ? (
           <>
@@ -214,6 +238,11 @@ function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active:
                   Or…
                 </button>
               )}
+              {settled && (
+                <button className="t-btn t-btn--plain" onClick={() => (setOpen(false), setOrOpen(false))} aria-expanded>
+                  Done
+                </button>
+              )}
             </div>
             {orOpen && (
               <NameField
@@ -229,6 +258,7 @@ function FaceRow({ face: f, active, justDrawn, onActive }: { face: Face; active:
             busy={busy}
             autoFocus={renaming || justDrawn}
             placeholder={renaming ? "Rename to…" : "Who is this?"}
+            rememberAs={`t-face-name:${f.id}`}
             onName={(name) => assign({ name })}
             onPair={assign}
           />
