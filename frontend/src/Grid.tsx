@@ -3,6 +3,7 @@ import { albumLabel, imgUrl, type ListParams, type PhotoSummary } from "./api";
 import { FiltersButton, SidebarDrawer } from "./Drawer";
 import { DateEventEditor, PlaceEditor } from "./Editor";
 import { useGridPinch } from "./gridPinch";
+import { NewGrid, useNewGrid } from "./GridNew";
 import { useAlbums, useDrawer, useEventInstances, useLongPress, usePhone, usePhotos, useTouch, useUpdatePhotos, useYears } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { usePeople } from "./People";
@@ -373,7 +374,8 @@ export function Grid({ list }: { list: ListParams }) {
   // sure the photo last viewed (possibly several swipes on) is on screen.
   const gridEl = useRef<HTMLDivElement>(null);
   // Pinch the grid (phones and tablets) for fewer, bigger photos or more, smaller ones.
-  const pinch = useGridPinch(gridEl, touch, usePhone());
+  const look = useNewGrid(); // the new grid (a preview): its own photo-size slider instead of pinch
+  const pinch = useGridPinch(gridEl, touch && !look.on, usePhone());
   const scrollKey = listQuery(list);
   // Once per visit to the grid: switching filters inside the grid keeps today's behaviour.
   const restored = useRef(false);
@@ -385,7 +387,7 @@ export function Grid({ list }: { list: ListParams }) {
     const saved = scrollMemory.get(scrollKey);
     if (saved !== undefined) el.scrollTop = saved;
     const last = takeLastPhoto(list);
-    const tile = last !== null ? el.querySelector<HTMLElement>(`.tile[data-id="${last}"]`) : null;
+    const tile = last !== null ? el.querySelector<HTMLElement>(`[data-id="${last}"]`) : null;
     if (tile) {
       const t = tile.getBoundingClientRect();
       const g = el.getBoundingClientRect();
@@ -481,6 +483,13 @@ export function Grid({ list }: { list: ListParams }) {
             {photos.isLoading ? "Loading…" : `${photos.data?.total ?? 0} photos`}
             {selectedIds.length > 0 && ` · ${selectedIds.length} selected`}
           </span>
+          <label className="lookswitch" title="Preview of a new, photo-first grid">
+            <input type="checkbox" checked={look.on} onChange={look.toggle} /> New grid
+          </label>
+          {look.on && (
+            <input className="rowsize" type="range" min={110} max={360} step={10} value={look.row}
+              onChange={(e) => look.setRow(Number(e.target.value))} aria-label="Photo size" title="Photo size" />
+          )}
           {selectMode ? (
             <>
               <span className="spacer" />
@@ -536,11 +545,14 @@ export function Grid({ list }: { list: ListParams }) {
         )}
         <div
           ref={gridEl}
-          className={`grid ${pinch.className} ${selectMode ? "is-selecting" : ""} ${selectedIds.length ? "has-sheet" : ""}`}
-          style={pinch.style}
+          className={`grid ${look.on ? "grid--new" : pinch.className} ${selectMode ? "is-selecting" : ""} ${selectedIds.length ? "has-sheet" : ""}`}
+          style={look.on ? undefined : pinch.style}
           onScroll={(e) => scrollMemory.set(scrollKey, e.currentTarget.scrollTop)}
         >
-          {items.map((p) => (
+          {look.on ? (
+            <NewGrid items={items} list={list} row={look.row} selected={selected} selecting={selectMode}
+              onClick={onTileClick} onOpen={(p) => navigate(photoHref(p.id, list))} onTap={onTileTap} onLongPress={onTileLongPress} />
+          ) : items.map((p) => (
             <Tile
               key={p.id}
               p={p}

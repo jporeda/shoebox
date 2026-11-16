@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { albumLabel, imgUrl, type ListParams, type PhotoSummary } from "../../src/api";
 import { useGridPinch } from "../../src/gridPinch";
+import { NewGrid, useNewGrid } from "../../src/GridNew";
 import { useAlbums, useEventInstances, useLongPress, useMedia, usePhotos, useRemembered, useUpdatePhotos, useYears } from "../../src/hooks";
 import { usePeople } from "../../src/peopleData";
 import { go, LAST_PHOTO_EVENT, openPhoto, photosHref } from "../route";
@@ -40,7 +41,14 @@ export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
   const items = photos.data?.items ?? [];
   const gridEl = useRef<HTMLDivElement>(null);
   const phone = useMedia("(max-width: 600px)");
-  const pinch = useGridPinch(gridEl, true, phone);
+  const wide = useMedia("(min-width: 1100px)");
+  // The new grid (a preview, switched on in the ⋯ menu): pinching changes how many photos fill a
+  // row, which sets the row height; the same column steps as the classic grid.
+  const look = useNewGrid();
+  const defaultCols = phone ? 3 : wide ? 7 : 5;
+  const pinch = useGridPinch(gridEl, true, phone, look.on ? defaultCols : undefined);
+  const perRow = pinch.cols ?? defaultCols;
+  const rowHeight = pinch.width ? Math.max(48, (pinch.width - 2 * (perRow - 1)) / perRow / 1.3) : 110;
   const [filters, setFilters] = useState(false);
   const [action, setAction] = useState<"" | "date" | "event">("");
   const update = useUpdatePhotos();
@@ -66,7 +74,7 @@ export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
       const id = (e as CustomEvent<number>).detail;
       requestAnimationFrame(() => {
         const grid = gridEl.current;
-        const tile = grid?.querySelector<HTMLElement>(`.t-tile[data-id="${id}"]`);
+        const tile = grid?.querySelector<HTMLElement>(`[data-id="${id}"]`);
         if (!grid || !tile) return;
         const g = grid.getBoundingClientRect(), t = tile.getBoundingClientRect();
         if (t.top < g.top || t.bottom > g.bottom) tile.scrollIntoView({ block: "center" });
@@ -91,11 +99,25 @@ export function Photos({ list, bare }: { list: ListParams; bare?: boolean }) {
       {!bare && <FilterBar list={list} total={photos.data?.total} onOpen={() => setFilters(true)} />}
       <div
         ref={gridEl}
-        className={`t-grid ${pinch.className}`}
-        style={pinch.style}
+        className={`t-grid ${look.on ? "grid--new" : pinch.className}`}
+        style={look.on ? undefined : pinch.style}
         onScroll={(e) => scrollMemory.set(key, e.currentTarget.scrollTop)}
       >
-        {items.map((p) => (
+        {look.on ? (
+          <NewGrid touchApp items={items} list={list} row={rowHeight} selected={selected} selecting={selecting}
+            onOpen={(p) => openPhoto({ id: p.id })}
+            onTap={(p) => {
+              if (pinch.suppressed()) return;
+              if (selecting) toggle(p.id);
+              else openPhoto({ id: p.id });
+            }}
+            onLongPress={(p) => {
+              if (pinch.suppressed()) return;
+              setSelecting(true);
+              toggle(p.id);
+            }}
+          />
+        ) : items.map((p) => (
           <Tile
             key={p.id}
             p={p}

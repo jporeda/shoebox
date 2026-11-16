@@ -64,7 +64,7 @@ const distance = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].
  *  Touch devices only (`enabled`); with a mouse the grid keeps its automatic layout.
  *  During the pinch the grid scales live around the fingers; on release it snaps to a column step,
  *  keeping the photo under the fingers in place, and the choice is remembered per phone / tablet. */
-export function useGridPinch(ref: RefObject<HTMLDivElement | null>, enabled: boolean, phone: boolean) {
+export function useGridPinch(ref: RefObject<HTMLDivElement | null>, enabled: boolean, phone: boolean, defaultCols?: number) {
   const [cols, setCols] = useState<number | null>(() => (enabled ? load(phone) : null));
   const [width, setWidth] = useState(0);
   const suppressUntil = useRef(0);
@@ -101,7 +101,8 @@ export function useGridPinch(ref: RefObject<HTMLDivElement | null>, enabled: boo
     if (!el || !enabled) return;
     let g: Gesture | null = null;
 
-    const currentCols = () => cols ?? getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).length;
+    // The new grid isn't a CSS grid: it says how many photos a row holds by default.
+    const currentCols = () => cols ?? defaultCols ?? getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).length;
 
     const begin = (e: TouchEvent) => {
       const t = e.touches;
@@ -199,7 +200,7 @@ export function useGridPinch(ref: RefObject<HTMLDivElement | null>, enabled: boo
       el.removeEventListener("gesturestart", noGesture);
       el.removeEventListener("gesturechange", noGesture);
     };
-  }, [ref, enabled, phone, cols, steps]);
+  }, [ref, enabled, phone, cols, steps, defaultCols]);
 
   // After the new column count is laid out: put the photo that was under the fingers back under
   // them, then shrink or grow from the size it had at release to its new size.
@@ -241,6 +242,9 @@ export function useGridPinch(ref: RefObject<HTMLDivElement | null>, enabled: boo
   const className = cols ? `grid--cols${dense ? " grid--dense" : ""}` : "";
   const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
   return {
+    /** Photos per row the person pinched to (null: the default), and the grid's content width. */
+    cols,
+    width,
     style,
     className,
     /** Tiles big enough that the 400px thumbnail would look soft: show the preview image instead. */

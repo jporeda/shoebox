@@ -499,3 +499,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .settings__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 16px 10px; }
 .active-filters__chip span { margin-left: 4px; opacity: 0.7; }
+
+/* --- The new grid (preview), desktop parts; the grid itself is in gridNew.css ---------------- */
+.lookswitch { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; color: var(--muted); cursor: pointer; }
+.rowsize { width: 120px; accent-color: var(--accent); }
+.grid.grid--new { display: block; padding: 0 16px 220px; }

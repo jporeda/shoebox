@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, setCollection, type PhotoSummary } from "../src/api";
 import { useUndo } from "../src/hooks";
+import { useNewGrid } from "../src/GridNew";
 
 /** A panel sliding up from the bottom over a dimmed screen; tap outside or "Done" to close. */
 export function Sheet({ open, onClose, title, children, full }: {
@@ -97,6 +98,7 @@ export function UndoToast() {
  *  app never need it. */
 export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const collections = useQuery({ queryKey: ["collections"], queryFn: api.collections });
+  const look = useNewGrid();
   return (
     <Sheet open={open} onClose={onClose} title="Shoebox">
       {(collections.data?.length ?? 0) > 1 && (
@@ -122,6 +124,10 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
       )}
       <section className="t-section">
         <div className="t-list">
+          <label className="t-row">
+            <span>New photo grid</span>
+            <input type="checkbox" className="t-switch" checked={look.on} onChange={look.toggle} />
+          </label>
           <button className="t-row" onClick={() => location.reload()}>
             <span>Reload</span>
           </button>
