@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from . import editlog
 from .api import router
@@ -141,6 +142,22 @@ def _refuse_write(request: Request) -> JSONResponse | None:
             return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
     return None
 
+class _Compress:
+    """Gzip for the API's JSON and the UI's scripts (the photo list is ~6x smaller), over the home
+    Wi-Fi to phones. JPEGs are already compressed: they pass straight through."""
+
+    SKIP = ("/api/img/", "/api/face/")
+
+    def __init__(self, app):
+        self.plain = app
+        self.gzip = GZipMiddleware(app, minimum_size=1024)
+
+    async def __call__(self, scope, receive, send):
+        skip = scope["type"] != "http" or scope["path"].startswith(self.SKIP)
+        await (self.plain if skip else self.gzip)(scope, receive, send)
+
+
+app.add_middleware(_Compress)
 app.include_router(router)
 app.include_router(people_router)
 class _UI(StaticFiles):

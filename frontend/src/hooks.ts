@@ -18,13 +18,21 @@ export const useJobs = () =>
     refetchInterval: (q) => (q.state.data?.some((j) => ACTIVE.includes(j.state)) ? 1000 : 10000),
   });
 
+/** Each recent job's id and state only, on the same schedule: what the apps poll all the time. */
+export const useJobStates = () =>
+  useQuery({
+    queryKey: ["jobs", "states"],
+    queryFn: api.jobStates,
+    refetchInterval: (q) => (q.state.data?.some((j) => ACTIVE.includes(j.state)) ? 1000 : 10000),
+  });
+
 /** Mounted once in App: when any job finishes, on any page, the data it may have changed is
  *  refetched (e.g. the "Infer dates & names" run that confirming faces on Check starts). Compares
  *  finished job ids rather than watching running ones, so a job that starts and finishes between
  *  two polls still counts. */
 export function useJobWatcher() {
   const qc = useQueryClient();
-  const jobs = useJobs();
+  const jobs = useJobStates();
   const finished = useRef<Set<number> | null>(null);
   useEffect(() => {
     if (!jobs.data) return;

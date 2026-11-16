@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../src/api";
-import { useJobs, useJobWatcher, useStats } from "../src/hooks";
+import { useJobStates, useJobWatcher, useStats } from "../src/hooks";
 import { usePeople } from "../src/peopleData";
 import { closePhoto, go, LAST_PHOTO_EVENT, useTouchRoute, viewerList, type Screen } from "./route";
 import { Photos } from "./screens/Photos";
@@ -41,7 +41,7 @@ export function App() {
   useJobWatcher(); // refresh what a background job changed (e.g. new name suggestions)
   const stats = useStats();
   // The job list is asked for every few seconds, so it notices first when the Mac can't be reached.
-  const jobs = useJobs();
+  const jobs = useJobStates();
   // A save that failed for want of a connection says so at once, not on the next poll; the changes it
   // kept are saved as soon as the photos answer again.
   const [waiting, setWaiting] = useState(waitingCount);

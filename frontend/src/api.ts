@@ -117,6 +117,7 @@ export const api = {
     call<SettingsInfo>("/settings", { method: "PUT", body: JSON.stringify(body) }),
   collections: () => call<CollectionInfo[]>("/collections"),
   jobs: () => call<Job[]>("/jobs"),
+  jobStates: () => call<S["JobState"][]>("/jobs/states"),
   startJob: (type: JobType, params: Record<string, unknown> = {}) =>
     call<Job>("/jobs", { method: "POST", body: JSON.stringify({ type, params }) }),
   cancelJob: (id: number) => call<{ ok: boolean }>(`/jobs/${id}/cancel`, { method: "POST" }),

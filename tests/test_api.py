@@ -197,3 +197,21 @@ def test_not_duplicates_splits_the_group_and_import_keeps_it_split(album_tree, e
         assert group() == {}
         client.post("/api/undo", json={})
         assert set(group()) == {"Album 1980s/IMG_0002.jpg", "Album 1990s/rescan.jpg"}
+
+
+def test_json_is_gzipped_but_images_are_not(album_tree, env):
+    run_ingest()
+    with api_client() as client:
+        gz = {"Accept-Encoding": "gzip"}
+        listing = client.get("/api/photos", headers=gz)
+        assert listing.headers["content-encoding"] == "gzip"
+        assert listing.json()["total"] > 0  # decodes back to the same list
+        p = listing.json()["items"][0]
+        img = client.get(f"/api/img/{p['sha256']}/thumb/0.jpg", headers=gz)
+        assert "content-encoding" not in img.headers and "immutable" in img.headers["cache-control"]
+
+
+def test_job_states_is_the_slim_poll(env):
+    with api_client() as client:
+        job = client.post("/api/jobs", json={"type": "backup"}).json()
+        assert client.get("/api/jobs/states").json()[0] == {"id": job["id"], "state": "queued"}

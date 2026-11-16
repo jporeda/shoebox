@@ -1200,6 +1200,51 @@
     }
    }
   },
+  "/api/jobs/states": {
+   "get": {
+    "summary": "Job States",
+    "description": "Just each recent job's id and state: what the apps poll every few seconds to notice a job\nfinishing (and the Mac going away), a few hundred bytes instead of the full job list.",
+    "operationId": "job_states_api_jobs_states_get",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 30,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/JobState"
+         },
+         "title": "Response Job States Api Jobs States Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/jobs/{job_id}/cancel": {
    "post": {
     "summary": "Cancel Job",
@@ -3165,6 +3210,24 @@
      "finished_at"
     ],
     "title": "JobOut"
+   },
+   "JobState": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "state": {
+      "type": "string",
+      "title": "State"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "state"
+    ],
+    "title": "JobState"
    },
    "MergeIn": {
     "properties": {

@@ -853,6 +853,18 @@ def list_jobs(limit: int = 30, s: Session = Depends(get_session)):
     return [JobOut(**j.model_dump()) for j in s.exec(select(Job).order_by(Job.id.desc()).limit(limit)).all()]
 
 
+class JobState(BaseModel):
+    id: int
+    state: str
+
+
+@router.get("/jobs/states", response_model=list[JobState])
+def job_states(limit: int = 30, s: Session = Depends(get_session)):
+    """Just each recent job's id and state: what the apps poll every few seconds to notice a job
+    finishing (and the Mac going away), a few hundred bytes instead of the full job list."""
+    return [JobState(id=j.id, state=j.state) for j in s.exec(select(Job).order_by(Job.id.desc()).limit(limit)).all()]
+
+
 @router.post("/jobs", response_model=JobOut)
 def start_job(body: JobIn):
     job = jobs.enqueue(body.type, body.params)

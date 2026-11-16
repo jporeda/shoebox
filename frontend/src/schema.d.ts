@@ -385,6 +385,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job States
+         * @description Just each recent job's id and state: what the apps poll every few seconds to notice a job
+         *     finishing (and the Mac going away), a few hundred bytes instead of the full job list.
+         */
+        get: operations["job_states_api_jobs_states_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -1091,6 +1112,13 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /** JobState */
+        JobState: {
+            /** Id */
+            id: number;
+            /** State */
+            state: string;
         };
         /** MergeIn */
         MergeIn: {
@@ -2241,6 +2269,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_states_api_jobs_states_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobState"][];
                 };
             };
             /** @description Validation Error */
