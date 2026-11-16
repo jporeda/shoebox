@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { albumLabel, api, ApiError, imgUrl, type Face, type ListParams, type PhotoDetail, type PhotoSummary } from "../../src/api";
+import { albumLabel, api, ApiError, faceName, imgUrl, type Face, type ListParams, type PhotoDetail, type PhotoSummary } from "../../src/api";
 import { useLocations, useMedia, usePhotos, usePlaces, useSaveOnLeave, useUpdatePhotos } from "../../src/hooks";
 import { DatePanel, DATE_SOURCE, EventPanel } from "../dating";
-import { FacesPanel, guessOf, useFaceZoomSetting, useRefreshFaces } from "../faces";
+import { FacesPanel, faceStatus, guessOf, useFaceAction, useFaceZoomSetting, useRefreshFaces } from "../faces";
 import { stepPhoto } from "../route";
 import { saveOrKeep } from "../pending";
-import { OPEN_ESTIMATE, OPEN_EXACT, useSwitch } from "../settings";
+import { ACCEPT_ALL, CONFIRMED_NAMES, ESTIMATED_NAMES, FIRST_NAMES, OPEN_ESTIMATE, OPEN_EXACT, useSwitch } from "../settings";
 import { plural } from "../ui";
 
 type Tab = "date" | "people" | "info" | "advanced";
@@ -27,8 +27,12 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
   const photos = usePhotos(list);
   const items = photos.data?.items ?? [];
   const idx = items.findIndex((p) => p.id === id);
-  const prev = idx > 0 ? items[idx - 1] : null;
-  const next = idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
+  // A subset (a Check group's photos, a person's, a filtered grid) goes round: Previous on the first
+  // photo is the last, Next on the last is the first. All photos stop at either end.
+  const subset = Object.entries(list).some(([k, v]) => v !== undefined && v !== "" && k !== "order");
+  const wrap = subset && items.length > 1;
+  const prev = idx > 0 ? items[idx - 1] : wrap && idx === 0 ? items[items.length - 1] : null;
+  const next = idx >= 0 && idx < items.length - 1 ? items[idx + 1] : wrap && idx === items.length - 1 ? items[0] : null;
   const wide = useMedia("(min-width: 768px)");
   // Phones start with the sheet folded down to a summary; iPads keep the side panel open.
   const [tab, setTab] = useState<Tab | null>(focus?.length ? "people" : null);
@@ -38,14 +42,33 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
   const [drawing, setDrawing] = useState(false);
   const [drawn, setDrawn] = useState<number | null>(null); // the face just drawn: its name box comes up
   const [drawError, setDrawError] = useState("");
+  // Boxes drawn since drawing started: drawing goes on (for the next missed face) until a tap off the
+  // photo, or on one of these, whose name box then comes up.
+  const [newBoxes, setNewBoxes] = useState<number[]>([]);
   const refreshFaces = useRefreshFaces();
-  useEffect(() => (setDrawing(false), setDrawn(null), setDrawError("")), [id]);
+  useEffect(() => (setDrawing(false), setDrawn(null), setDrawError(""), setNewBoxes([])), [id]);
+  const startDrawing = () => (setDrawing(true), setChrome(true), setNewBoxes([]), setDrawn(null), setDrawError(""));
+  /** Stop drawing; `name`: a box just drawn that was tapped, whose name box comes up. */
+  const finishDrawing = (name: number | null) => {
+    setDrawing(false);
+    setDrawError("");
+    if (name !== null) (setDrawn(name), setActiveFace(name), setTab("people"));
+  };
+  // A tap anywhere off the photo (the panel, the bar) also ends drawing; the photo's own area is
+  // handled by Stage (a tap beside the photo ends it too, a tap on a new box names it).
+  useEffect(() => {
+    if (!drawing) return;
+    const off = (e: PointerEvent) => {
+      if (!(e.target as Element).closest?.(".t-stage")) finishDrawing(null);
+    };
+    document.addEventListener("pointerdown", off, true);
+    return () => document.removeEventListener("pointerdown", off, true);
+  }, [drawing]); // eslint-disable-line react-hooks/exhaustive-deps
   const addFace = async (box: { x: number; y: number; w: number; h: number }) => {
     setDrawError("");
     try {
       const f = await api.drawFace(id, box);
-      setDrawing(false);
-      setDrawn(f.id);
+      setNewBoxes((b) => [...b, f.id]); // still drawing: the next missed face can be boxed right away
       setActiveFace(f.id);
       setTab("people");
       refreshFaces();
@@ -74,11 +97,43 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
       if ((e.target as HTMLElement).closest("input, textarea, select")) return;
       if (e.key === "ArrowLeft") step(prev);
       else if (e.key === "ArrowRight") step(next);
-      else if (e.key === "Escape") drawing ? setDrawing(false) : close();
+      else if (e.key === "Escape") drawing ? finishDrawing(null) : close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  const [acceptAllOn] = useSwitch(ACCEPT_ALL);
+  const [confirmedNames] = useSwitch(CONFIRMED_NAMES);
+  const [estimatedNames] = useSwitch(ESTIMATED_NAMES);
+  const [firstNames] = useSwitch(FIRST_NAMES);
+  const accepting = useFaceAction();
+  // The face list's order, set when the photo's faces load and kept while it's open (confirming a
+  // name doesn't move its card from under your finger): faces drawn since come first, then the
+  // app's guesses, then unknown faces, then confirmed ones.
+  const order = useRef<{ photo: number; ids: number[] } | null>(null);
+  if (faces.data) {
+    if (order.current?.photo !== id) {
+      const rank = { guess: 0, unknown: 1, named: 2 };
+      const sorted = [...faces.data].sort((a, b) => Number(a.ignored) - Number(b.ignored) || rank[faceStatus(a)] - rank[faceStatus(b)]);
+      order.current = { photo: id, ids: sorted.map((f) => f.id) };
+    }
+    const added = faces.data.filter((f) => !order.current!.ids.includes(f.id)).map((f) => f.id);
+    if (added.length) order.current.ids = [...added.reverse(), ...order.current.ids]; // the newest on top
+  }
+  const listed = [...(faces.data ?? [])].sort((a, b) => order.current!.ids.indexOf(a.id) - order.current!.ids.indexOf(b.id));
+  const live = (faces.data ?? []).filter((f) => !f.ignored);
+  const guesses = live.filter((f) => guessOf(f));
+  // Each box's colour (green: a person confirmed the name, yellow: the app has a guess, red: no idea)
+  // and, if the Advanced tab says so, its label: the confirmed name, or the guess with a "?".
+  const boxOf = (f: Face) => {
+    const g = guessOf(f);
+    const short = (name: string | null) => (name && firstNames ? firstOnly(name) : name);
+    const status = faceStatus(f);
+    if (g) return { status, label: estimatedNames ? `${short(g.name)}?` : null };
+    if (status === "named") return { status, label: confirmedNames ? short(faceName(f)) : null };
+    return { status, label: null };
+  };
 
   const p = detail.data;
   // The list already has what the photo itself needs: show it at once, the details follow.
@@ -98,12 +153,23 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
           <button className="t-btn t-btn--glass" disabled={!next} onClick={() => step(next)} aria-label="Next photo">
             ›
           </button>
+          {/* Right under the arrows (Advanced tab switch): on the photo, never in the panel's way. */}
+          {acceptAllOn && guesses.length > 0 && !drawing && (
+            <div className="t-acceptall">
+              <button className="t-btn t-btn--glass" disabled={accepting.busy}
+                aria-label={guesses.length === 1 ? "Accept the guess" : `Accept all ${guesses.length} guesses`}
+                onClick={() => accepting.run(() => api.acceptFaces(guesses.map((f) => f.id)))}>
+                ✓ Accept
+              </button>
+              {accepting.error && <span className="t-acceptall__error">Not saved: {accepting.error}</span>}
+            </div>
+          )}
         </span>
       </div>
       {pic ? (
         <Stage
           photo={pic}
-          boxes={shown === "people" ? (faces.data ?? []).filter((f) => !f.ignored) : []}
+          boxes={shown === "people" ? live.map((f) => ({ ...f, ...boxOf(f) })) : []}
           activeFace={activeFace}
           onFace={(fid) => (setActiveFace(fid), setTab("people"))}
           onPrev={() => step(prev)}
@@ -113,7 +179,8 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
           drawing={drawing}
           drawError={drawError}
           onDrawn={addFace}
-          onCancelDraw={() => (setDrawing(false), setDrawError(""))}
+          newBoxes={(faces.data ?? []).filter((f) => newBoxes.includes(f.id))}
+          onFinishDraw={finishDrawing}
         />
       ) : (
         <div className="t-stage">
@@ -146,8 +213,8 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
                 </>
               )}
               {shown === "people" && (
-                <FacesPanel faces={faces.data ?? []} active={activeFace} onActive={setActiveFace} drawn={drawn}
-                  drawing={drawing} onDraw={() => (setDrawing(true), setChrome(true))}
+                <FacesPanel faces={listed} active={activeFace} onActive={setActiveFace} drawn={drawn}
+                  drawing={drawing} onDraw={startDrawing}
                   photo={{ src: imgUrl(p.sha256, "preview", p.rotation), aspect: aspectOf(p) }} />
               )}
               {shown === "info" && <InfoPanel photo={p} />}
@@ -161,6 +228,11 @@ export function Viewer({ id, list, faces: focus, backLabel, onClose }: {
 }
 
 
+/** "Ana Smith" → "Ana"; "Ana Smith or Ben Smith" (twins) → "Ana or Ben". */
+function firstOnly(name: string): string {
+  return name.split(" or ").map((n) => n.trim().split(/\s+/)[0]).join(" or ");
+}
+
 /** Width / height of the photo as shown (turned a quarter, a portrait scan is landscape). */
 function aspectOf(p: PhotoSummary): number {
   const turned = p.rotation === 90 || p.rotation === 270;
@@ -171,6 +243,10 @@ function aspectOf(p: PhotoSummary): number {
 function AdvancedPanel({ photo: p }: { photo: PhotoDetail }) {
   const update = useUpdatePhotos();
   const [zoom, setZoom] = useFaceZoomSetting();
+  const [acceptAll, setAcceptAll] = useSwitch(ACCEPT_ALL);
+  const [confirmed, setConfirmed] = useSwitch(CONFIRMED_NAMES);
+  const [estimated, setEstimated] = useSwitch(ESTIMATED_NAMES);
+  const [first, setFirst] = useSwitch(FIRST_NAMES);
   const [openEstimate, setOpenEstimate] = useSwitch(OPEN_ESTIMATE);
   const [openExact, setOpenExact] = useSwitch(OPEN_EXACT);
   const rotate = (by: number) => update.mutate({ ids: [p.id], rotate_by: by });
@@ -194,6 +270,25 @@ function AdvancedPanel({ photo: p }: { photo: PhotoDetail }) {
         </label>
       </div>
       <p className="t-muted t-small">Adds “Zoom in” to the name box on the People tab, for small or blurry faces.</p>
+      <div className="t-list">
+        <label className="t-row">
+          <span>Enable Accept all Guesses</span>
+          <input type="checkbox" className="t-switch" checked={acceptAll} onChange={(e) => setAcceptAll(e.target.checked)} />
+        </label>
+        <label className="t-row">
+          <span>Show confirmed names</span>
+          <input type="checkbox" className="t-switch" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+        </label>
+        <label className="t-row">
+          <span>Show estimated names</span>
+          <input type="checkbox" className="t-switch" checked={estimated} onChange={(e) => setEstimated(e.target.checked)} />
+        </label>
+        <label className={`t-row ${confirmed || estimated ? "" : "is-off"}`}>
+          <span>First names only</span>
+          <input type="checkbox" className="t-switch" checked={first} disabled={!confirmed && !estimated} onChange={(e) => setFirst(e.target.checked)} />
+        </label>
+      </div>
+      <p className="t-muted t-small">Accept all puts a button on the photo that says yes to every name guess on it at once (Undo takes them back). On the People tab, face boxes are green when the name is confirmed, yellow when there's a guess, and red when nobody knows yet. The names switches put confirmed names and guesses (ending in “?”) beside the boxes; first names only keeps them short in crowded photos.</p>
       <h3 className="t-h3">Date</h3>
       <div className="t-list">
         <label className="t-row">
@@ -232,9 +327,10 @@ function Summary({ photo: p, faces, named, onDate }: { photo: PhotoDetail; faces
 }
 
 /** The photo, fitted to the space, with face boxes; swipe for next/previous, double-tap to zoom. */
-function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onDown, drawing, drawError, onDrawn, onCancelDraw }: {
+function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onDown, drawing, drawError, onDrawn, newBoxes, onFinishDraw }: {
   photo: PhotoSummary;
-  boxes: { id: number; x: number; y: number; w: number; h: number; person_name?: string | null }[];
+  /** `status`: the box's colour; `label`: shown beside it (the Advanced tab's names switches). */
+  boxes: { id: number; x: number; y: number; w: number; h: number; person_name?: string | null; label?: string | null; status: "named" | "guess" | "unknown" }[];
   activeFace: number | null;
   onFace: (id: number) => void;
   onPrev: () => void;
@@ -246,7 +342,10 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
   drawing: boolean;
   drawError: string;
   onDrawn: (box: { x: number; y: number; w: number; h: number }) => void;
-  onCancelDraw: () => void;
+  /** Boxes drawn since drawing started: a tap on one ends drawing and names it. */
+  newBoxes: { id: number; x: number; y: number; w: number; h: number }[];
+  /** End drawing: a tap beside the photo (null), or on one of `newBoxes` (its id), or Done (null). */
+  onFinishDraw: (name: number | null) => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -254,13 +353,18 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
   const pointer = useRef<{ x: number; y: number; t: number; ox: number; oy: number } | null>(null);
   const lastTap = useRef(0);
   const frame = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<{ start: [number, number]; box: { x: number; y: number; w: number; h: number }; pointerId: number } | null>(null);
+  // `raw`: where the finger went down on the photo, unclamped (outside 0..1: beside the photo).
+  const [drag, setDrag] = useState<{ start: [number, number]; raw: [number, number]; box: { x: number; y: number; w: number; h: number }; pointerId: number } | null>(null);
   useEffect(() => setDrag(null), [p.id, drawing]);
   // Where the finger is on the photo (0..1), measured on the shown frame, so it's right when zoomed in too.
-  const at = (e: React.PointerEvent): [number, number] => {
+  const rawAt = (e: React.PointerEvent): [number, number] => {
     const r = frame.current!.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+  };
+  const at = (e: React.PointerEvent): [number, number] => {
     const clamp = (v: number) => Math.min(1, Math.max(0, v));
-    return [clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height)];
+    const [x, y] = rawAt(e);
+    return [clamp(x), clamp(y)];
   };
   const aspect = aspectOf(p);
   useEffect(() => setZoom(null), [p.id]);
@@ -292,7 +396,7 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
             // not a live pointer: draw without capture
           }
           const s = at(e);
-          setDrag({ start: s, box: { x: s[0], y: s[1], w: 0, h: 0 }, pointerId: e.pointerId });
+          setDrag({ start: s, raw: rawAt(e), box: { x: s[0], y: s[1], w: 0, h: 0 }, pointerId: e.pointerId });
           return;
         }
         if ((e.target as Element).closest(".t-box")) return;
@@ -312,7 +416,12 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
         if (drawing) {
           if (!drag || e.pointerId !== drag.pointerId) return;
           setDrag(null);
-          if (drag.box.w >= 0.02 && drag.box.h >= 0.02) onDrawn(drag.box); // a tap isn't a box
+          if (drag.box.w >= 0.02 && drag.box.h >= 0.02) return onDrawn(drag.box);
+          // A tap, not a box: beside the photo, drawing is done; on a box just drawn, name that face.
+          const [x, y] = drag.raw;
+          if (x < 0 || x > 1 || y < 0 || y > 1) return onFinishDraw(null);
+          const hit = newBoxes.find((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+          if (hit) onFinishDraw(hit.id);
           return;
         }
         const s = pointer.current;
@@ -355,11 +464,13 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
           {boxes.map((b) => (
             <button
               key={b.id}
-              className={`t-box ${b.id === activeFace ? "is-active" : ""}`}
+              className={`t-box t-box--${b.status} ${b.id === activeFace ? "is-active" : ""}`}
               style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` }}
               onClick={() => onFace(b.id)}
-              aria-label={b.person_name ?? "Face"}
-            />
+              aria-label={b.status === "named" ? (b.person_name ?? "Face") : b.status === "guess" ? `${b.label ?? "Face"}, a guess` : "Unknown face"}
+            >
+              {b.label && <span className={`t-box__name t-box__name--${b.status}`} style={{ "--zoom": zoom?.s ?? 1 } as React.CSSProperties}>{b.label}</span>}
+            </button>
           ))}
           {drag && (
             <div className="t-box is-new" style={{ left: `${drag.box.x * 100}%`, top: `${drag.box.y * 100}%`, width: `${drag.box.w * 100}%`, height: `${drag.box.h * 100}%` }} />
@@ -368,9 +479,13 @@ function Stage({ photo: p, boxes, activeFace, onFace, onPrev, onNext, onTap, onD
       )}
       {drawing && (
         <div className="t-drawbar" role="status">
-          <span>{drawError ? `Not saved: ${drawError}` : "Drag a box around the face"}</span>
-          <button className="t-btn t-btn--glass" onClick={onCancelDraw}>
-            Cancel
+          <span>
+            {drawError ? `Not saved: ${drawError}`
+              : newBoxes.length ? "Box the next face, or tap a new box to name it"
+              : "Drag a box around the face"}
+          </span>
+          <button className="t-btn t-btn--glass" onClick={() => onFinishDraw(null)}>
+            Done
           </button>
         </div>
       )}

@@ -140,13 +140,21 @@ a { color: var(--accent); }
 .t-sheet__title { flex: 1; font-weight: 700; font-size: 17px; }
 .t-sheet__body { overflow: auto; padding: 12px 16px 16px; }
 @keyframes t-up { from { transform: translateY(40px); opacity: 0; } }
+/* Undo: a small pill at the top (placed by UndoToast: in the top bar, or over the photo), never over
+   the buttons at the bottom. */
 .t-toast {
-  position: fixed; left: 12px; right: 12px; bottom: calc(var(--tabs) + var(--safe-b) + 10px); z-index: 60;
-  display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 12px;
-  background: #2b2a28; color: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); max-width: 560px; margin: 0 auto;
+  position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 4px; width: max-content;
+  min-height: 40px; padding: 2px 4px 2px 14px; border-radius: 999px;
+  background: #2b2a28; color: #fff; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); animation: t-drop 0.16s ease-out;
 }
-.t-app.is-viewer .t-toast { bottom: calc(var(--safe-b) + 12px); }
-.t-toast__text { flex: 1; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes t-drop { from { opacity: 0; margin-top: -8px; } }
+@media (prefers-reduced-motion: reduce) { .t-toast { animation: none; } }
+.t-toast__text { min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-toast__undo { min-height: 36px; padding: 4px 12px; flex: none; }
+.t-menu-undo { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; text-align: left; }
+.t-menu-undo .t-small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.t-menu-undo__note { margin: 6px 4px 0; }
+.t-row:disabled { color: var(--muted); }
 .t-toast__undo { color: #8fb4ff; }
 
 /* ---- photos ---- */
@@ -201,7 +209,13 @@ a { color: var(--accent); }
 .t-frame { position: relative; transition: transform 0.2s ease-out; }
 .t-frame img { width: 100%; height: 100%; display: block; }
 .t-box { position: absolute; border: 2px solid rgba(255, 255, 255, 0.85); border-radius: 4px; background: none; padding: 0; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
-.t-box.is-active { border-color: var(--accent); border-width: 3px; }
+/* Face boxes by what's known: green confirmed, yellow a guess (dashed too, for colour-blind eyes),
+   red unknown. The one picked is thicker with a white glow. Bright enough to read on any photo. */
+.t-viewer { --box-named: #34c759; --box-guess: #ffd60a; --box-unknown: #ff453a; }
+.t-box--named { border-color: var(--box-named); }
+.t-box--guess { border-color: var(--box-guess); border-style: dashed; }
+.t-box--unknown { border-color: var(--box-unknown); }
+.t-box.is-active { border-width: 3px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 3px rgba(0, 0, 0, 0.4); }
 .t-panel {
   background: var(--bg); border-radius: 16px 16px 0 0; display: flex; flex-direction: column; max-height: 62dvh;
   padding-bottom: var(--safe-b);
@@ -320,7 +334,6 @@ a { color: var(--accent); }
   .t-queue__controls { flex: 1; min-width: 0; padding: 12px; } /* min-width 0: the year strip scrolls inside */
   .t-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .t-check .t-cards, .t-people .t-cards { padding: 0 16px 16px; }
-  .t-toast { bottom: calc(var(--tabs) + var(--safe-b) + 16px); }
   .t-sheet { border-radius: 16px; margin-bottom: 24px; }
 }
 @media (min-width: 1100px) {
@@ -345,9 +358,10 @@ a { color: var(--accent); }
 .t-drawbar {
   position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3;
   display: flex; align-items: center; gap: 10px; max-width: calc(100% - 24px);
-  padding: 4px 4px 4px 14px; border-radius: 999px; background: rgba(0, 0, 0, 0.7); color: #fff; font-size: 15px;
-  white-space: nowrap;
+  padding: 4px 4px 4px 14px; border-radius: 22px; background: rgba(0, 0, 0, 0.7); color: #fff; font-size: 15px;
+  width: max-content; line-height: 1.3;
 }
+.t-drawbar .t-btn { flex: none; }
 
 /* The new photo grid (preview; the grid itself is in src/gridNew.css): edge to edge, thin gaps. */
 .t-grid.grid--new { display: block; padding: 2px; }
@@ -430,7 +444,7 @@ a { color: var(--accent); }
 [data-look="harvest"] .t-sheet { background: var(--bg); border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--shadow-3); }
 [data-look="harvest"] .t-sheet__head { border-bottom-color: var(--rule); padding-top: 12px; }
 [data-look="harvest"] .t-sheet__title { font-family: var(--font-display); font-size: var(--title-sm); }
-[data-look="harvest"] .t-toast { background: var(--toast); color: var(--toast-text); border-radius: 14px; box-shadow: var(--shadow-3); }
+[data-look="harvest"] .t-toast { background: var(--toast); color: var(--toast-text); border-radius: 999px; box-shadow: var(--shadow-3); }
 [data-look="harvest"] .t-toast__undo { color: var(--toast-action); }
 
 /* photos */
@@ -578,3 +592,35 @@ a { color: var(--accent); }
 .facezoom__view { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); flex: none; }
 .facezoom__view img { position: absolute; max-width: none; }
 .facezoom__box { position: absolute; border: 2px solid var(--accent); border-radius: 3px; pointer-events: none; }
+
+/* Accept all guesses (Advanced tab switch). Hidden with the arrows when a tap folds the panel away. */
+/* Right under the photo's next/previous arrows, right-aligned with them; it doesn't make the top bar
+   taller (the Undo pill drops below it instead). */
+.t-viewer__nav { position: relative; }
+.t-acceptall {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 3;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+}
+.t-acceptall .t-btn { white-space: nowrap; font-weight: 700; }
+.t-acceptall__error { padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.7); color: #fff; font-size: 14px; }
+.t-viewer.no-chrome .t-acceptall { display: none; }
+/* Names beside face boxes (Advanced tab switch): under the box, kept the same size when zoomed in. */
+.t-box__name {
+  position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%) scale(calc(1 / var(--zoom, 1)));
+  transform-origin: top center; padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.72); color: #fff;
+  font-size: 13px; font-weight: 600; line-height: 1.5; white-space: nowrap; pointer-events: none;
+}
+.t-box__name--named { background: var(--box-named); color: #10240f; }
+.t-box__name--guess { background: var(--box-guess); color: #2a2000; font-style: italic; }
+/* A setting that only matters with another one on (First names only, without names by the boxes). */
+.t-advanced .t-row.is-off { color: var(--muted); }
+.t-switch:disabled { opacity: 0.5; cursor: default; }
+
+/* Face cards in a photo's People tab, bordered in their box's colour: green confirmed, yellow (dashed)
+   a guess, red unknown. The one shown on the photo gets a thicker edge in the same colour. */
+.t-panel .t-face--named { border: 2px solid var(--box-named); }
+.t-panel .t-face--guess { border: 2px dashed var(--box-guess); }
+.t-panel .t-face--unknown { border: 2px solid var(--box-unknown); }
+.t-panel .t-face--named.is-active { box-shadow: 0 0 0 2px var(--box-named) inset; }
+.t-panel .t-face--guess.is-active { box-shadow: 0 0 0 2px var(--box-guess) inset; }
+.t-panel .t-face--unknown.is-active { box-shadow: 0 0 0 2px var(--box-unknown) inset; }

@@ -7,12 +7,11 @@ import { LooseBacks } from "./LooseBacks";
 import { PeoplePage, PersonPage } from "./People";
 import { PhotoView } from "./PhotoView";
 import { Settings } from "./Settings";
-import { useJobWatcher, useStats, useUndo } from "./hooks";
+import { useJobWatcher, useStats, UNDO_CONFIRM_ABOVE, useUndo } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { useRoute } from "./route";
 
 /** Undoing more changes than this asks for confirmation first. */
-const UNDO_CONFIRM_ABOVE = 20;
 
 export function App() {
   const route = useRoute();

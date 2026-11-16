@@ -35,3 +35,11 @@ export const FACE_ZOOM = "shoebox.touch.faceZoom";
 /** The Date tab's Estimate and Exact boxes start open. */
 export const OPEN_ESTIMATE = "shoebox.touch.openEstimate";
 export const OPEN_EXACT = "shoebox.touch.openExact";
+/** A button over the photo that accepts every name guess on it at once. */
+export const ACCEPT_ALL = "shoebox.touch.acceptAll";
+/** Beside the face boxes on the photo: the names people confirmed (green boxes), and the app's
+ *  guesses with a "?" (yellow boxes). The first was one "names next to boxes" switch: same key. */
+export const CONFIRMED_NAMES = "shoebox.touch.boxNames";
+export const ESTIMATED_NAMES = "shoebox.touch.guessNames";
+/** Those names as first names only ("Ana" for "Ana Smith", "Ana or Ben" for twins). */
+export const FIRST_NAMES = "shoebox.touch.firstNames";

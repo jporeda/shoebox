@@ -50,6 +50,13 @@ export const guessQuestion = (name: string, confidence: number | null | undefine
   (confidence ?? 0) >= 0.65 ? `${sureness(confidence)} ${name}?` : `Could this be ${name}?`;
 
 /** The app's guess for a face: its own automatic name, a suggestion, or "Ana or Ben?". */
+/** What's known about a face, which sets its colour on the photo and in the list: green "named" (a
+ *  person confirmed it), yellow "guess" (the app has one), red "unknown". */
+export function faceStatus(f: Face): "named" | "guess" | "unknown" {
+  if (guessOf(f)) return "guess";
+  return f.person_id && f.source !== "auto" ? "named" : "unknown";
+}
+
 export function guessOf(f: Face): { name: string; personId: number; pair: boolean } | null {
   if (f.source === "auto" && f.person_name && f.person_id) return { name: f.person_name, personId: f.person_id, pair: false };
   if (f.suggested_name && f.suggested_person_id)
@@ -138,7 +145,7 @@ export function FacesPanel({ faces, active, onActive, drawn, drawing, onDraw, ph
       ))}
       {onDraw && (
         <button className="t-btn t-btn--block" disabled={drawing} onClick={onDraw}>
-          {drawing ? "Drag a box around the face on the photo…" : "＋ Draw a face that wasn't found"}
+          {drawing ? "Drawing: box each missed face, then tap off the photo" : "＋ Draw a face that wasn't found"}
         </button>
       )}
       {ignored > 0 && (
@@ -176,7 +183,7 @@ function FaceRow({ face: f, active, justDrawn, onActive, zoomPhoto }: {
   const settled = !!named && !f.ignored && !f.alt_person_id && twinsOf(f.person_id).length === 0;
   if (settled && !open && !renaming)
     return (
-      <div ref={row} className={`t-face t-face--compact ${active ? "is-active" : ""}`}>
+      <div ref={row} className={`t-face t-face--compact t-face--${faceStatus(f)} ${active ? "is-active" : ""}`}>
         <button className="t-face__crop" onClick={onActive} aria-label={`Show ${f.person_name} on the photo`}>
           <img src={faceUrl(f.id)} alt="" loading="lazy" />
         </button>
@@ -187,7 +194,7 @@ function FaceRow({ face: f, active, justDrawn, onActive, zoomPhoto }: {
       </div>
     );
   return (
-    <div ref={row} className={`t-face ${active ? "is-active" : ""} ${f.ignored ? "is-ignored" : ""}`}>
+    <div ref={row} className={`t-face ${f.ignored ? "is-ignored" : `t-face--${faceStatus(f)}`} ${active ? "is-active" : ""}`}>
       <button className="t-face__crop" onClick={onActive} aria-label="Show on the photo">
         <img src={faceUrl(f.id)} alt="" loading="lazy" />
       </button>

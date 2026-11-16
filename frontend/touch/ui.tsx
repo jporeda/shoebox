@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, setCollection, type PhotoSummary } from "../src/api";
-import { useUndo } from "../src/hooks";
+import { UNDO_CONFIRM_ABOVE, useUndo } from "../src/hooks";
 import { useNewGrid } from "../src/GridNew";
 
 /** A panel sliding up from the bottom over a dimmed screen; tap outside or "Done" to close. */
@@ -41,15 +41,45 @@ export function StatusDot({ status }: { status: PhotoSummary["status"] }) {
   return <span className={`t-dot t-dot--${status}`} role="img" aria-label={label} title={label} />;
 }
 
-/** After each change you make, a few seconds of "… · Undo" at the bottom. Undo is per device
- *  (the server keeps each browser's own history), so this never undoes someone else's edit. */
+/** Where the Undo pill goes: never over a control. On a photo, along the bottom edge of the photo
+ *  (above the panel on a phone, centred on the photo beside it on an iPad), clear of the arrows and
+ *  Accept at the top; elsewhere, in the top bar over the screen's title, clear of the ⋯ button; with
+ *  no top bar (a person's page), at the very top. */
+function pillPlace(): React.CSSProperties {
+  const stage = document.querySelector(".t-viewer .t-stage")?.getBoundingClientRect();
+  if (stage) {
+    return {
+      // Where the photo runs to the bottom of the screen (an iPad), clear of the home bar too.
+      top: "auto", left: stage.left + stage.width / 2,
+      bottom: `calc(${innerHeight - stage.bottom + 10}px + ${stage.bottom >= innerHeight - 1 ? "var(--safe-b)" : "0px"})`,
+      maxWidth: stage.width - 24, transform: "translateX(-50%)",
+    };
+  }
+  const top = document.querySelector(".t-top");
+  if (top) {
+    const r = top.getBoundingClientRect();
+    const cs = getComputedStyle(top);
+    const menu = top.querySelector(".t-top__menu")?.getBoundingClientRect();
+    const from = r.left + 8, to = (menu ? menu.left : r.right) - 8;
+    const mid = (r.top + parseFloat(cs.paddingTop) + r.bottom - parseFloat(cs.paddingBottom)) / 2;
+    return { top: mid, left: (from + to) / 2, maxWidth: to - from, transform: "translate(-50%, -50%)" };
+  }
+  return { top: "calc(var(--safe-t) + 8px)", left: "50%", maxWidth: "calc(100% - 24px)", transform: "translateX(-50%)" };
+}
+
+/** After each change you make, a small "… · Undo" pill at the top for a few seconds, out of the way
+ *  of the buttons you'd tap next; it goes as soon as you tap anything else. Undo is per device (the
+ *  server keeps each browser's own history), so this never undoes someone else's edit. The ⋯ menu
+ *  keeps Undo after the pill has gone. */
 export function UndoToast() {
   const edits = useQuery({ queryKey: ["edits"], queryFn: api.edits });
   const undo = useUndo();
   const newest = edits.data?.find((e) => !e.undone);
   const seen = useRef<string | null | undefined>(undefined);
-  const [shown, setShown] = useState<{ id: string; text: string } | null>(null);
+  const [shown, setShown] = useState<{ id: string; text: string; edits: number } | null>(null);
   const [note, setNote] = useState("");
+  const [place, setPlace] = useState<React.CSSProperties>({});
+  const pill = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!edits.data) return;
@@ -58,25 +88,44 @@ export function UndoToast() {
       seen.current = id; // what was there when the app opened isn't news
       return;
     }
-    if (id && id !== seen.current) setShown({ id, text: newest!.description });
+    if (id && id !== seen.current) setShown({ id, text: newest!.description, edits: newest!.edits ?? 0 });
     seen.current = id;
   }, [edits.data, newest]);
 
   useEffect(() => {
     if (!shown && !note) return;
-    const t = setTimeout(() => (setShown(null), setNote("")), shown ? 6000 : 3000);
+    const t = setTimeout(() => (setShown(null), setNote("")), shown ? 4000 : 2500);
     return () => clearTimeout(t);
   }, [shown, note]);
 
-  if (!shown && !note) return null;
+  const visible = !!(shown || note);
+  useLayoutEffect(() => {
+    if (!visible) return;
+    const at = () => setPlace(pillPlace());
+    at();
+    window.addEventListener("resize", at);
+    return () => window.removeEventListener("resize", at);
+  }, [visible, shown?.id]);
+  // The next tap anywhere else (or a swipe) puts it away: it never waits in front of what you do next.
+  useEffect(() => {
+    if (!visible) return;
+    const away = (e: PointerEvent) => {
+      if (!pill.current?.contains(e.target as Node)) (setShown(null), setNote(""));
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [visible]);
+
+  if (!visible) return null;
   return (
-    <div className="t-toast" role="status">
+    <div className="t-toast" role="status" ref={pill} style={place}>
       <span className="t-toast__text">{note || shown?.text}</span>
       {shown && !note && (
         <button
           className="t-btn t-btn--plain t-toast__undo"
           disabled={undo.isPending}
           onClick={async () => {
+            if (shown.edits > UNDO_CONFIRM_ABOVE && !window.confirm(`Undo “${shown.text}”? It changes ${shown.edits} things.`)) return;
             try {
               const r = await undo.mutateAsync({ batchId: shown.id });
               seen.current = undefined; // the list changes under us; start counting again
@@ -91,6 +140,40 @@ export function UndoToast() {
         </button>
       )}
     </div>
+  );
+}
+
+/** Undo the last change made on this device, from the ⋯ menu: still there after the pill has gone. */
+function MenuUndo({ onDone }: { onDone: () => void }) {
+  const edits = useQuery({ queryKey: ["edits"], queryFn: api.edits });
+  const undo = useUndo();
+  const last = edits.data?.find((e) => !e.undone);
+  const [note, setNote] = useState("");
+  return (
+    <>
+      <button
+        className="t-row"
+        disabled={!last || undo.isPending}
+        onClick={async () => {
+          if (!last) return;
+          if ((last.edits ?? 0) > UNDO_CONFIRM_ABOVE && !window.confirm(`Undo “${last.description}”? It changes ${last.edits} things.`)) return;
+          try {
+            const r = await undo.mutateAsync({ batchId: last.id });
+            if (r.undone) return onDone();
+            setNote(r.blocked ? "Can't undo: it was changed again since." : "Nothing to undo.");
+          } catch (e) {
+            setNote(`Couldn't undo: ${e instanceof ApiError ? e.message : String(e)}`);
+          }
+        }}
+      >
+        <span className="t-menu-undo">
+          <span>Undo</span>
+          <span className="t-muted t-small">{last ? last.description : "Nothing to undo"}</span>
+        </span>
+        <span aria-hidden>↶</span>
+      </button>
+      {note && <p className="t-muted t-small t-menu-undo__note">{note}</p>}
+    </>
   );
 }
 
@@ -122,6 +205,11 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
           </div>
         </section>
       )}
+      <section className="t-section">
+        <div className="t-list">
+          <MenuUndo onDone={onClose} />
+        </div>
+      </section>
       <section className="t-section">
         <div className="t-list">
           <label className="t-row">

@@ -126,6 +126,9 @@ export function useUpdatePhotos() {
   });
 }
 
+/** An undo that would change more than this many things asks first (both apps). */
+export const UNDO_CONFIRM_ABOVE = 20;
+
 export function useUndo() {
   const qc = useQueryClient();
   return useMutation({
