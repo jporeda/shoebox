@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, imgUrl, type ListParams } from "./api";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { albumLabel, api, imgUrl, type ListParams, type NearbyDate } from "./api";
+import { DupCompare } from "./DupCompare";
 import { DateEventEditor, PlaceEditor } from "./Editor";
 import { AcceptGuesses, FaceLayer } from "./FaceLayer";
-import { usePhotos, useUpdatePhotos } from "./hooks";
+import { useEventInstances, usePhotos, useSaveOnLeave, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { gridHref, navigate, navigateReplace, photoHref, rememberPhoto } from "./route";
 
@@ -11,12 +12,13 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   const detail = useQuery({ queryKey: ["photo", id], queryFn: () => api.photo(id) });
   const photos = usePhotos(list);
   const update = useUpdatePhotos();
-  const qc = useQueryClient();
   const items = photos.data?.items ?? [];
   const idx = items.findIndex((p) => p.id === id);
   const prev = idx > 0 ? items[idx - 1] : null;
   const next = idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
   const p = detail.data;
+  const instances = useEventInstances();
+  const instance = instances.data?.find((i) => i.id === p?.event_instance_id);
 
   // Stepping between photos replaces the history entry, so Back returns to the grid (which then
   // scrolls to the last photo viewed) instead of walking back through every photo.
@@ -28,7 +30,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
       if (isTypingTarget(e)) return;
       if (e.key === "ArrowLeft" && prev) step(prev);
       else if (e.key === "ArrowRight" && next) step(next);
-      else if (e.key === "Escape") navigate(gridHref(list));
+      else if (e.key === "Escape") navigate(backHref(list));
       // Holding R would otherwise fire a rotate per auto-repeat.
       else if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.repeat)
         update.mutate({ ids: [id], rotate_by: e.shiftKey ? 270 : 90 });
@@ -74,11 +76,11 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
   return (
     <div className={`photo-view ${zoomed ? "is-zoomed" : ""}`}>
       <div className="photo-view__bar">
-        <a className="btn btn--ghost photo-view__back" href={gridHref(list)}>
-          ← Back<span className="photo-view__back-more"> to grid</span>
+        <a className="btn btn--ghost photo-view__back" href={backHref(list)}>
+          ← Back<span className="photo-view__back-more"> to {list.ids ? "Check" : "grid"}</span>
         </a>
         <span className="muted photo-view__where">
-          {p.album_name} · #{p.album_index + 1}
+          {albumLabel({ name: p.album_name, rel_path: p.rel_path.split("/").slice(0, -1).join("/") })} · #{p.album_index + 1}
           {idx >= 0 && ` · ${idx + 1} of ${items.length}`}
         </span>
         <span className="spacer" />
@@ -122,7 +124,7 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
           <div>
             <span className="facts__k">Date</span>
             <span className={`facts__v status-${p.status}`}>{p.date_label || "Undated"}</span>
-            {p.date_source && <span className="muted"> ({p.date_source})</span>}
+            {p.date_source && DATE_SOURCE[p.date_source] && <span className="muted"> ({DATE_SOURCE[p.date_source]})</span>}
           </div>
           {p.inferred_label && (
             <div>
@@ -144,6 +146,13 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
                 </button>
               )}
             </div>
+          )}
+          {p.status === "inferred" && p.nearby_dates.length > 0 && (
+            <NearbyDateChoices
+              nearby={p.nearby_dates}
+              busy={update.isPending}
+              onPick={(date) => update.mutate({ ids: [p.id], date, date_source: "accepted" })}
+            />
           )}
           {p.back_transcription && (
             <div>
@@ -176,55 +185,118 @@ export function PhotoView({ id, list }: { id: number; list: ListParams }) {
               <span className="facts__v muted">{p.scan_datetime} (usually the scan date)</span>
             </div>
           )}
-          {p.dup_members.length > 1 && (
-            <div>
-              <span className="facts__k">Duplicates</span>
-              <span className="facts__v">
-                {p.dup_members.map((m) => (
-                  <a key={m} href={photoHref(m, list)} className={m === p.id ? "is-current" : ""}>
-                    #{m}
-                  </a>
-                ))}{" "}
-                {p.is_dup_keeper ? (
-                  <span className="badge badge--ok">kept for export</span>
-                ) : (
-                  <button
-                    className="btn btn--ghost"
-                    onClick={async () => {
-                      await api.keeper(p.id);
-                      qc.invalidateQueries();
-                    }}
-                  >
-                    Keep this one
-                  </button>
-                )}
-              </span>
-            </div>
-          )}
+          {p.dup_members.length > 1 && <DuplicatesRow id={p.id} members={p.dup_members} list={list} />}
           {p.fixity_ok === false && (
             <div className="error">Original file changed or missing since import — re-run Import.</div>
           )}
         </div>
-        <DateEventEditor ids={[p.id]} currentDate={p.date_label} currentEvent={p.event_label} />
-        <PlaceEditor ids={[p.id]} current={{ country: p.country, state: p.state, city: p.city }} />
+        <DateEventEditor
+          ids={[p.id]}
+          currentDate={p.date_label}
+          currentEvent={p.event_label}
+          datePicker
+          currentExactDay={/^\d{4}-\d{2}-\d{2}$/.test(p.trusted_label) ? p.trusted_label : null}
+          initialDate={p.trusted_label}
+          initialKindId={instance?.kind_id ?? null}
+          initialEventLabel={instance?.label ?? null}
+          showRotate={false}
+        />
+        <PlaceEditor ids={[p.id]} current={{ location: p.location, country: p.country, state: p.state, city: p.city }} />
         <CaptionEditor id={p.id} caption={p.caption ?? ""} />
       </div>
     </div>
   );
 }
 
+/** Where a photo's date came from, in words. */
+const DATE_SOURCE: Record<string, string> = {
+  manual: "set by you",
+  accepted: "accepted estimate",
+  back: "from the back",
+  event: "from the event",
+}
+
+/** The photo's duplicate group: links to each, Compare side by side, and which to keep for export. */
+function DuplicatesRow({ id, members, list }: { id: number; members: number[]; list: ListParams }) {
+  const qc = useQueryClient();
+  const [comparing, setComparing] = useState(false);
+  // The same queries the compare view uses, so it opens with them already loaded.
+  const details = useQueries({ queries: members.map((m) => ({ queryKey: ["photo", m], queryFn: () => api.photo(m) })) });
+  const loaded = details.every((d) => d.data);
+  const kept = details.filter((d) => d.data?.is_dup_keeper).length;
+  const thisKept = details[members.indexOf(id)]?.data?.is_dup_keeper ?? false;
+  const act = async (call: Promise<unknown>) => {
+    await call;
+    qc.invalidateQueries();
+  };
+  return (
+    <div>
+      <span className="facts__k">Duplicates</span>
+      <span className="facts__v dup-row">
+        {members.map((m, i) => {
+          const d = details[i]?.data;
+          return m === id ? (
+            <span key={m} className="is-current">This photo</span>
+          ) : (
+            <a key={m} href={photoHref(m, list)} title={d?.rel_path}>
+              {d ? d.rel_path.split("/").slice(-2).join(" / ") : "…"}
+            </a>
+          );
+        })}
+        <button className="btn btn--ghost" onClick={() => setComparing(true)}>
+          Compare side by side
+        </button>
+        {thisKept && <span className="badge badge--ok">{kept === members.length ? "all exported" : "exported"}</span>}
+        {!(thisKept && kept === 1) && (
+          <button className="btn btn--ghost" onClick={() => act(api.keeper(id))} title="Which copy Export writes">
+            {thisKept ? "Export only this one" : "Export this one"}
+          </button>
+        )}
+        {loaded && kept < members.length && (
+          <button className="btn btn--ghost" onClick={() => act(api.keepAll(id))}>
+            {members.length === 2 ? "Export both" : `Export all ${members.length}`}
+          </button>
+        )}
+        <button
+          className="btn btn--ghost"
+          title="These aren't the same picture: split them up (Import keeps them apart; Undo puts them back)"
+          onClick={() => act(api.notDuplicates(id))}
+        >
+          Not duplicates
+        </button>
+      </span>
+      {comparing && <DupCompare ids={members} list={list} onClose={() => setComparing(false)} />}
+    </div>
+  );
+}
+
 function CaptionEditor({ id, caption }: { id: number; caption: string }) {
   const update = useUpdatePhotos();
+  // Saved when you click or tab away; say so, since there's no Save button. Leaving the page (or going
+  // to the next photo) with it still typed saves it too.
+  const [state, setState] = useState<"" | "editing" | "saving" | "saved" | "error">("");
+  useEffect(() => setState(""), [id]);
+  const field = useSaveOnLeave((value, leaving) => {
+    if (value === caption) return leaving || setState((s) => (s === "editing" ? "" : s));
+    if (leaving) return update.mutate({ ids: [id], caption: value });
+    setState("saving");
+    update.mutate({ ids: [id], caption: value }, { onSuccess: () => setState("saved"), onError: () => setState("error") });
+  }, id);
   return (
     <label className="field caption">
-      <span className="field__label">Caption / notes (exported as description)</span>
+      <span className="field__label">
+        Caption / notes (exported as description){" "}
+        <em className="muted small" aria-live="polite">
+          {state === "editing" ? "saved when you click away" : state === "saving" ? "saving…" : state === "saved" ? "✓ saved" : ""}
+        </em>
+        {state === "error" && <em className="error small"> not saved: {update.error instanceof Error ? update.error.message : "try again"}</em>}
+      </span>
       <textarea
         key={`${id}:${caption}`}
         defaultValue={caption}
         rows={2}
-        onBlur={(e) => {
-          if (e.target.value !== caption) update.mutate({ ids: [id], caption: e.target.value });
-        }}
+        onChange={(e) => (field.onChange(e), setState("editing"))}
+        onBlur={field.onBlur}
       />
     </label>
   );
@@ -275,9 +347,34 @@ function SourceFile({ rel, folder, albumId, children }: { rel: string; folder: s
           </button>
         </>
       )}
-      <a className="btn btn--ghost" href={gridHref({ album_id: albumId })}>Open album</a>
-      <span className="spacer" />
+      <a className="btn btn--ghost" href={gridHref({ albums: String(albumId) })}>Open album</a>
       {children}
     </div>
   );
+}
+
+/** Dates set on the nearest photos before and after this one in its album: take one exactly, or a
+ *  similar date (about that year, ±2 years). Shown while this photo's date is still an estimate. */
+function NearbyDateChoices({ nearby, busy, onPick }: { nearby: NearbyDate[]; busy: boolean; onPick: (date: string) => void }) {
+  const closest = [...nearby].sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset))[0];
+  const exact = nearby.filter((n, i) => nearby.findIndex((m) => m.label === n.label) === i); // one button per distinct date
+  const where = (n: NearbyDate) => `${Math.abs(n.offset)} photo${Math.abs(n.offset) === 1 ? "" : "s"} ${n.offset < 0 ? "before" : "after"}`;
+  return (
+    <div className="nearby-dates">
+      <span className="facts__k">Nearby</span>
+      {exact.map((n) => (
+        <button key={n.photo_id} className="btn btn--ghost" disabled={busy} onClick={() => onPick(n.label)} title={`The date set on the photo ${where(n)}`}>
+          Same date: {n.label} <span className="muted small">({where(n)})</span>
+        </button>
+      ))}
+      <button className="btn btn--ghost" disabled={busy} onClick={() => onPick(`~${closest.year}`)} title={`About ${closest.year}, give or take 2 years`}>
+        Similar date: ~{closest.year}
+      </button>
+    </div>
+  );
+}
+
+/** Where Back goes: a list of picked photos (opened from a People › Check group) returns there. */
+function backHref(list: ListParams): string {
+  return list.ids ? "#/people?tab=check" : gridHref(list);
 }

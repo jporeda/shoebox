@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build --mode touch",
+    "dev:touch": "vite --mode touch",
     "types": "openapi-typescript ../openapi.json --default-non-nullable false -o src/schema.d.ts"
   },
   "dependencies": {

@@ -13,12 +13,13 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from . import editlog
 from .api import router
 from .api_people import router as people_router
-from .config import get_settings
-from .db import migrate
+from .config import CURRENT_COLLECTION, MAIN, collection_ids, get_settings
+from .db import migrate_all
 
 FRONTEND_DIST = Path(os.environ.get("SHOEBOX_FRONTEND", "/app/frontend/dist"))
 
@@ -26,7 +27,7 @@ FRONTEND_DIST = Path(os.environ.get("SHOEBOX_FRONTEND", "/app/frontend/dist"))
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     logging.basicConfig(level=logging.INFO)
-    migrate()
+    migrate_all()
     yield
 
 
@@ -38,7 +39,12 @@ app = FastAPI(title="Shoebox", lifespan=lifespan)
 APP_HEADER = "X-Shoebox"
 CLIENT_HEADER = "X-Shoebox-Client"  # a random id per browser, so Undo undoes that device's own edits
 CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
-VITE_DEV_PORT = 5173  # `npm run dev` proxies /api here and keeps the page's Origin
+# Which collection a request works on: set by the UI's collection picker (a cookie, so plain
+# <img> requests carry it too). Unknown or missing means the main collection.
+COLLECTION_COOKIE = "shoebox_collection"
+COLLECTION_HEADER = "X-Shoebox-Collection"
+# `npm run dev` (5173) and `npm run dev:touch` (5174) proxy /api here and keep the page's Origin.
+VITE_DEV_PORTS = {5173, 5174}
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
@@ -89,7 +95,7 @@ def _is_own_origin(origin: str, request: Request) -> bool:
         return False  # a browser's Origin is only scheme://host[:port]
     o_host, own_host = _norm_host(o.hostname), _norm_host(request.url.hostname or "")
     loopback = o_host in LOCAL_HOSTS and own_host in LOCAL_HOSTS
-    if o_port == VITE_DEV_PORT:
+    if o_port in VITE_DEV_PORTS:
         return loopback
     return o_port == own_port and (o_host == own_host or loopback)
 
@@ -112,9 +118,12 @@ async def guard(request: Request, call_next):
     client = request.headers.get(CLIENT_HEADER, "")
     actor = f"{editlog.CLIENT_PREFIX}{client}" if CLIENT_ID.fullmatch(client) else editlog.ANONYMOUS
     token = editlog.CURRENT_ACTOR.set(actor)
+    wanted = request.headers.get(COLLECTION_HEADER) or request.cookies.get(COLLECTION_COOKIE) or MAIN
+    collection = CURRENT_COLLECTION.set(wanted if wanted in collection_ids() else MAIN)
     try:
         return await call_next(request)
     finally:
+        CURRENT_COLLECTION.reset(collection)
         editlog.CURRENT_ACTOR.reset(token)
 
 
@@ -133,7 +142,35 @@ def _refuse_write(request: Request) -> JSONResponse | None:
             return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
     return None
 
+class _Compress:
+    """Gzip for the API's JSON and the UI's scripts (the photo list is ~6x smaller), over the home
+    Wi-Fi to phones. JPEGs are already compressed: they pass straight through."""
+
+    SKIP = ("/api/img/", "/api/face/")
+
+    def __init__(self, app):
+        self.plain = app
+        self.gzip = GZipMiddleware(app, minimum_size=1024)
+
+    async def __call__(self, scope, receive, send):
+        skip = scope["type"] != "http" or scope["path"].startswith(self.SKIP)
+        await (self.plain if skip else self.gzip)(scope, receive, send)
+
+
+app.add_middleware(_Compress)
 app.include_router(router)
 app.include_router(people_router)
+class _UI(StaticFiles):
+    """The web UI. The page itself is always revalidated, so a rebuilt app shows up on the next
+    load instead of whenever the browser's own guess says the old copy is stale; the scripts and
+    styles it loads have their content hash in the name, so they can be kept for good."""
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        is_asset = str(full_path).startswith(str(FRONTEND_DIST / "assets"))
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if is_asset else "no-cache"
+        return response
+
+
 if FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="ui")
+    app.mount("/", _UI(directory=FRONTEND_DIST, html=True), name="ui")

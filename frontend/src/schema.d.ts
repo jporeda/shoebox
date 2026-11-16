@@ -39,6 +39,64 @@ export interface paths {
         patch: operations["update_photos_api_photos_patch"];
         trace?: never;
     };
+    "/api/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collections
+         * @description The configured collections, and which one this request is working on (the UI's picker).
+         */
+        get: operations["list_collections_api_collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings Api */
+        get: operations["get_settings_api_api_settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_api_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/years": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Photo Years
+         * @description Each year with photos (entered date, else estimate), for the year filter.
+         */
+        get: operations["photo_years_api_years_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}": {
         parameters: {
             query?: never;
@@ -67,6 +125,46 @@ export interface paths {
         put?: never;
         /** Keep Photo */
         post: operations["keep_photo_api_photos__photo_id__keeper_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{photo_id}/not-duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Not Duplicates
+         * @description Split a wrongly grouped duplicate group (undoable; Import keeps the photos apart).
+         */
+        post: operations["not_duplicates_api_photos__photo_id__not_duplicates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{photo_id}/keep-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep All Photos
+         * @description Keep every photo in this one's duplicate group (all of them are exported).
+         */
+        post: operations["keep_all_photos_api_photos__photo_id__keep_all_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -214,6 +312,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Locations
+         * @description Every location (general area) already used, most used first: suggestions for typing, so the
+         *     same area is always the same keyword.
+         */
+        get: operations["locations_api_locations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places": {
         parameters: {
             query?: never;
@@ -281,6 +400,27 @@ export interface paths {
         put?: never;
         /** Start Job */
         post: operations["start_job_api_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job States
+         * @description Just each recent job's id and state: what the apps poll every few seconds to notice a job
+         *     finishing (and the Mac going away), a few hundred bytes instead of the full job list.
+         */
+        get: operations["job_states_api_jobs_states_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -675,6 +815,10 @@ export interface components {
             person_id?: number | null;
             /** Name */
             name?: string | null;
+            /** Alt Person Id */
+            alt_person_id?: number | null;
+            /** Alt Name */
+            alt_name?: string | null;
         };
         /** BackDate */
         BackDate: {
@@ -732,6 +876,8 @@ export interface components {
             ids: number[];
             /** Date */
             date?: string | null;
+            /** Months */
+            months?: number[] | null;
             /**
              * Clear Date
              * @default false
@@ -756,6 +902,8 @@ export interface components {
             state?: string | null;
             /** City */
             city?: string | null;
+            /** Location */
+            location?: string | null;
             /** Rotate By */
             rotate_by?: number | null;
             /**
@@ -793,6 +941,15 @@ export interface components {
             /** Faces */
             faces: components["schemas"]["FaceOut"][];
             suggestion: components["schemas"]["Suggestion"] | null;
+        };
+        /** CollectionOut */
+        CollectionOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Current */
+            current: boolean;
         };
         /** DrawIn */
         DrawIn: {
@@ -892,6 +1049,10 @@ export interface components {
             person_id: number | null;
             /** Person Name */
             person_name: string | null;
+            /** Alt Person Id */
+            alt_person_id?: number | null;
+            /** Alt Name */
+            alt_name?: string | null;
             /** Source */
             source: string;
             /** Ignored */
@@ -906,6 +1067,10 @@ export interface components {
             suggested_person_id: number | null;
             /** Suggested Name */
             suggested_name: string | null;
+            /** Suggested Alt Person Id */
+            suggested_alt_person_id?: number | null;
+            /** Suggested Alt Name */
+            suggested_alt_name?: string | null;
             /** Confidence */
             confidence: number | null;
         };
@@ -973,10 +1138,28 @@ export interface components {
             /** Finished At */
             finished_at: string | null;
         };
+        /** JobState */
+        JobState: {
+            /** Id */
+            id: number;
+            /** State */
+            state: string;
+        };
         /** MergeIn */
         MergeIn: {
             /** Into Id */
             into_id: number;
+        };
+        /** NearbyDate */
+        NearbyDate: {
+            /** Photo Id */
+            photo_id: number;
+            /** Offset */
+            offset: number;
+            /** Label */
+            label: string;
+            /** Year */
+            year: number;
         };
         /** NeighbourOut */
         NeighbourOut: {
@@ -999,6 +1182,14 @@ export interface components {
             status: "untagged" | "inferred" | "reviewed";
             /** Inferred Source */
             inferred_source: string | null;
+        };
+        /** NotDuplicatesIn */
+        NotDuplicatesIn: {
+            /**
+             * Only This
+             * @default false
+             */
+            only_this?: boolean;
         };
         /** ParsedDate */
         ParsedDate: {
@@ -1045,6 +1236,21 @@ export interface components {
             face_count: number;
             /** Auto Count */
             auto_count: number;
+            /**
+             * Photo Count
+             * @default 0
+             */
+            photo_count?: number;
+            /**
+             * Double Photo Ids
+             * @default []
+             */
+            double_photo_ids?: number[];
+            /**
+             * Twin Ids
+             * @default []
+             */
+            twin_ids?: number[];
             /** Cover Face Id */
             cover_face_id: number | null;
             /** First Year */
@@ -1097,6 +1303,8 @@ export interface components {
             height: number | null;
             /** Album Name */
             album_name: string;
+            /** Nearby Dates */
+            nearby_dates: components["schemas"]["NearbyDate"][];
             /** Source Folder */
             source_folder?: string | null;
             /** Back Rel Path */
@@ -1109,10 +1317,13 @@ export interface components {
             state: string | null;
             /** City */
             city: string | null;
+            /** Location */
+            location: string | null;
             /** Scan Datetime */
             scan_datetime: string | null;
             /** Trusted Label */
             trusted_label: string;
+            trusted: components["schemas"]["TrustedDate"] | null;
             /** Inferred Label */
             inferred_label: string;
             /** Inferred Confidence */
@@ -1131,6 +1342,8 @@ export interface components {
             back_transcription: string | null;
             /** Dup Members */
             dup_members: number[];
+            /** File Size */
+            file_size: number;
             /** Fixity Ok */
             fixity_ok: boolean | null;
             /** Fixity Checked At */
@@ -1198,6 +1411,13 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** RejectIn */
+        RejectIn: {
+            /** Face Ids */
+            face_ids: number[];
+            /** Person Id */
+            person_id?: number | null;
+        };
         /** ReviewGroup */
         ReviewGroup: {
             /** Person Id */
@@ -1208,8 +1428,8 @@ export interface components {
             faces: components["schemas"]["FaceOut"][];
             /** Age Lo */
             age_lo?: number | null;
-            /** Age Basis */
-            age_basis?: ("birth_year" | "looks" | "mixed") | null;
+            /** Year Lo */
+            year_lo?: number | null;
             /** Person Total */
             person_total: number;
         };
@@ -1231,6 +1451,24 @@ export interface components {
             updated: number;
             /** Rotated */
             rotated: boolean;
+        };
+        /** SettingsIn */
+        SettingsIn: {
+            /** Twin Margin Percent */
+            twin_margin_percent?: number | null;
+            /** Snapshot Gap Minutes */
+            snapshot_gap_minutes?: number | null;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            /** Twin Margin Percent */
+            twin_margin_percent: number;
+            /** Twin Margin Default */
+            twin_margin_default: number;
+            /** Snapshot Gap Minutes */
+            snapshot_gap_minutes: number;
+            /** Snapshot Gap Default */
+            snapshot_gap_default: number;
         };
         /** Stats */
         Stats: {
@@ -1257,6 +1495,23 @@ export interface components {
             name: string;
             /** Similarity */
             similarity: number;
+        };
+        /** TrustedDate */
+        TrustedDate: {
+            /** Year */
+            year: number;
+            /** Month */
+            month: number | null;
+            /** Day */
+            day: number | null;
+            /** Precision */
+            precision: string;
+            /** Min */
+            min: number | null;
+            /** Max */
+            max: number | null;
+            /** Months */
+            months: number[] | null;
         };
         /** UndoRequest */
         UndoRequest: {
@@ -1302,6 +1557,13 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** YearCount */
+        YearCount: {
+            /** Year */
+            year: number;
+            /** Count */
+            count: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -1339,6 +1601,17 @@ export interface operations {
                 status?: ("untagged" | "inferred" | "reviewed") | null;
                 duplicates?: boolean;
                 event_instance_id?: number | null;
+                /** @description only these photos: comma-separated ids (e.g. one Check group) */
+                ids?: string | null;
+                /** @description comma-separated album ids; any of them */
+                albums?: string | null;
+                /** @description comma-separated years (entered, else estimated); any of them */
+                years?: string | null;
+                /** @description comma-separated person ids */
+                people?: string | null;
+                people_mode?: "all" | "any";
+                /** @description comma-separated event instance ids; any of them */
+                events?: string | null;
                 order?: "album" | "chrono" | "confidence";
                 offset?: number;
                 limit?: number;
@@ -1402,6 +1675,99 @@ export interface operations {
             };
         };
     };
+    list_collections_api_collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"][];
+                };
+            };
+        };
+    };
+    get_settings_api_api_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+        };
+    };
+    save_settings_api_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_years_api_years_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearCount"][];
+                };
+            };
+        };
+    };
     get_photo_api_photos__photo_id__get: {
         parameters: {
             query?: never;
@@ -1434,6 +1800,72 @@ export interface operations {
         };
     };
     keep_photo_api_photos__photo_id__keeper_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    not_duplicates_api_photos__photo_id__not_duplicates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotDuplicatesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    keep_all_photos_api_photos__photo_id__keep_all_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1727,6 +2159,26 @@ export interface operations {
             };
         };
     };
+    locations_api_locations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
     places_api_places_get: {
         parameters: {
             query?: never;
@@ -1882,6 +2334,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_states_api_jobs_states_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobState"][];
                 };
             };
             /** @description Validation Error */
@@ -2368,7 +2851,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["FaceIds"];
+                "application/json": components["schemas"]["RejectIn"];
             };
         };
         responses: {

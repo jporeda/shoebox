@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, faceUrl, imgUrl, type Face } from "./api";
+import { api, ApiError, faceName, faceUrl, imgUrl, pairLabel, type Face } from "./api";
 import { useTouch } from "./hooks";
-import { NameInput } from "./People";
+import { NameInput, TwinChoices } from "./People";
+import { FaceZoom } from "./FaceZoom";
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -53,7 +54,7 @@ export function AcceptGuesses({ photoId, rotation }: { photoId: number; rotation
     <>
       {error && <span className="error">{error}</span>}
       <button className="btn btn--primary" onClick={accept} disabled={busy}>
-        Accept {guesses.length === 1 ? "the guess" : `all ${guesses.length} guesses`}
+        Accept {guesses.length === 1 ? "the name guess" : `all ${guesses.length} name guesses`}
       </button>
     </>
   );
@@ -65,6 +66,8 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
   // Boxes come back in the photo's current rotation, so a rotate must fetch them again.
   const faces = useQuery({ queryKey: ["photoFaces", photoId, rotation], queryFn: () => api.photoFaces(photoId) });
   const [active, setActive] = useState<number | null>(null);
+  const [orOpen, setOrOpen] = useState(false); // the "Or…" box for a second person (twins)
+  useEffect(() => setOrOpen(false), [active]);
   const [drawing, setDrawing] = useState(false);
   // "Draw several": stays in drawing mode after each box, until switched off (or another photo opens).
   const [drawMany, setDrawMany] = useState(false);
@@ -89,7 +92,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
           ? "The photo was rotated during the scan; nothing was saved. Try again."
           : r.found === 0
             ? `No faces found.${scanLevel < 5 ? " Try a higher sensitivity." : ""}`
-            : `Found ${r.found} face(s): ${r.added} new${r.updated ? `, ${r.updated} already boxed` : ""}.`,
+            : `Found ${plural(r.found, "face")}: ${r.added} new${r.updated ? `, ${r.updated} already boxed` : ""}.`,
       );
       refresh();
     } catch (e) {
@@ -207,7 +210,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
       </div>
       <div className="facelayer__bar">
         <span className="muted small">
-          {faces.data ? `${visible.filter((f) => !f.ignored).length} face(s)` : ""}
+          {faces.data ? plural(visible.filter((f) => !f.ignored).length, "face") : ""}
           {hidden > 0 && (
             <button className="linkish" onClick={() => setShowIgnored((v) => !v)}>
               {showIgnored ? "hide" : "show"} {hidden} ignored
@@ -272,7 +275,7 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
                         {guess}?{matchPercent(f)} <span className="muted small">{f.source === "auto" && f.person_name ? "named by the app" : "suggested"}</span>
                       </span>
                     ) : f.person_name ? (
-                      <span className="facelist__confirmed">{f.person_name}</span>
+                      <span className="facelist__confirmed">{faceName(f)}</span>
                     ) : (
                       <span className="muted">Unnamed</span>
                     )}
@@ -289,8 +292,8 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
             {current.source === "auto" && current.person_name
               ? `Looks like ${current.person_name}${matchPercent(current)}`
               : current.suggested_name
-                ? `Maybe ${current.suggested_name}?${matchPercent(current)}`
-                : (current.person_name ?? "Unnamed face")}
+                ? `Maybe ${guessName(current)}?${matchPercent(current)}`
+                : (faceName(current) ?? "Unnamed face")}
           </span>
           {((current.source === "auto" && current.person_name) || current.suggested_name) && (
             <>
@@ -300,14 +303,49 @@ export function FaceLayer({ photoId, sha, rotation, alt }: { photoId: number; sh
               <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
                 No
               </button>
+              {/* The guess has a known twin: "Ana or Ben" is the safe answer (unless that's the guess). */}
+              {!current.suggested_alt_person_id && <TwinChoices
+                personId={current.source === "auto" && current.person_id ? current.person_id : current.suggested_person_id}
+                name={guessName(current) ?? ""}
+                onPick={(p) => act(() => api.assignFaces([current.id], p))}
+              />}
             </>
           )}
           {/* On touch, don't pop the keyboard up over Yes / No on every tap of a face. */}
-          <NameInput autoFocus={!touch} onSubmit={(name) => act(() => api.assignFaces([current.id], { name }))} placeholder={current.person_name ? "Rename to…" : "Who is this?"} />
-          {current.person_name && current.source !== "auto" && (
+          <NameInput autoFocus={!touch} onSubmit={(name) => act(() => api.assignFaces([current.id], { name }))} onPair={(p) => act(() => api.assignFaces([current.id], p))} placeholder={current.person_name ? "Rename to…" : "Who is this?"} />
+          {current.person_name && current.source !== "auto" && !current.alt_person_id && (
             <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
               Not {current.person_name}
             </button>
+          )}
+          {/* Twins: "one of these two, not sure which". Once you know, pick one; or neither. */}
+          {current.person_id != null && current.source !== "auto" && !current.alt_person_id && (
+            <TwinChoices personId={current.person_id} name={current.person_name ?? ""} onPick={(p) => act(() => api.assignFaces([current.id], p))} />
+          )}
+          {current.person_id != null && current.source !== "auto" && !current.alt_person_id && !orOpen && (
+            <button className="btn btn--ghost" onClick={() => setOrOpen(true)} title="One of two people, not sure which (e.g. twins)">
+              Or…
+            </button>
+          )}
+          {orOpen && current.person_id != null && (
+            <NameInput
+              autoFocus
+              placeholder={`${current.person_name} or who?`}
+              onSubmit={(alt_name) => act(() => api.assignFaces([current.id], { person_id: current.person_id!, alt_name }))}
+            />
+          )}
+          {current.alt_person_id != null && current.person_id != null && (
+            <>
+              <button className="btn btn--ghost" onClick={() => act(() => api.assignFaces([current.id], { person_id: current.person_id! }))}>
+                It's {current.person_name}
+              </button>
+              <button className="btn btn--ghost" onClick={() => act(() => api.assignFaces([current.id], { person_id: current.alt_person_id! }))}>
+                It's {current.alt_name}
+              </button>
+              <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([current.id]))}>
+                Neither
+              </button>
+            </>
           )}
           {current.ignored ? (
             <button className="btn btn--ghost" onClick={() => act(() => api.ignoreFaces([current.id], false))}>
@@ -361,37 +399,6 @@ const SCAN_LEVELS: Record<number, string> = {
   5: "5 · most aggressive (more false boxes)",
 };
 
-/** On-screen size of the face zoom: 240px, or 70% of a narrow screen. */
-const zoomPx = () => Math.min(240, Math.round(window.innerWidth * 0.7));
-
-/** The face and its surroundings, cropped from the photo: `context` face-sizes across, square, with
- *  the face's box outlined. Box coordinates are fractions of the (rotated) photo. */
-function FaceZoom({ src, face, aspect, context }: { src: string; face: Face; aspect: number; context: number }) {
-  // Work in units of the photo's height so the crop is square on screen.
-  const W = aspect;
-  const side = Math.min(Math.max(face.w * W, face.h) * context, W, 1);
-  const rw = side / W;
-  const rh = side;
-  const rx = Math.min(Math.max(face.x + face.w / 2 - rw / 2, 0), 1 - rw);
-  const ry = Math.min(Math.max(face.y + face.h / 2 - rh / 2, 0), 1 - rh);
-  const px = zoomPx();
-  const scale = px / side; // screen px per photo-height unit
-  return (
-    <div className="facezoom__view" style={{ width: px, height: px }}>
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        style={{ width: W * scale, height: scale, left: -rx * W * scale, top: -ry * scale }}
-      />
-      <span
-        className="facezoom__box"
-        style={{ left: (face.x - rx) * W * scale, top: (face.y - ry) * scale, width: face.w * W * scale, height: face.h * scale }}
-      />
-    </div>
-  );
-}
-
 /** The name the app guessed for this face (its own automatic name, or a suggestion), if any. */
 /** " · 62%": how closely a guessed face matches the person (the match score), or "" if unknown. */
 function matchPercent(face: Face): string {
@@ -399,7 +406,10 @@ function matchPercent(face: Face): string {
 }
 
 function guessName(face: Face): string | null {
-  return (face.source === "auto" && face.person_name) || face.suggested_name || null;
+  if (face.source === "auto" && face.person_name) return face.person_name;
+  // Matching couldn't tell two known twins apart: "Ana or Ben".
+  if (face.suggested_name && face.suggested_alt_name) return pairLabel(face.suggested_name, face.suggested_alt_name);
+  return face.suggested_name || null;
 }
 
 function FaceBox({ face, active, onClick }: { face: Face; active: boolean; onClick: () => void }) {
@@ -415,7 +425,12 @@ function FaceBox({ face, active, onClick }: { face: Face; active: boolean; onCli
         onClick();
       }}
     >
-      <span className="facebox__label">{guess ? `${guess}?${matchPercent(face)}` : (face.person_name ?? "?")}</span>
+      <span className="facebox__label">{guess ? `${guess}?${matchPercent(face)}` : (faceName(face) ?? "?")}</span>
     </button>
   );
+}
+
+/** "1 face", "3 faces". */
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }

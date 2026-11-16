@@ -112,6 +112,110 @@
       }
      },
      {
+      "name": "ids",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "only these photos: comma-separated ids (e.g. one Check group)",
+       "title": "Ids"
+      },
+      "description": "only these photos: comma-separated ids (e.g. one Check group)"
+     },
+     {
+      "name": "albums",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated album ids; any of them",
+       "title": "Albums"
+      },
+      "description": "comma-separated album ids; any of them"
+     },
+     {
+      "name": "years",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated years (entered, else estimated); any of them",
+       "title": "Years"
+      },
+      "description": "comma-separated years (entered, else estimated); any of them"
+     },
+     {
+      "name": "people",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated person ids",
+       "title": "People"
+      },
+      "description": "comma-separated person ids"
+     },
+     {
+      "name": "people_mode",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "all",
+        "any"
+       ],
+       "type": "string",
+       "default": "all",
+       "title": "People Mode"
+      }
+     },
+     {
+      "name": "events",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "comma-separated event instance ids; any of them",
+       "title": "Events"
+      },
+      "description": "comma-separated event instance ids; any of them"
+     },
+     {
       "name": "order",
       "in": "query",
       "required": false,
@@ -208,6 +312,106 @@
     }
    }
   },
+  "/api/collections": {
+   "get": {
+    "summary": "List Collections",
+    "description": "The configured collections, and which one this request is working on (the UI's picker).",
+    "operationId": "list_collections_api_collections_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CollectionOut"
+         },
+         "type": "array",
+         "title": "Response List Collections Api Collections Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/settings": {
+   "get": {
+    "summary": "Get Settings Api",
+    "operationId": "get_settings_api_api_settings_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Save Settings",
+    "operationId": "save_settings_api_settings_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SettingsIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/years": {
+   "get": {
+    "summary": "Photo Years",
+    "description": "Each year with photos (entered date, else estimate), for the year filter.",
+    "operationId": "photo_years_api_years_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/YearCount"
+         },
+         "type": "array",
+         "title": "Response Photo Years Api Years Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/photos/{photo_id}": {
    "get": {
     "summary": "Get Photo",
@@ -251,6 +455,96 @@
    "post": {
     "summary": "Keep Photo",
     "operationId": "keep_photo_api_photos__photo_id__keeper_post",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PhotoDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/photos/{photo_id}/not-duplicates": {
+   "post": {
+    "summary": "Not Duplicates",
+    "description": "Split a wrongly grouped duplicate group (undoable; Import keeps the photos apart).",
+    "operationId": "not_duplicates_api_photos__photo_id__not_duplicates_post",
+    "parameters": [
+     {
+      "name": "photo_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Photo Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NotDuplicatesIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PhotoDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/photos/{photo_id}/keep-all": {
+   "post": {
+    "summary": "Keep All Photos",
+    "description": "Keep every photo in this one's duplicate group (all of them are exported).",
+    "operationId": "keep_all_photos_api_photos__photo_id__keep_all_post",
     "parameters": [
      {
       "name": "photo_id",
@@ -695,6 +989,29 @@
     }
    }
   },
+  "/api/locations": {
+   "get": {
+    "summary": "Locations",
+    "description": "Every location (general area) already used, most used first: suggestions for typing, so the\nsame area is always the same keyword.",
+    "operationId": "locations_api_locations_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array",
+         "title": "Response Locations Api Locations Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/places": {
    "get": {
     "summary": "Places",
@@ -889,6 +1206,51 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/states": {
+   "get": {
+    "summary": "Job States",
+    "description": "Just each recent job's id and state: what the apps poll every few seconds to notice a job\nfinishing (and the Mac going away), a few hundred bytes instead of the full job list.",
+    "operationId": "job_states_api_jobs_states_get",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 30,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/JobState"
+         },
+         "title": "Response Job States Api Jobs States Get"
         }
        }
       }
@@ -1513,7 +1875,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/FaceIds"
+        "$ref": "#/components/schemas/RejectIn"
        }
       }
      },
@@ -1842,6 +2204,28 @@
        }
       ],
       "title": "Name"
+     },
+     "alt_person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Person Id"
+     },
+     "alt_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Name"
      }
     },
     "type": "object",
@@ -2045,6 +2429,20 @@
       ],
       "title": "Date"
      },
+     "months": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     },
      "clear_date": {
       "type": "boolean",
       "title": "Clear Date",
@@ -2131,6 +2529,17 @@
        }
       ],
       "title": "City"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Location"
      },
      "rotate_by": {
       "anyOf": [
@@ -2247,6 +2656,29 @@
      "suggestion"
     ],
     "title": "ClusterOut"
+   },
+   "CollectionOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "current": {
+      "type": "boolean",
+      "title": "Current"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "current"
+    ],
+    "title": "CollectionOut"
    },
    "DrawIn": {
     "properties": {
@@ -2529,6 +2961,28 @@
       ],
       "title": "Person Name"
      },
+     "alt_person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Person Id"
+     },
+     "alt_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alt Name"
+     },
      "source": {
       "type": "string",
       "title": "Source"
@@ -2584,6 +3038,28 @@
        }
       ],
       "title": "Suggested Name"
+     },
+     "suggested_alt_person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Suggested Alt Person Id"
+     },
+     "suggested_alt_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Suggested Alt Name"
      },
      "confidence": {
       "anyOf": [
@@ -2783,6 +3259,24 @@
     ],
     "title": "JobOut"
    },
+   "JobState": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "state": {
+      "type": "string",
+      "title": "State"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "state"
+    ],
+    "title": "JobState"
+   },
    "MergeIn": {
     "properties": {
      "into_id": {
@@ -2795,6 +3289,34 @@
      "into_id"
     ],
     "title": "MergeIn"
+   },
+   "NearbyDate": {
+    "properties": {
+     "photo_id": {
+      "type": "integer",
+      "title": "Photo Id"
+     },
+     "offset": {
+      "type": "integer",
+      "title": "Offset"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     }
+    },
+    "type": "object",
+    "required": [
+     "photo_id",
+     "offset",
+     "label",
+     "year"
+    ],
+    "title": "NearbyDate"
    },
    "NeighbourOut": {
     "properties": {
@@ -2855,6 +3377,17 @@
      "inferred_source"
     ],
     "title": "NeighbourOut"
+   },
+   "NotDuplicatesIn": {
+    "properties": {
+     "only_this": {
+      "type": "boolean",
+      "title": "Only This",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "NotDuplicatesIn"
    },
    "ParsedDate": {
     "properties": {
@@ -2980,6 +3513,27 @@
      "auto_count": {
       "type": "integer",
       "title": "Auto Count"
+     },
+     "photo_count": {
+      "type": "integer",
+      "title": "Photo Count",
+      "default": 0
+     },
+     "double_photo_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Double Photo Ids",
+      "default": []
+     },
+     "twin_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Twin Ids",
+      "default": []
      },
      "cover_face_id": {
       "anyOf": [
@@ -3180,6 +3734,13 @@
       "type": "string",
       "title": "Album Name"
      },
+     "nearby_dates": {
+      "items": {
+       "$ref": "#/components/schemas/NearbyDate"
+      },
+      "type": "array",
+      "title": "Nearby Dates"
+     },
      "source_folder": {
       "anyOf": [
        {
@@ -3246,6 +3807,17 @@
       ],
       "title": "City"
      },
+     "location": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Location"
+     },
      "scan_datetime": {
       "anyOf": [
        {
@@ -3260,6 +3832,16 @@
      "trusted_label": {
       "type": "string",
       "title": "Trusted Label"
+     },
+     "trusted": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TrustedDate"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "inferred_label": {
       "type": "string",
@@ -3328,6 +3910,10 @@
       "type": "array",
       "title": "Dup Members"
      },
+     "file_size": {
+      "type": "integer",
+      "title": "File Size"
+     },
      "fixity_ok": {
       "anyOf": [
        {
@@ -3374,13 +3960,16 @@
      "width",
      "height",
      "album_name",
+     "nearby_dates",
      "back_rel_path",
      "caption",
      "country",
      "state",
      "city",
+     "location",
      "scan_datetime",
      "trusted_label",
+     "trusted",
      "inferred_label",
      "inferred_confidence",
      "inferred_source",
@@ -3389,6 +3978,7 @@
      "back_candidates",
      "back_transcription",
      "dup_members",
+     "file_size",
      "fixity_ok",
      "fixity_checked_at"
     ],
@@ -3635,6 +4225,33 @@
     ],
     "title": "PlaceOut"
    },
+   "RejectIn": {
+    "properties": {
+     "face_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Face Ids"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "face_ids"
+    ],
+    "title": "RejectIn"
+   },
    "ReviewGroup": {
     "properties": {
      "person_id": {
@@ -3663,21 +4280,16 @@
       ],
       "title": "Age Lo"
      },
-     "age_basis": {
+     "year_lo": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "birth_year",
-         "looks",
-         "mixed"
-        ]
+        "type": "integer"
        },
        {
         "type": "null"
        }
       ],
-      "title": "Age Basis"
+      "title": "Year Lo"
      },
      "person_total": {
       "type": "integer",
@@ -3733,6 +4345,66 @@
      "rotated"
     ],
     "title": "ScanOut"
+   },
+   "SettingsIn": {
+    "properties": {
+     "twin_margin_percent": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 50.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Twin Margin Percent"
+     },
+     "snapshot_gap_minutes": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 1440.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Snapshot Gap Minutes"
+     }
+    },
+    "type": "object",
+    "title": "SettingsIn"
+   },
+   "SettingsOut": {
+    "properties": {
+     "twin_margin_percent": {
+      "type": "integer",
+      "title": "Twin Margin Percent"
+     },
+     "twin_margin_default": {
+      "type": "integer",
+      "title": "Twin Margin Default"
+     },
+     "snapshot_gap_minutes": {
+      "type": "integer",
+      "title": "Snapshot Gap Minutes"
+     },
+     "snapshot_gap_default": {
+      "type": "integer",
+      "title": "Snapshot Gap Default"
+     }
+    },
+    "type": "object",
+    "required": [
+     "twin_margin_percent",
+     "twin_margin_default",
+     "snapshot_gap_minutes",
+     "snapshot_gap_default"
+    ],
+    "title": "SettingsOut"
    },
    "Stats": {
     "properties": {
@@ -3799,6 +4471,87 @@
      "similarity"
     ],
     "title": "Suggestion"
+   },
+   "TrustedDate": {
+    "properties": {
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "month": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Month"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "precision": {
+      "type": "string",
+      "title": "Precision"
+     },
+     "min": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Min"
+     },
+     "max": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     }
+    },
+    "type": "object",
+    "required": [
+     "year",
+     "month",
+     "day",
+     "precision",
+     "min",
+     "max",
+     "months"
+    ],
+    "title": "TrustedDate"
    },
    "UndoRequest": {
     "properties": {
@@ -3920,6 +4673,24 @@
      "type"
     ],
     "title": "ValidationError"
+   },
+   "YearCount": {
+    "properties": {
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "year",
+     "count"
+    ],
+    "title": "YearCount"
    }
   }
  }

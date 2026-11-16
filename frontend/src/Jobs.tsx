@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Job, type JobType } from "./api";
-import { useUndo } from "./hooks";
+import { useJobs, useUndo } from "./hooks";
 
 const ACTIONS: { type: JobType; label: string; help: string; confirm?: string }[] = [
   { type: "ingest", label: "Import", help: "Scan the photo folder: new albums, photos, back scans, duplicates, thumbnails. Then auto-rotates." },
@@ -55,11 +55,7 @@ const LABEL: Record<string, string> = { faces: "Find faces", cluster: "Group fac
 
 export function Jobs() {
   const qc = useQueryClient();
-  const jobs = useQuery({
-    queryKey: ["jobs"],
-    queryFn: api.jobs,
-    refetchInterval: (q) => (q.state.data?.some((j) => ["queued", "running", "cancelling"].includes(j.state)) ? 1000 : 5000),
-  });
+  const jobs = useJobs();
   const start = useMutation({
     mutationFn: ({ type, params }: { type: JobType; params?: Record<string, unknown> }) => api.startJob(type, params),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
@@ -68,14 +64,7 @@ export function Jobs() {
 
   const active = new Set(jobs.data?.filter((j) => ["queued", "running"].includes(j.state)).map((j) => j.type));
 
-  // When a job finishes, photos/albums/stats may have changed: refresh everything.
-  const running = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const now = new Set(jobs.data?.filter((j) => ["queued", "running", "cancelling"].includes(j.state)).map((j) => j.id));
-    const finished = [...running.current].some((id) => !now.has(id));
-    running.current = now;
-    if (finished) qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "jobs" });
-  }, [jobs.data, qc]);
+  // App's useJobWatcher refreshes everything when a job finishes.
 
   return (
     <div className="jobs pad">
@@ -187,7 +176,8 @@ function summary(job: Job): string {
         : "";
     case "export":
       return r.planned !== undefined
-        ? `${r.written} written, ${r.unchanged} unchanged, ${len("failed")} failed${r.undated ? ` · ${r.undated} undated (in export/undated)` : ""}`
+        ? `${r.written} written, ${r.unchanged} unchanged, ${len("failed")} failed${r.undated ? ` · ${r.undated} undated (in export/undated)` : ""}${
+            len("no_map_location") ? ` · not on the map (city not found, or add a state): ${(r.no_map_location as string[]).join("; ")}` : ""}`
         : "";
     case "fixity":
       return r.checked !== undefined ? `${r.ok}/${r.checked} ok, ${len("changed")} changed, ${len("missing")} missing, ${len("new_files")} new` : "";
@@ -212,7 +202,7 @@ function summary(job: Job): string {
     case "estimate": {
       if (r.estimated === undefined) return "";
       const n = r.names as Record<string, number> | undefined;
-      return `${r.estimated} dates estimated (${r.own_back} back, ${r.loose_back} loose back, ${r.neighbours ?? 0} neighbours, ${r.shared_people ?? 0} shared people, ${r.age ?? 0} age, ${r.file_name} file name)${n ? ` · ${n.auto} names applied, ${n.suggested} suggested` : ""}`;
+      return `${r.estimated} dates estimated (${r.own_back} back, ${r.loose_back} loose back, ${r.neighbours ?? 0} neighbours, ${r.shared_people ?? 0} shared people, ${r.file_name} file name)${n ? ` · ${n.auto} names applied, ${n.suggested} suggested` : ""}`;
     }
     case "evaluate": {
       const d = (r.dates as Record<string, any>) ?? {};

@@ -1,20 +1,21 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError } from "./api";
+import { api, ApiError, setCollection } from "./api";
 import { Grid } from "./Grid";
 import { Jobs } from "./Jobs";
 import { LooseBacks } from "./LooseBacks";
 import { PeoplePage, PersonPage } from "./People";
 import { PhotoView } from "./PhotoView";
-import { useStats, useUndo } from "./hooks";
+import { Settings } from "./Settings";
+import { useJobWatcher, useStats, UNDO_CONFIRM_ABOVE, useUndo } from "./hooks";
 import { isTypingTarget } from "./keys";
 import { useRoute } from "./route";
 
 /** Undoing more changes than this asks for confirmation first. */
-const UNDO_CONFIRM_ABOVE = 20;
 
 export function App() {
   const route = useRoute();
+  useJobWatcher();
   const stats = useStats();
   const undo = useUndo();
   const [toast, setToast] = useState("");
@@ -77,6 +78,7 @@ export function App() {
         <a className="brand" href="#/">
           Shoebox
         </a>
+        <CollectionPicker />
         <nav>
           <a className={route.view === "grid" || route.view === "photo" ? "is-active" : ""} href="#/">
             Photos
@@ -89,6 +91,9 @@ export function App() {
           </a>
           <a className={route.view === "jobs" ? "is-active" : ""} href="#/jobs">
             Jobs
+          </a>
+          <a className={route.view === "settings" ? "is-active" : ""} href="#/settings">
+            Settings
           </a>
         </nav>
         {s && (
@@ -112,10 +117,40 @@ export function App() {
       {route.view === "grid" && <Grid list={route.list} />}
       {route.view === "photo" && <PhotoView id={route.id} list={route.list} />}
       {route.view === "jobs" && <Jobs />}
+      {route.view === "settings" && <Settings />}
       {route.view === "people" && <PeoplePage tab={route.tab} />}
       {route.view === "person" && <PersonPage id={route.id} />}
       {route.view === "backs" && <LooseBacks kind={route.kind} albumId={route.album_id} undated={route.undated} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
+  );
+}
+
+/** Switch between collections (separate sets of photos). Shown only when there's more than one.
+ *  Switching starts fresh on the new collection's photos: nothing is shared between them. */
+function CollectionPicker() {
+  const list = useQuery({ queryKey: ["collections"], queryFn: api.collections });
+  const current = list.data?.find((c) => c.current);
+  useEffect(() => {
+    if (current && (list.data?.length ?? 0) > 1) document.title = `${current.name} · Shoebox`;
+  }, [current, list.data]);
+  if (!list.data || list.data.length < 2) return null;
+  return (
+    <select
+      className="collection-picker"
+      aria-label="Collection"
+      value={current?.id}
+      onChange={(e) => {
+        setCollection(e.target.value);
+        window.location.hash = "#/";
+        window.location.reload();
+      }}
+    >
+      {list.data.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
   );
 }

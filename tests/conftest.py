@@ -31,6 +31,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("SHOEBOX_DATA_DIR", str(data))
     monkeypatch.setenv("SHOEBOX_BACKUP_DIR", str(backup))
     monkeypatch.setenv("SHOEBOX_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("SHOEBOX_GEONAMES_DIR", str(tmp_path / "geo"))  # no town list unless a test writes one
     reset_caches()
     db.migrate()
     yield config.get_settings()
@@ -47,7 +48,10 @@ def api_client():
 
 
 def reset_caches() -> None:
+    from shoebox import geo
+
     config.get_settings.cache_clear()
+    geo._load.cache_clear()
     try:
         db.get_engine().dispose()
     except Exception:

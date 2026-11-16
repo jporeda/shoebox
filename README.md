@@ -31,13 +31,37 @@ By default only this Mac can open Shoebox. To use it from other devices on your 
 1. In `private/.env`, set `SHOEBOX_BIND=0.0.0.0`, then run `docker compose up -d --build`.
 2. Find this Mac's local name in *System Settings → General → Sharing* (under "Local
    hostname", e.g. `Family-Mac.local`).
-3. On the phone or tablet, open `http://Family-Mac.local:8000`. If macOS asks whether
-   Docker may accept incoming connections, allow it. Many Android phones can't open
-   `.local` names: use the Mac's IP address instead, e.g. `http://192.168.1.20:8000`
-   (*System Settings → Wi-Fi → Details* shows it).
+3. On the phone or tablet, open **`http://Family-Mac.local:8001`**: the touch app (below). If
+   macOS asks whether Docker may accept incoming connections, allow it. Many Android phones
+   can't open `.local` names: use the Mac's IP address instead, e.g. `http://192.168.1.20:8001`
+   (*System Settings → Wi-Fi → Details* shows it). Port 8000 is the full desktop site.
 4. The Mac has to be awake, with Docker Desktop running, for other devices to reach it.
    *System Settings → Battery → Options* can keep it from sleeping on power, and Docker
    Desktop's *Start Docker Desktop when you sign in* setting brings Shoebox back after a restart.
+
+**The touch app (port 8001)** is a separate, simpler Shoebox made for fingers, for the jobs
+you'd do on the sofa. It runs alongside the desktop site on the same photos and database; nothing
+detects your device, the port decides. In Safari, *Share → Add to Home Screen* makes it an app.
+- **Photos:** pinch to change the size, tap a photo to open it, press and hold to select several
+  (then Date… / Event… / rotate). The bar at the top shows what's filtered; tap ✕ to drop a filter.
+- **A photo** opens over the screen you were on, and "‹ Back" (named: Check, To name, a person,
+  Date, Photos) or a swipe down returns you exactly there: same place, same marks, same half-typed
+  name. Swipe sideways for the next one, double-tap to zoom, tap to fold the panel away. Under it: **Date** (use the estimate,
+  a nearby photo's date, the previous photo's, a year then a month, an exact day, or type one),
+  **People** (yes / no on the app's guesses, name a face, "Ana or Ben" for twins) and **Info**
+  (caption, place, the back of the photo).
+- **Date:** one undated (or least sure) photo at a time; one tap dates it and the next comes up.
+- **People:** *To name* (groups of faces; the name box is on top) and *Everyone* (tap a person for
+  their photos).
+- **Check:** the app's name guesses; tap the wrong ones, then Confirm. **Photos ›** on a group (or
+  holding a face) opens its photos with that face picked out.
+- After each change, **Undo** shows at the bottom for a few seconds.
+
+Duplicates, backs, import, jobs and settings are only on the desktop site, and the touch app never
+links to it or mentions it: people using it only see what they can do there. A face the app missed:
+in a photo's **People** tab, *＋ Draw a face that wasn't found*, then drag a box around it with a finger
+or Apple Pencil (double-tap to zoom in first for small faces) and name it. *Remove this box* takes a
+drawn box away again. On an iPad the photo and its panel sit side by side.
 
 Browsers show "Not Secure" in the address bar because this is plain `http` on your own
 network; that's expected.
@@ -54,7 +78,7 @@ network; that's expected.
 
 **There is no login.** Anyone on the same Wi-Fi can view every photo and change anything,
 including Restore and Export. Put guests and smart-home devices on a separate guest network,
-never forward port 8000 on your router, and set `SHOEBOX_BIND` back to `127.0.0.1` before
+never forward ports 8000 or 8001 on your router, and set `SHOEBOX_BIND` back to `127.0.0.1` before
 taking a laptop onto someone else's Wi-Fi (a café, a hotel).
 
 **Undo on phones and tablets.** The Undo button on each browser takes back that browser's own
@@ -65,6 +89,27 @@ Restore can't be undone in one step: to go back, copy an earlier snapshot from
 `BACKUP_ROOT/db/` (see "Where data lives"). Undo history belongs to one browser at one
 address: the same phone opening the `.local` name and the IP address, a private window, or a
 Home Screen icon each start their own history.
+
+### Several collections (optional)
+
+A collection is a completely separate set of photos: its own folder (with any subfolders; every
+folder that holds images becomes an album), its own people, dates, faces, events, undo history,
+backups and exports. Nothing carries over between collections.
+
+1. In `private/.env`, add a slot (2 to 5) with all three lines:
+   ```
+   COLLECTION_2_NAME=Grandma's albums
+   COLLECTION_2_PHOTOS=/Users/you/Pictures/GrandmaScans
+   COLLECTION_2_BACKUP=/Users/you/Shoebox-backup-grandma
+   ```
+   Give each collection its own backup folder. `SHOEBOX_COLLECTION_NAME` names the first one.
+2. `docker compose up -d`, then pick the collection in the top bar and run **Import** for it on
+   the Jobs page.
+
+The picker only shows with two or more collections; it's remembered per browser. Keep a slot's
+number once it has data (each slot's database lives under `collections/c<n>` in the data volume).
+Restoring from a snapshot or `truth.json` works per collection, from that collection's backup
+folder. On the command line, `shoebox run <job> --collection c2` targets one.
 
 ## Personal data
 
@@ -84,12 +129,16 @@ Anything that identifies your family stays out of git:
 
 ## Using it
 
-- **Grid:** pick an album. Click to select, Shift-click for a range, ⌘-click to
+- **Grid:** narrow it down with **Filter** (any combination of albums, years, people and events). Click to select, Shift-click for a range, ⌘-click to
   add. Press `Y` (or use the bar at the bottom) and type a date:
   `1987`, `1987-06`, `1987-06-14`, `1980s`, `1985-1988`, `~1987`.
   Pick an event type. A year plus a fixed-date holiday becomes that day
   ("1985" + Christmas → 1985-12-25), and a dated event instance dates any
   undated photo you later tag with it.
+
+  On a phone or tablet: tap to open, press and hold to select. Pinch the grid with two
+  fingers, as in the Photos app: spread them for fewer, bigger photos (down to one across),
+  pinch them together for more, smaller ones. Each device remembers the size you chose.
 - **Estimated dates** (amber, shown as `≈1978-10` with a confidence). The app
   combines several kinds of evidence, and photo detail's *Why* line shows which
   ones it used:
@@ -102,8 +151,15 @@ Anything that identifies your family stays out of git:
   4. **people nearby**: dated photos within 15 files in the same album that show the same
      people. Both only count dates you set and names you gave or confirmed; closer photos and
      more people in common weigh more;
-  5. **ages**: a named person with a birth year, and how old their face looks;
-  6. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
+  5. years in the file name (`Album3_1984_1986_0161` → ≈1984-1986).
+
+  How old a face *looks* doesn't date photos: even a good face-age model is only right to within
+  an age group (see *Face ages* below). Dating uses birth years, so set them on people's pages
+  where you know them.
+- **Face ages:** each face gets an age group (0–2, 3–9, 10–19, … 70+) from a model trained on
+  the FairFace dataset; on faces with a known age it put 83% in the right group. It's used to keep
+  young children's names as suggestions rather than applied automatically. After upgrading,
+  the worker re-estimates every face once (about 0.2 s per face).
 
   When pieces of evidence agree, confidence goes up; disagreements are shown
   ("… but file name says 1990"). Estimates never overwrite a date you entered and
@@ -132,11 +188,28 @@ Anything that identifies your family stays out of git:
   page. Pets are exported under `Pets|Name` keywords and as "Pet" regions (not as people in
   the image), and their birth year isn't used to date photos. The face detector only finds
   human faces, so draw boxes around pets by hand.
+- **Twins (one of two, not sure which):** name the face, then *Or…* and the other name.
+  It shows as "Ana or Ben" on both people's pages and in the filters, and is exported
+  as one name, "Ana or Ben", never as either alone. It doesn't teach the name matcher or
+  date photos by who's in them. When you find out, pick *It's Ana* / *It's Ben*
+  (or *Not Ana* on Ana's page, which leaves Ben), or *Neither*. Once Ana and Ben share a face,
+  "Ana or Ben" is offered wherever Ana is: next to the app's guess, on a face named Ana, as a
+  group's suggestion, under *Check* ("Confirm as Ana or Ben") and in the name box. Name
+  suggestions do the same: when the face model can't tell Ana from Ben, it suggests
+  "Ana or Ben?" (never applied by itself). One person can't be in a photo twice, so once
+  Ana is confirmed on one face, another face there that's "Ana or Ben" becomes Ben (in the
+  same Undo step), and suggestions on that photo say "Ben?". Likewise, when the app found
+  both twins in a photo and you set one face to "Ana or Ben", the face it took for the other
+  twin becomes "Ana or Ben" too; confirming either face later settles the other. And in a
+  photo with just two faces that both look like Ana or Ben, both are suggested as "Ana or Ben?"
+  (unless one is clearly Ana and the other clearly Ben). How close the twins' match scores
+  must be for "Ana or Ben?" is on the **Settings** page (default 10 points; each collection
+  has its own).
 - **Name suggestions:** once you've named people, unnamed faces are compared
   with the faces you named or confirmed, weighted toward photos from the same
   era. When the app is very sure, it names the face itself; these show as
-  "Name?" with a dashed box. Otherwise it suggests a name, and faces that look
-  under 6 are only ever suggested. Answer them under *People → Check* (click the
+  "Name?" with a dashed box. Otherwise it suggests a name, and children under 6
+  (by their birth year) are only ever suggested. Answer them under *People → Check* (click the
   wrong ones, then Confirm) or with Yes/No on a face box. "Not them" is
   remembered. Automatic names are never exported until you confirm them. The
   Jobs page can revert the names one run gave automatically; those faces then
@@ -162,8 +235,8 @@ Anything that identifies your family stays out of git:
 | Layer | Location | Contents |
 |---|---|---|
 | Live | Docker volume `shoebox-data` | SQLite DB, thumbnails |
-| Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after every job (the newest 10, then one per hour, day, week and month going back a year) and before schema upgrades (never deleted automatically) |
-| Permanent | `BACKUP_ROOT/truth/truth.json` | Everything you entered, keyed by file hash; `history/` keeps older versions |
+| Permanent | `BACKUP_ROOT/db/` | `VACUUM INTO` snapshots after jobs, at most one every 30 minutes (*Settings*; a manual Backup and Restore always take one), kept as the newest 10, then one per hour, day, week and month going back a year; and before schema upgrades (never deleted automatically) |
+| Permanent | `BACKUP_ROOT/truth/truth.json` | Everything you entered, keyed by file hash, written after every job; `history/` keeps older versions |
 | Permanent | `BACKUP_ROOT/manifest-sha256.txt` | Checksums of every original |
 | Output | `BACKUP_ROOT/export/` | Copies of every photo with embedded metadata (undated ones in `undated/`) |
 | Output | `BACKUP_ROOT/sidecars/` | `file.jpg.xmp` sidecars mirroring the photo tree |
@@ -189,8 +262,21 @@ Anything that identifies your family stays out of git:
 ## Viewing the exports
 
 - **Apple Photos / Google Photos:** import the `export/` folder. Dates, ordering
-  within a day, descriptions (and keywords in Apple Photos) carry over. Neither
-  app imports face names from metadata.
+  within a day, the caption, map location (and keywords in Apple Photos) carry over. Neither
+  app imports face names from metadata, so people's names are also keywords, and the caption
+  lists who is where. Each exported caption reads, one item per line:
+  ```
+  Wellfleet, Massachusetts, United States      (the place)
+  Cape Cod                                      (the event)
+  First day at the beach                        (the caption typed in Shoebox)
+  Mom - 271, 510 px                             (each named face: its centre, from the top-left)
+  ```
+- **Map location:** a photo with a city is placed at the city's centre (anything with "Disney"
+  in the place goes to Cinderella Castle at Walt Disney World). Cities come from an offline list
+  of the world's towns built into the Docker image ([GeoNames](https://www.geonames.org/),
+  CC-BY 4.0); nothing is looked up online. A city that can't be pinned down gets no location: a
+  misspelt name, or several towns of that name with no state set (Springfield). The Export job
+  lists those so you can fix them.
 - **Immich:** add `export/` as an external library; named faces are written as MWG regions
   (with `PersonInImage` and `People|Name` keywords), which Immich reads. Alternatively, keep the
   originals as the library and copy the sidecars next to them:
@@ -200,8 +286,14 @@ Anything that identifies your family stays out of git:
   (This writes into your photo folder, so only do it if you want that.)
 - Year-only dates are written as July 1 (decades as Jan 1), and the true precision
   is kept in `XMP-photoshop:DateCreated` (e.g. `1987`). Photos from the same date
-  get consecutive seconds from 09:00:00, so apps keep album order. Estimated
-  dates also get the keyword `date:estimated`.
+  get consecutive seconds from 09:00:00, so apps keep album order. Ranges and
+  decades also get the keyword `date:estimated`.
+- **Only dates a person set or accepted are exported.** Estimates, dates from the back or an
+  event, and the scanner's own dates (when each print was scanned) are never written: those
+  photos go to `export/undated/` with the keyword `date:unknown` and the impossible date
+  **1 January 1900**, so Apple Photos (which always shows some date) keeps them together at the
+  start of the library instead of on the day they were scanned or exported. Accept an estimate in
+  the app to export it with its real date.
 
 ## Development
 
@@ -238,11 +330,17 @@ names, so a page using DNS rebinding still gets nothing. It only accepts changes
 (anything but GET) that carry the `X-Shoebox: 1` header, which the UI sends. A web
 page open in another tab can't add that header, so it can't drive the app. As a second
 layer, a change whose `Origin` header names any other page (another site, another local
-port, or `null`) is refused. The UI's own origin (on an allowed name) and the Vite dev server on port 5173 are
-allowed, and so are clients that send no `Origin` at all (scripts, curl).
+port, or `null`) is refused. The UI's own origin (on an allowed name) and the Vite dev servers on ports 5173 (desktop,
+`npm run dev`) and 5174 (touch app, `npm run dev:touch`) are allowed, and so are clients that send no `Origin` at all (scripts, curl).
 
 ## Licensing note
 
 The InsightFace `buffalo_l` models baked into the image are licensed for
 **non-commercial use only**. That's fine for personal use, but don't push this
 image to a public registry.
+
+The face-age model is
+[dima806/fairface_age_image_detection](https://huggingface.co/dima806/fairface_age_image_detection)
+(Apache-2.0), trained on the [FairFace](https://github.com/dchen236/FairFace) dataset (CC BY 4.0), in
+the ONNX export by [onnx-community](https://huggingface.co/onnx-community/fairface_age_image_detection-ONNX).
+The Dockerfile downloads it at a pinned revision and checks its SHA-256 (about 340 MB).

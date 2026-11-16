@@ -1,0 +1,55 @@
+/* The new photo grid (preview), shared by the desktop site and the touch app: photos fill justified
+   rows of equal height, no cards, sticky sections, the date as a pill on the photo. */
+.jsec + .jsec { margin-top: 18px; }
+.jsec__head {
+  position: sticky; top: 0; z-index: 3; margin: 0 -16px 6px; padding: 12px 16px 8px;
+  font-size: 17px; font-weight: 650; letter-spacing: -0.01em;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: saturate(1.6) blur(14px); -webkit-backdrop-filter: saturate(1.6) blur(14px);
+}
+.jsec__count { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+/* Each photo grows in proportion to its shape, so every photo in a row has the same height. */
+.jrow { display: flex; flex-wrap: wrap; gap: 4px; }
+.jrow::after { content: ""; flex-grow: 1e9; }
+.jtile {
+  position: relative; flex: var(--ar) 1 calc(var(--ar) * var(--row)); aspect-ratio: var(--ar);
+  min-width: 0; padding: 0; border: 0; border-radius: 6px; overflow: hidden; cursor: pointer;
+  background: var(--panel-2); font: inherit; color: #fff;
+  content-visibility: auto; contain-intrinsic-size: calc(var(--ar) * var(--row)) var(--row);
+}
+.jtile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.18s ease, border-radius 0.18s ease; }
+.jtile:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* Selected: the photo shrinks inside a blue ring, with a filled check (as in Apple Photos). */
+.jtile.is-selected { box-shadow: inset 0 0 0 3px var(--sel, var(--accent)); background: color-mix(in srgb, var(--sel, var(--accent)) 18%, var(--panel-2)); }
+.jtile.is-selected img { transform: scale(0.9); border-radius: 4px; }
+.jtile__check {
+  position: absolute; top: 7px; left: 7px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; border: 2px solid rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.18); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); opacity: 0; transition: opacity 0.12s;
+}
+.jtile:hover .jtile__check, .jgrid.has-selection .jtile__check, .jtile.is-selected .jtile__check { opacity: 1; }
+.jtile.is-selected .jtile__check { background: var(--sel, var(--accent)); border-color: #fff; color: #fff; }
+.jtile__icons { position: absolute; top: 7px; right: 7px; display: flex; gap: 4px; }
+.jtile__icons > span {
+  width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%;
+  background: rgba(20, 20, 20, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.jtile__icons > span.is-warn { color: #ffd27a; }
+/* The date: a small glass pill; its dot says confirmed (green), estimated (amber) or none (grey). */
+.jtile__date {
+  position: absolute; left: 7px; bottom: 7px; max-width: calc(100% - 14px);
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(20, 20, 20, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.jtile__event { font-weight: 500; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; }
+.jtile__dot { width: 7px; height: 7px; border-radius: 50%; background: #a3a3a3; flex: none; }
+.jtile--reviewed .jtile__dot { background: #4fd18b; }
+.jtile--inferred .jtile__dot { background: #f5b54a; }
+/* Small photos: the event and icons would crowd the photo, so only the date stays. */
+.jgrid.is-small .jtile__event { display: none; }
+@media (prefers-reduced-motion: reduce) { .jtile img, .jtile__check { transition: none; } }
+/* Very small photos (many per row): the pill shrinks to its dot. */
+.jgrid.is-tiny .jtile__date { padding: 0; width: 12px; height: 12px; justify-content: center; }
+.jgrid.is-tiny .jtile__date > :not(.jtile__dot), .jgrid.is-tiny .jtile__icons { display: none; }
+.jgrid.is-tiny .jtile__date { font-size: 0; }
+.jtile.is-recent { box-shadow: inset 0 0 0 3px var(--accent); }

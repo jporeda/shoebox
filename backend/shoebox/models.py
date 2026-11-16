@@ -66,11 +66,15 @@ class Photo(SQLModel, table=True):
     phash: Optional[str] = None
     dup_group_id: Optional[int] = Field(default=None, index=True)
     is_dup_keeper: bool = False
+    # sha256s of photos someone said are not duplicates of this one (kept apart when grouping).
+    not_dup_of: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
 
     # Trusted date.
     t_year: Optional[int] = Field(default=None, index=True)
     t_month: Optional[int] = None
     t_day: Optional[int] = None
+    # Some months, not known which (summer: [6, 7, 8]), with a year, range or decade.
+    t_months: Optional[list[int]] = Field(default=None, sa_column=Column(JSON))
     t_min: Optional[int] = None
     t_max: Optional[int] = None
     t_precision: Optional[str] = None  # day | month | year | range | decade
@@ -92,6 +96,8 @@ class Photo(SQLModel, table=True):
     country: Optional[str] = None
     state: Optional[str] = None
     city: Optional[str] = None
+    # A general area ("Cape Cod", "Grandma's farm") rather than a town: exported as a keyword.
+    location: Optional[str] = None
 
     missing: bool = False
     fixity_checked_at: Optional[datetime] = None
@@ -158,14 +164,21 @@ class Face(SQLModel, table=True):
     det_score: Optional[float] = None
     detector_ver: Optional[str] = None
     person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
+    # "One of two people, we don't know which" (twins): the face is person_id OR alt_person_id.
+    # Only a person sets it; such a face never teaches the matcher or dates photos by who's in them.
+    alt_person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
     source: str = "auto"  # auto | manual | drawn | accepted
     ignored: bool = False
     confidence: Optional[float] = None
-    est_age: Optional[float] = None
+    est_age: Optional[float] = None  # apparent age (FairFace's expected age once age_ver is current)
+    age_group: Optional[int] = None  # FairFace age group index, see faces.AGE_GROUPS
+    age_ver: int = Field(default=0, sa_column_kwargs={"server_default": "0"})  # faces.AGE_VERSION when estimated
     run_id: Optional[str] = None
     cluster_id: Optional[int] = Field(default=None, index=True)
     # Name suggested by matching but not applied (too unsure, or the face looks under 6).
     suggested_person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
+    # Set when matching can't tell two known twins apart: the suggestion is "suggested OR this one".
+    suggested_alt_person_id: Optional[int] = Field(default=None, foreign_key="person.id", index=True)
     # People a person said this face is *not*; never suggested for it again.
     rejected_person_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))
 

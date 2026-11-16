@@ -1,0 +1,89 @@
+/* "Harvest Table": Shoebox's new look. Warm paper and wood around the photos, never grey; pumpkin
+   for the main action, sage for confirmed, harvest gold for estimated, cranberry for destructive.
+   Applied by <html data-look="harvest"> (the "New look" switch), over each app's own variables.
+
+   Every text pair meets WCAG AA (checked by script): ink on cream 14:1, soft ink 6:1, pumpkin on
+   cream 5.2:1, cream on pumpkin 5.5:1, gold on its tint 4.9:1; in dark, all accents 5.3:1 or more,
+   dark-roast text on pumpkin 7.3:1. Pumpkin and gold have the same lightness, so "estimated" is never
+   a filled pumpkin-like shape: an outlined gold chip with ≈ (see .t-status-inferred). */
+
+:root[data-look="harvest"] {
+  /* surfaces */
+  --bg: oklch(0.975 0.016 85);          /* cream: the table */
+  --panel: oklch(0.993 0.005 85);       /* ivory: cards and panels */
+  --panel-2: oklch(0.945 0.024 80);     /* parchment: wells, inputs, sunken areas */
+  --border: oklch(0.80 0.045 65);       /* warm outline on cards and controls */
+  --rule: oklch(0.86 0.035 70);         /* wheat: hairline dividers */
+  --field: oklch(0.62 0.05 60);         /* field outlines (3.4:1) */
+  /* ink */
+  --text: oklch(0.27 0.035 50);         /* espresso */
+  --muted: oklch(0.47 0.045 55);        /* cocoa */
+  /* colour */
+  --accent: oklch(0.53 0.15 45);        /* pumpkin */
+  --accent-text: oklch(0.99 0.01 85);
+  --accent-tint: oklch(0.94 0.04 55);
+  --sel: var(--accent);
+  --ok: oklch(0.49 0.10 145);           /* sage */
+  --ok-tint: oklch(0.95 0.035 145);
+  --warn: oklch(0.52 0.11 70);          /* harvest gold */
+  --warn-tint: oklch(0.95 0.045 85);
+  --bad: oklch(0.48 0.165 20);          /* cranberry */
+  /* the dark places: the photo viewer's backdrop, toasts, pills on photos */
+  --night: oklch(0.15 0.02 50);
+  --toast: oklch(0.30 0.04 50);
+  --toast-text: oklch(0.975 0.016 85);
+  --toast-action: oklch(0.81 0.13 85);  /* gold on the toast (7.6:1) */
+  --glass: oklch(0.22 0.03 50 / 0.62);  /* pills and buttons over photos */
+  --scrim: oklch(0.20 0.03 50 / 0.4);   /* behind sheets */
+  --switch-on: var(--ok);
+
+  /* type: the system font for reading, a warm serif for titles only (22px and up). Apple devices
+     have New York (ui-serif) and Iowan Old Style built in: nothing is downloaded. */
+  --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: ui-serif, "New York", "Iowan Old Style", Charter, Georgia, serif;
+  --text-sm: 13px;
+  --text-md: 16px;
+  --text-lg: 17px;
+  --title-sm: 22px;
+  --title-md: 28px;
+  --title-lg: 34px;
+
+  /* shape, depth, motion */
+  --r-control: 10px;
+  --r-card: 16px;
+  --r-sheet: 24px;
+  --r-photo: 6px;
+  --shadow-1: 0 1px 2px oklch(0.35 0.05 50 / 0.10), 0 1px 1px oklch(0.35 0.05 50 / 0.06);
+  --shadow-2: 0 4px 14px oklch(0.35 0.05 50 / 0.12), 0 1px 3px oklch(0.35 0.05 50 / 0.08);
+  --shadow-3: 0 12px 36px oklch(0.30 0.05 50 / 0.22), 0 2px 8px oklch(0.30 0.05 50 / 0.10);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fast: 140ms;
+  --slow: 260ms;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-look="harvest"] {
+    --bg: oklch(0.19 0.022 50);         /* dark roast */
+    --panel: oklch(0.23 0.026 50);
+    --panel-2: oklch(0.27 0.03 50);
+    --border: oklch(0.42 0.045 55);
+    --rule: oklch(0.37 0.04 55);
+    --field: oklch(0.55 0.05 60);
+    --text: oklch(0.94 0.02 85);        /* cream */
+    --muted: oklch(0.76 0.04 70);
+    --accent: oklch(0.73 0.15 55);      /* pumpkin, lit */
+    --accent-text: oklch(0.20 0.03 50); /* dark roast on pumpkin (7.3:1) */
+    --accent-tint: oklch(0.32 0.06 50);
+    --ok: oklch(0.76 0.12 145);
+    --ok-tint: oklch(0.30 0.05 145);
+    --warn: oklch(0.81 0.13 85);
+    --warn-tint: oklch(0.30 0.05 75);
+    --bad: oklch(0.70 0.15 20);
+    --toast: oklch(0.32 0.04 50);
+    --shadow-1: 0 1px 2px oklch(0.05 0.02 50 / 0.5);
+    --shadow-2: 0 4px 14px oklch(0.05 0.02 50 / 0.55);
+    --shadow-3: 0 12px 36px oklch(0.05 0.02 50 / 0.7);
+    color-scheme: dark;
+  }
+}

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import fcntl
 import logging
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import Iterator
 
@@ -50,8 +50,29 @@ def _set_pragmas(dbapi_conn, _record) -> None:
     cur.close()
 
 
-@lru_cache
+_engines: dict[Path, Engine] = {}
+_engines_lock = threading.Lock()
+
+
 def get_engine() -> Engine:
+    """The engine for the current collection's database (one per collection, made on first use)."""
+    path = get_settings().db_path
+    with _engines_lock:
+        if path not in _engines:
+            _engines[path] = _make_engine()
+        return _engines[path]
+
+
+def _clear_engines() -> None:
+    for e in _engines.values():
+        e.dispose()
+    _engines.clear()
+
+
+get_engine.cache_clear = _clear_engines  # type: ignore[attr-defined]
+
+
+def _make_engine() -> Engine:
     settings = get_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     engine = create_engine(
@@ -95,8 +116,17 @@ def head_revision() -> str | None:
     return ScriptDirectory.from_config(alembic_config()).get_current_head()
 
 
+def migrate_all() -> None:
+    """Migrate every collection's database (the API and worker do this at startup)."""
+    from .config import collections, use_collection
+
+    for c in collections():
+        with use_collection(c.id):
+            migrate()
+
+
 def migrate() -> None:
-    """Upgrade the schema to head, snapshotting an existing DB first.
+    """Upgrade the current collection's schema to head, snapshotting an existing DB first.
 
     Both the API and worker call this at startup; a file lock serializes them.
     """

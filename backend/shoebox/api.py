@@ -9,7 +9,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlmodel import Session, col, select
 
@@ -65,8 +65,28 @@ class PhotoSummary(BaseModel):
     height: Optional[int]
 
 
+class NearbyDate(BaseModel):
+    photo_id: int
+    offset: int  # files away in the album folder: negative = before this photo, positive = after
+    label: str  # the date someone set on that photo, e.g. "1987-06-14", "1987-06", "1987"
+    year: int
+
+
+class TrustedDate(BaseModel):
+    year: int
+    month: Optional[int]
+    day: Optional[int]
+    precision: str  # day | month | year | range | decade
+    min: Optional[int]
+    max: Optional[int]
+    months: Optional[list[int]]
+
+
 class PhotoDetail(PhotoSummary):
     album_name: str
+    # The nearest photo before and after this one in its album (within estimate.SURROUNDING
+    # files) that has a date someone set: offered as "same date as" / "similar date" choices.
+    nearby_dates: list[NearbyDate]
     # The folder holding the original on the Mac (PHOTO_ROOT from private/.env plus the album
     # path), for pasting into Finder's Go to Folder. None when PHOTO_ROOT isn't known (CLI, tests).
     source_folder: Optional[str] = None
@@ -75,8 +95,11 @@ class PhotoDetail(PhotoSummary):
     country: Optional[str]
     state: Optional[str]
     city: Optional[str]
+    location: Optional[str]  # a general area, exported as a keyword
     scan_datetime: Optional[str]
     trusted_label: str
+    # The date a person set, in parts (for filling in date boxes); None when there's none.
+    trusted: Optional[TrustedDate]
     inferred_label: str
     inferred_confidence: Optional[float]
     inferred_source: Optional[str]
@@ -85,6 +108,7 @@ class PhotoDetail(PhotoSummary):
     back_candidates: list[dict]
     back_transcription: Optional[str]
     dup_members: list[int]
+    file_size: int
     fixity_ok: Optional[bool]
     fixity_checked_at: Optional[datetime]
 
@@ -97,6 +121,8 @@ class PhotoPage(BaseModel):
 class BulkUpdate(BaseModel):
     ids: list[int]
     date: Optional[str] = None
+    # With a year, range or decade in `date`: the months it was in, not known which (1-12).
+    months: Optional[list[int]] = None
     clear_date: bool = False
     event_kind_id: Optional[int] = None
     event_label: Optional[str] = None
@@ -107,6 +133,7 @@ class BulkUpdate(BaseModel):
     country: Optional[str] = None
     state: Optional[str] = None
     city: Optional[str] = None
+    location: Optional[str] = None  # a general area ("Cape Cod"): omit to leave alone, "" to clear
     rotate_by: Optional[int] = None
     date_source: Literal["manual", "back", "accepted"] = "manual"
 
@@ -255,7 +282,7 @@ def _labels(s: Session) -> dict[int, str]:
 
 def summarize(p: Photo, labels: dict[int, str]) -> PhotoSummary:
     if p.t_year is not None:
-        label = format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max)
+        label = format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max, p.t_months)
         year, source = p.t_year, p.t_source
     elif p.i_year is not None:
         label = "≈" + format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max)
@@ -300,6 +327,25 @@ def _host_folder(rel_path: str) -> Optional[str]:
     return str(PurePosixPath(root) / PurePosixPath(rel_path).parent) if root else None
 
 
+def _nearby_dates(s: Session, p: Photo) -> list[NearbyDate]:
+    from .estimate import SURROUNDING
+
+    rows = s.exec(
+        select(Photo).where(
+            Photo.album_id == p.album_id, Photo.id != p.id, Photo.missing == False,  # noqa: E712
+            Photo.t_year != None,  # noqa: E711
+            Photo.list_index >= p.list_index - SURROUNDING, Photo.list_index <= p.list_index + SURROUNDING,
+        )
+    ).all()
+    before = max((r for r in rows if r.list_index < p.list_index), key=lambda r: r.list_index, default=None)
+    after = min((r for r in rows if r.list_index > p.list_index), key=lambda r: r.list_index, default=None)
+    return [
+        NearbyDate(photo_id=r.id, offset=r.list_index - p.list_index, year=r.t_year,
+                   label=format_partial(r.t_year, r.t_month, r.t_day, r.t_precision, r.t_min, r.t_max, r.t_months))
+        for r in (before, after) if r is not None
+    ]
+
+
 def _detail(s: Session, p: Photo) -> PhotoDetail:
     base = summarize(p, _labels(s))
     members = (
@@ -309,13 +355,17 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
         **base.model_dump(),
         album_name=s.get(Album, p.album_id).name,
         source_folder=_host_folder(p.rel_path),
+        nearby_dates=_nearby_dates(s, p),
         back_rel_path=p.back_rel_path,
         caption=p.caption,
         country=p.country,
         state=p.state,
         city=p.city,
+        location=p.location,
         scan_datetime=p.scan_datetime,
-        trusted_label=format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max),
+        trusted=TrustedDate(year=p.t_year, month=p.t_month, day=p.t_day, precision=p.t_precision or "year",
+                            min=p.t_min, max=p.t_max, months=p.t_months) if p.t_year is not None else None,
+        trusted_label=format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max, p.t_months),
         inferred_label=format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max),
         inferred_confidence=p.i_confidence,
         inferred_source=p.i_source,
@@ -324,6 +374,7 @@ def _detail(s: Session, p: Photo) -> PhotoDetail:
         back_candidates=p.back_candidates or [],
         back_transcription=(bt.transcription if (bt := s.exec(select(BackText).where(BackText.photo_id == p.id)).first()) else None),
         dup_members=list(members),
+        file_size=p.file_size,
         fixity_ok=p.fixity_ok,
         fixity_checked_at=p.fixity_checked_at,
     )
@@ -368,6 +419,12 @@ def list_photos(
     status: Optional[Status] = None,
     duplicates: bool = False,
     event_instance_id: Optional[int] = None,
+    ids: Optional[str] = Query(None, description="only these photos: comma-separated ids (e.g. one Check group)"),
+    albums: Optional[str] = Query(None, description="comma-separated album ids; any of them"),
+    years: Optional[str] = Query(None, description="comma-separated years (entered, else estimated); any of them"),
+    people: Optional[str] = Query(None, description="comma-separated person ids"),
+    people_mode: Literal["all", "any"] = "all",
+    events: Optional[str] = Query(None, description="comma-separated event instance ids; any of them"),
     order: Literal["album", "chrono", "confidence"] = "album",
     offset: int = 0,
     limit: int = Query(20000, le=50000),
@@ -386,10 +443,30 @@ def list_photos(
         q = q.where(Photo.dup_group_id != None)  # noqa: E711
     if event_instance_id is not None:
         q = q.where(Photo.event_instance_id == event_instance_id)
+    if ids is not None:
+        q = q.where(Photo.id.in_(_id_list(ids, "ids")))
+    # Multi-select filters: any of the values within one, all of the filters together.
+    if albums:
+        q = q.where(Photo.album_id.in_(_id_list(albums, "albums")))
+    if years:
+        q = q.where(func.coalesce(Photo.t_year, Photo.i_year).in_(_id_list(years, "years")))
+    if events:
+        q = q.where(Photo.event_instance_id.in_(_id_list(events, "events")))
+    if people:
+        from .models import Face
+
+        chosen = _id_list(people, "people")
+        named = select(Face.photo_id).where(Face.ignored == False)  # noqa: E712
+        # A "one of two" face (twins) counts for either person.
+        if people_mode == "any":
+            q = q.where(Photo.id.in_(named.where(Face.person_id.in_(chosen) | Face.alt_person_id.in_(chosen))))
+        else:
+            for pid in chosen:  # every one of them is in the photo
+                q = q.where(Photo.id.in_(named.where((Face.person_id == pid) | (Face.alt_person_id == pid))))
     if person_id is not None:
         from .models import Face
 
-        q = q.where(Photo.id.in_(select(Face.photo_id).where(Face.person_id == person_id)))
+        q = q.where(Photo.id.in_(select(Face.photo_id).where((Face.person_id == person_id) | (Face.alt_person_id == person_id))))
     total = s.exec(select(func.count()).select_from(q.subquery())).one()
     if order == "chrono":
         eff = func.coalesce(Photo.t_year, Photo.i_year)
@@ -407,6 +484,91 @@ def list_photos(
     rows = s.exec(q.offset(offset).limit(limit)).all()
     labels = _labels(s)
     return PhotoPage(total=total, items=[summarize(p, labels) for p in rows])
+
+
+def _id_list(text: str, name: str) -> set[int]:
+    try:
+        return {int(i) for i in text.split(",") if i.strip()}
+    except ValueError:
+        raise HTTPException(422, f"{name} must be comma-separated numbers")
+
+
+class CollectionOut(BaseModel):
+    id: str
+    name: str
+    current: bool
+
+
+@router.get("/collections", response_model=list[CollectionOut])
+def list_collections():
+    """The configured collections, and which one this request is working on (the UI's picker)."""
+    from .config import CURRENT_COLLECTION, collections
+
+    now = CURRENT_COLLECTION.get()
+    return [CollectionOut(id=c.id, name=c.name, current=c.id == now) for c in collections()]
+
+
+class SettingsOut(BaseModel):
+    # "Ana or Ben?" is suggested when two known twins' match scores are within this many
+    # percentage points (the % shown on name guesses). Per collection.
+    twin_margin_percent: int
+    twin_margin_default: int
+    # At most one database snapshot per this many minutes after jobs (0 = after every job).
+    snapshot_gap_minutes: int
+    snapshot_gap_default: int
+
+
+class SettingsIn(BaseModel):
+    # Each one is saved only if given.
+    twin_margin_percent: Optional[int] = Field(None, ge=0, le=50)
+    snapshot_gap_minutes: Optional[int] = Field(None, ge=0, le=1440)
+
+
+def _settings_out(s: Session) -> SettingsOut:
+    from .backup import SNAPSHOT_GAP_DEFAULT, SNAPSHOT_GAP_KEY
+    from .db import get_meta
+    from .matching import TWIN_MARGIN, twin_margin
+
+    return SettingsOut(
+        twin_margin_percent=round(twin_margin(s) * 100), twin_margin_default=round(TWIN_MARGIN * 100),
+        snapshot_gap_minutes=int(get_meta(s, SNAPSHOT_GAP_KEY, SNAPSHOT_GAP_DEFAULT)), snapshot_gap_default=SNAPSHOT_GAP_DEFAULT,
+    )
+
+
+@router.get("/settings", response_model=SettingsOut)
+def get_settings_api(s: Session = Depends(get_session)):
+    return _settings_out(s)
+
+
+@router.put("/settings", response_model=SettingsOut)
+def save_settings(body: SettingsIn, s: Session = Depends(get_session)):
+    from .backup import SNAPSHOT_GAP_KEY
+    from .db import set_meta
+    from .matching import TWIN_MARGIN_KEY, twin_margin
+
+    if body.snapshot_gap_minutes is not None:
+        set_meta(s, SNAPSHOT_GAP_KEY, body.snapshot_gap_minutes)
+        s.commit()
+    if body.twin_margin_percent is not None and round(twin_margin(s) * 100) != body.twin_margin_percent:
+        set_meta(s, TWIN_MARGIN_KEY, body.twin_margin_percent)
+        s.commit()
+        jobs.enqueue("estimate")  # re-suggest names with the new margin
+    return _settings_out(s)
+
+
+class YearCount(BaseModel):
+    year: int
+    count: int
+
+
+@router.get("/years", response_model=list[YearCount])
+def photo_years(s: Session = Depends(get_session)):
+    """Each year with photos (entered date, else estimate), for the year filter."""
+    eff = func.coalesce(Photo.t_year, Photo.i_year)
+    rows = s.exec(
+        select(eff, func.count()).where(Photo.missing == False, eff != None).group_by(eff).order_by(eff)  # noqa: E711,E712
+    ).all()
+    return [YearCount(year=y, count=n) for y, n in rows]
 
 
 @router.get("/photos/{photo_id}", response_model=PhotoDetail)
@@ -446,13 +608,33 @@ def keep_photo(photo_id: int, s: Session = Depends(get_session)):
     return get_photo(photo_id, s)
 
 
+class NotDuplicatesIn(BaseModel):
+    only_this: bool = False  # just this photo apart from the rest, instead of splitting the whole group
+
+
+@router.post("/photos/{photo_id}/not-duplicates", response_model=PhotoDetail)
+def not_duplicates(photo_id: int, body: NotDuplicatesIn, s: Session = Depends(get_session)):
+    """Split a wrongly grouped duplicate group (undoable; Import keeps the photos apart)."""
+    services.not_duplicates(s, photo_id, only_this=body.only_this)
+    s.commit()
+    return get_photo(photo_id, s)
+
+
+@router.post("/photos/{photo_id}/keep-all", response_model=PhotoDetail)
+def keep_all_photos(photo_id: int, s: Session = Depends(get_session)):
+    """Keep every photo in this one's duplicate group (all of them are exported)."""
+    services.keep_all(s, photo_id)
+    s.commit()
+    return get_photo(photo_id, s)
+
+
 @router.get("/parse-date", response_model=ParsedDate)
 def parse_date(text: str):
     try:
         pd = parse_partial_date(text)
     except DateParseError as exc:
         return ParsedDate(ok=False, error=str(exc))
-    return ParsedDate(ok=True, label=format_partial(pd.year, pd.month, pd.day, pd.precision, pd.min, pd.max))
+    return ParsedDate(ok=True, label=format_partial(pd.year, pd.month, pd.day, pd.precision, pd.min, pd.max, pd.months))
 
 
 @router.get("/img/{sha}/{kind}/{rotation}.jpg")
@@ -631,6 +813,17 @@ def recent_edits(limit: int = 30, shared: bool = False, s: Session = Depends(get
 # --- events --------------------------------------------------------------------
 
 
+@router.get("/locations", response_model=list[str])
+def locations(s: Session = Depends(get_session)):
+    """Every location (general area) already used, most used first: suggestions for typing, so the
+    same area is always the same keyword."""
+    n = func.count().label("n")
+    rows = s.exec(
+        select(Photo.location, n).where(Photo.location != None).group_by(Photo.location).order_by(n.desc(), Photo.location)  # noqa: E711
+    ).all()
+    return [loc for loc, _ in rows]
+
+
 class PlaceOut(BaseModel):
     country: Optional[str]
     state: Optional[str]
@@ -688,6 +881,18 @@ def event_instances(kind_id: Optional[int] = None, s: Session = Depends(get_sess
 @router.get("/jobs", response_model=list[JobOut])
 def list_jobs(limit: int = 30, s: Session = Depends(get_session)):
     return [JobOut(**j.model_dump()) for j in s.exec(select(Job).order_by(Job.id.desc()).limit(limit)).all()]
+
+
+class JobState(BaseModel):
+    id: int
+    state: str
+
+
+@router.get("/jobs/states", response_model=list[JobState])
+def job_states(limit: int = 30, s: Session = Depends(get_session)):
+    """Just each recent job's id and state: what the apps poll every few seconds to notice a job
+    finishing (and the Mac going away), a few hundred bytes instead of the full job list."""
+    return [JobState(id=j.id, state=j.state) for j in s.exec(select(Job).order_by(Job.id.desc()).limit(limit)).all()]
 
 
 @router.post("/jobs", response_model=JobOut)

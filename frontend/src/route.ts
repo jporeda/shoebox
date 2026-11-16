@@ -5,6 +5,7 @@ export type Route =
   | { view: "grid"; list: ListParams }
   | { view: "photo"; id: number; list: ListParams }
   | { view: "jobs" }
+  | { view: "settings" }
   | { view: "people"; tab: "name" | "check" | "people" }
   | { view: "person"; id: number }
   | { view: "backs"; kind: "loose" | "paired"; album_id?: number; undated: boolean };
@@ -18,10 +19,17 @@ export function parseHash(hash: string): Route {
     status: (q.get("status") as ListParams["status"]) || undefined,
     duplicates: q.get("dups") === "1" || undefined,
     order: (q.get("order") as ListParams["order"]) || "album",
+    ids: q.get("ids") || undefined,
+    albums: q.get("albums") || undefined,
+    years: q.get("years") || undefined,
+    people: q.get("people") || undefined,
+    people_mode: q.get("pmode") === "any" ? "any" : undefined,
+    events: q.get("events") || undefined,
   };
   const m = path.match(/^\/photo\/(\d+)/);
   if (m) return { view: "photo", id: Number(m[1]), list };
   if (path.startsWith("/jobs")) return { view: "jobs" };
+  if (path.startsWith("/settings")) return { view: "settings" };
   const pm = path.match(/^\/people\/(\d+)/);
   if (pm) return { view: "person", id: Number(pm[1]) };
   if (path.startsWith("/people")) {
@@ -45,6 +53,12 @@ export function listQuery(list: ListParams): string {
   if (list.status) q.set("status", list.status);
   if (list.duplicates) q.set("dups", "1");
   if (list.order && list.order !== "album") q.set("order", list.order);
+  if (list.ids) q.set("ids", list.ids);
+  if (list.albums) q.set("albums", list.albums);
+  if (list.years) q.set("years", list.years);
+  if (list.people) q.set("people", list.people);
+  if (list.people && list.people_mode === "any") q.set("pmode", "any");
+  if (list.events) q.set("events", list.events);
   const s = q.toString();
   return s ? `?${s}` : "";
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, imgUrl, type Back, type BackKind } from "./api";
+import { albumLabel, api, ApiError, imgUrl, type Back, type BackKind } from "./api";
 import { FiltersButton, SidebarDrawer } from "./Drawer";
 import { useAlbums, useDrawer } from "./hooks";
 import { backsHref, navigate, photoHref } from "./route";
@@ -65,7 +65,7 @@ export function LooseBacks({ kind, albumId, undated }: { kind: BackKind; albumId
             {withBacks.map((a) => (
               <li key={a.id}>
                 <a className={albumId === a.id ? "is-active" : ""} href={backsHref(a.id, undated, kind)}>
-                  <span className="nav-list__name">{a.name}</span>
+                  <span className="nav-list__name">{albumLabel(a)}</span>
                   <span className="muted small" title="still to do / total">
                     {openOf(a)}/{count(a)}
                   </span>

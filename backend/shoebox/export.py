@@ -22,20 +22,38 @@ from sqlmodel import Session, select
 
 from .backup import atomic_write, run_fixity
 from .config import get_settings
-from .dates import export_calendar_date, xmp_partial
+from .dates import export_calendar_date, months_label, xmp_partial
 from .db import session_scope
 from .exif import ExifTool, escape
 from .jobs_ctx import NULL_CTX, JobContext
 from .faces import rotate_box
+from . import geo
 from .models import Album, EventInstance, EventKind, Face, Person, Photo
 
 log = logging.getLogger(__name__)
 
-EXPORT_VERSION = 2  # 2: people keywords and MWG face regions
+EXPORT_VERSION = 5  # 2: people keywords and MWG face regions; 3: GPS for the city, structured caption;
+# 4: only dates set or accepted by a person, and no scanner dates; 5: undated copies on 1 Jan 1900
 FIRST_TIME = 9 * 3600  # ordinals count seconds from 09:00:00
 ROT_FROM_ORIENTATION = {1: 0, 6: 90, 3: 180, 8: 270}
 ORIENTATION_FROM_ROT = {v: k for k, v in ROT_FROM_ORIENTATION.items()}
 IPTC_FORMATS = {".jpg", ".jpeg", ".tif", ".tiff"}
+# The only dates that leave the app: typed or picked by a person, or an estimate a person accepted.
+# Every other date (estimates, the back, an event's date, the scanner's own dates) has no value for
+# scans of old prints, so those photos export with no date at all.
+EXPORTED_DATE_SOURCES = {"manual", "accepted"}
+# Date tags a scan file may carry (the scanner's clock): cleared on every copy before ours are written.
+# Photos with no date a person set: an impossible date, so apps like Apple Photos (which always
+# show some date, falling back to the file's own) keep them together at the start of the library
+# instead of on the day they were scanned or exported. Marked date:unknown, precision "unknown".
+NO_DATE = (1900, 1, 1)
+SCAN_DATE_TAGS = [
+    "-AllDates=", "-EXIF:OffsetTime=", "-EXIF:OffsetTimeOriginal=", "-EXIF:OffsetTimeDigitized=",
+    "-EXIF:SubSecTime=", "-EXIF:SubSecTimeOriginal=", "-EXIF:SubSecTimeDigitized=",
+    "-XMP-exif:DateTimeOriginal=", "-XMP-exif:DateTimeDigitized=", "-XMP-xmp:CreateDate=", "-XMP-xmp:ModifyDate=",
+    "-XMP-xmp:MetadataDate=", "-XMP-photoshop:DateCreated=", "-IPTC:DateCreated=", "-IPTC:TimeCreated=",
+    "-IPTC:DigitalCreationDate=", "-IPTC:DigitalCreationTime=",
+]
 
 
 @dataclass
@@ -68,6 +86,9 @@ class ExportItem:
     country: str | None = None
     state: str | None = None
     city: str | None = None  # named animals: keywords and "Pet" regions, never PersonInImage
+    months: list[int] | None = None  # some months, not known which: the date is the 1st of the first
+    location: str | None = None  # a general area ("Cape Cod"): a keyword, not an IPTC place field
+    gps: tuple[float, float] | None = None  # (latitude, longitude): the city's centre, or Disney's castle
     # Named faces: (name, x, y, w, h) normalized, in the display frame at the photo's rotation.
     faces: list[tuple[str, float, float, float, float]] = field(default_factory=list)
     width: int = 0  # display size at rotation 0 (after the file's own EXIF orientation)
@@ -77,7 +98,10 @@ class ExportItem:
 
     @property
     def clock(self) -> time:
-        secs = min(FIRST_TIME + self.ordinal, 24 * 3600 - 1)
+        # Undated (NO_DATE): each album gets its own stretch of the day, in album order, so the
+        # time never changes when other photos are dated (no mass re-export).
+        start = FIRST_TIME + self.ordinal if self.dated else self.album_order * 2000 + self.album_index
+        secs = min(start, 24 * 3600 - 1)
         return time(secs // 3600, secs % 3600 // 60, secs % 60)
 
     @property
@@ -94,12 +118,21 @@ class ExportItem:
 
     def signature(self) -> str:
         d = {k: v for k, v in self.__dict__.items()}
-        for later in ("pets", "country", "state", "city"):  # added later: photos without them keep
+        for later in ("pets", "country", "state", "city", "location", "months"):  # added later: photos without them keep
             if not d[later]:  # their fingerprint, so there's no mass re-export
                 del d[later]
         d["v"] = EXPORT_VERSION
         return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()
 
+
+
+def _face_name(f, names: dict[int, str]) -> str:
+    """A face's name in exports: "Ana", or "Ana or Ben" for a one-of-two face (twins)."""
+    from .people import name_order
+
+    if not f.alt_person_id:
+        return names[f.person_id]
+    return " or ".join(sorted((names[f.person_id], names[f.alt_person_id]), key=name_order))
 
 def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")[:40] or "x"
@@ -121,22 +154,24 @@ def build_plan(session: Session) -> list[ExportItem]:
     ).all():
         faces_by_photo.setdefault(f.photo_id, []).append(f)
 
-    # One file per duplicate group: the keeper, else the lowest id.
+    # Per duplicate group: every photo marked to keep (one, or all after "Keep both"), else the lowest id.
     groups: dict[int, list[Photo]] = {}
     for p in photos:
         if p.dup_group_id is not None:
             groups.setdefault(p.dup_group_id, []).append(p)
     skip = set()
     for members in groups.values():
-        keep = next((m for m in members if m.is_dup_keeper), min(members, key=lambda m: m.id))
-        skip |= {m.id for m in members if m.id != keep.id}
+        keep = {m.id for m in members if m.is_dup_keeper} or {min(m.id for m in members)}
+        skip |= {m.id for m in members if m.id not in keep}
 
     items: list[ExportItem] = []
     for p in photos:
         if p.id in skip:
             continue
-        inferred = p.t_year is None
-        year = p.i_year if inferred else p.t_year
+        # Only a person's date counts; anything else is exported as no date (see EXPORTED_DATE_SOURCES).
+        trusted = p.t_year is not None and p.t_source in EXPORTED_DATE_SOURCES
+        inferred = False
+        year = p.t_year if trusted else None
         album = albums[p.album_id]
         inst = instances.get(p.event_instance_id) if p.event_instance_id else None
         kind = kinds[inst.kind_id] if inst else None
@@ -149,13 +184,14 @@ def build_plan(session: Session) -> list[ExportItem]:
             album_order=album.sort_order,
             album_index=p.album_index,
             year=year,
-            month=p.i_month if inferred else p.t_month,
-            day=None if inferred else p.t_day,
-            precision=p.i_precision if inferred else p.t_precision,
+            month=p.t_month if trusted else None,
+            day=p.t_day if trusted else None,
+            precision=p.t_precision if trusted else None,
+            months=p.t_months if trusted else None,
             inferred=inferred,
-            date_source=None if year is None else "inferred" if inferred else p.t_source,
-            confidence=None if year is None else p.i_confidence if inferred else 1.0,
-            run_id=p.i_run_id if inferred else None,
+            date_source=p.t_source if trusted else None,
+            confidence=1.0 if trusted else None,
+            run_id=None,
             exif_orientation=p.exif_orientation,
             rotation=p.rotation,
             scan_datetime=p.scan_datetime,
@@ -165,9 +201,10 @@ def build_plan(session: Session) -> list[ExportItem]:
             country=p.country,
             state=p.state,
             city=p.city,
+            location=p.location,
         )
         if it.dated:
-            it.cal = export_calendar_date(it.year, it.month, it.day, it.precision)
+            it.cal = export_calendar_date(it.year, it.month, it.day, it.precision, it.months)
         kw, hier = [], []
         if kind:
             kw.append(kind.name)
@@ -175,17 +212,28 @@ def build_plan(session: Session) -> list[ExportItem]:
             if inst.label != kind.name:
                 kw.append(inst.label)
         for f in sorted(faces_by_photo.get(p.id, []), key=lambda f: f.x):
-            it.faces.append((names[f.person_id], *rotate_box((f.x, f.y, f.w, f.h), f.frame_rotation, p.rotation)))
-        named = {f.person_id for f in faces_by_photo.get(p.id, [])}
-        it.people = sorted({names[i] for i in named if i not in pet_ids})
+            it.faces.append((_face_name(f, names), *rotate_box((f.x, f.y, f.w, f.h), f.frame_rotation, p.rotation)))
+        mine = faces_by_photo.get(p.id, [])
+        named = {f.person_id for f in mine if not f.alt_person_id}
+        # "Ana or Ben" (twins) is kept together as one name: it's not known which of them it is.
+        either = sorted({_face_name(f, names) for f in mine if f.alt_person_id})
+        it.people = sorted({names[i] for i in named if i not in pet_ids}) + either
         it.pets = sorted({names[i] for i in named if i in pet_ids})
         it.width, it.height = p.width or 0, p.height or 0
         kw += it.people + it.pets
         hier += [f"People|{name}" for name in it.people] + [f"Pets|{name}" for name in it.pets]
+        it.gps = geo.locate(it.country, it.state, it.city)
         place = [v for v in (it.country, it.state, it.city) if v]
         if place:
             kw += place
             hier.append("Places|" + "|".join(place))
+        if it.location:
+            if it.location not in kw:
+                kw.append(it.location)
+            hier.append(f"Locations|{it.location}")
+        if it.months:
+            kw.append(months_label(it.months))
+            hier.append(f"Dates|Months|{months_label(it.months)}")
         kw.append(f"Album: {album.name}")
         hier.append(f"Albums|{album.name}")
         if not it.dated:
@@ -202,10 +250,46 @@ def build_plan(session: Session) -> list[ExportItem]:
     prev, n = None, 0
     for it in items:
         if not it.dated:
-            break  # undated copies keep their own dates, so no clock ordinal
+            break  # undated copies: NO_DATE, timed by album and place in it (see ExportItem.clock)
         n = n + 1 if it.cal == prev else 0
         it.ordinal, prev = n, it.cal
     return items
+
+
+def place_label(it: ExportItem) -> str:
+    """"Wellfleet, Massachusetts, United States": the place as one line, most specific first."""
+    return ", ".join(v for v in (it.city, it.state, it.country) if v)
+
+
+def description(it: ExportItem) -> str:
+    """The exported caption (what Apple Photos shows as the caption), one item per line:
+    the place, the event, the caption typed in Shoebox, then each named face and where it is
+    ("Mom - 412, 230 px": the face's centre, from the top-left of the photo as it's shown)."""
+    lines = []
+    if place_label(it):
+        lines.append(place_label(it))
+    if it.event_label or it.event_kind:
+        lines.append(it.event_label or it.event_kind)
+    if it.caption and it.caption.strip():
+        lines.append(it.caption.strip())
+    w, h = _dims(it, it.rotation)
+    for name, x, y, fw, fh in it.faces:
+        lines.append(f"{name} - {round((x + fw / 2) * w)}, {round((y + fh / 2) * h)} px" if w and h else name)
+    return "\n".join(lines)
+
+
+def gps_args(it: ExportItem) -> list[str]:
+    """Map coordinates in EXIF (what Apple Photos reads) and XMP; none written means any the scan
+    file carried are cleared, so a copy never keeps a stray location."""
+    if it.gps is None:
+        return [f"-{g}:{t}=" for g in ("EXIF", "XMP-exif") for t in ("GPSLatitude", "GPSLongitude")] + [
+            "-EXIF:GPSLatitudeRef=", "-EXIF:GPSLongitudeRef="]
+    lat, lon = it.gps
+    return [
+        f"-EXIF:GPSLatitude={abs(lat):.6f}", f"-EXIF:GPSLatitudeRef={'N' if lat >= 0 else 'S'}",
+        f"-EXIF:GPSLongitude={abs(lon):.6f}", f"-EXIF:GPSLongitudeRef={'E' if lon >= 0 else 'W'}",
+        f"-XMP-exif:GPSLatitude={lat:.6f}", f"-XMP-exif:GPSLongitude={lon:.6f}",
+    ]
 
 
 def _struct(value: str) -> str:
@@ -235,44 +319,44 @@ def _dims(it: ExportItem, rot: int) -> tuple[int, int]:
 
 
 def tag_args(it: ExportItem, tz: str, ext: str) -> list[str]:
-    args = []
-    if it.dated:
-        y, m, d = it.cal
-        c = it.clock
-        stamp = f"{y:04d}:{m:02d}:{d:02d} {c.hour:02d}:{c.minute:02d}:{c.second:02d}"
-        args += [
-            f"-EXIF:DateTimeOriginal={stamp}",
-            f"-EXIF:OffsetTimeOriginal={tz}",
-            f"-XMP-exif:DateTimeOriginal={stamp}{tz}",
-            f"-XMP-xmp:CreateDate={stamp}{tz}",
-            f"-FileModifyDate={stamp}{tz}",
-        ]
-    # Undated: no date is invented; the copy keeps whatever dates the scan file itself carries.
+    # The scanner's dates are cleared first (SCAN_DATE_TAGS); then the person's date, or NO_DATE.
+    y, m, d = it.cal if it.dated else NO_DATE
+    c = it.clock
+    stamp = f"{y:04d}:{m:02d}:{d:02d} {c.hour:02d}:{c.minute:02d}:{c.second:02d}"
+    args = [
+        *SCAN_DATE_TAGS,
+        f"-EXIF:DateTimeOriginal={stamp}",
+        f"-EXIF:OffsetTimeOriginal={tz}",
+        f"-XMP-exif:DateTimeOriginal={stamp}{tz}",
+        f"-XMP-xmp:CreateDate={stamp}{tz}",
+    ]
+    if it.dated:  # an 1900 file date is left alone: some file systems and tools mishandle it
+        args.append(f"-FileModifyDate={stamp}{tz}")
     args += [
         "-XMP-dc:Subject=",
         "-XMP-lr:HierarchicalSubject=",
         "-XMP-iptcExt:Event=",
         "-XMP-dc:Description=",
     ]
-    if it.scan_datetime:
-        args.append(f"-EXIF:CreateDate={it.scan_datetime}")  # = DateTimeDigitized
     args += [f"-XMP-dc:Subject={escape(k)}" for k in it.keywords]
     args += [f"-XMP-lr:HierarchicalSubject={escape(h)}" for h in it.hierarchical]
     if it.event_label:
         args.append(f"-XMP-iptcExt:Event={escape(it.event_label)}")
     args.append("-XMP-iptcExt:PersonInImage=")
     args += [f"-XMP-iptcExt:PersonInImage={escape(n)}" for n in it.people]
-    if it.caption:
-        args += [f"-XMP-dc:Description={escape(it.caption)}", f"-EXIF:ImageDescription={escape(it.caption)}"]
-    # Place as text only (never GPS): XMP photoshop fields, and IPTC below for older readers.
+    text = description(it)
+    args += [f"-XMP-dc:Description={escape(text)}", f"-EXIF:ImageDescription={escape(text)}"]
+    args += gps_args(it)
+    # Place as text too: XMP photoshop fields, and IPTC below for older readers.
     for tag, value in (("Country", it.country), ("State", it.state), ("City", it.city)):
         if value:
             args.append(f"-XMP-photoshop:{tag}={escape(value)}")
     if ext in IPTC_FORMATS:
         args += ["-IPTC:CodedCharacterSet=UTF8", "-IPTC:Keywords="]
         args += [f"-IPTC:Keywords={escape(k)}" for k in it.keywords]
-        if it.caption:
-            args.append(f"-IPTC:Caption-Abstract={escape(it.caption)}")
+        # IPTC allows 2000 bytes; the XMP and EXIF descriptions above carry the whole text.
+        iptc = text.encode()[:2000].decode(errors="ignore")
+        args.append(f"-IPTC:Caption-Abstract={escape(iptc)}")
         for tag, value in (("Country-PrimaryLocationName", it.country), ("Province-State", it.state), ("City", it.city)):
             if value:
                 args.append(f"-IPTC:{tag}={escape(value)}")
@@ -406,6 +490,8 @@ def run_export(ctx: JobContext = NULL_CTX, sidecars: bool = True) -> dict:
         "removed_stale": removed,
         "failed": failed,
         "rotation_tag_only": not_baked,
+        # Cities that couldn't be put on the map (unknown, misspelt, or ambiguous without a state).
+        "no_map_location": sorted({place_label(it) for it in plan if it.city and it.gps is None}),
         "fixity": {k: fix[k] for k in ("checked", "changed", "missing")},
     }
 

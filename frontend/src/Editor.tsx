@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type ParsedDate } from "./api";
-import { useEventKinds, usePlaces, useUpdatePhotos } from "./hooks";
+import { useEventKinds, useLocations, usePlaces, useUpdatePhotos } from "./hooks";
 import { isTypingTarget } from "./keys";
 
 function useParsedDate(text: string): ParsedDate | null {
@@ -24,13 +24,28 @@ type Props = {
   currentEvent?: string | null;
   autoFocus?: boolean;
   compact?: boolean;
+  /** Photo detail: a calendar for picking an exact day, pre-set to the photo's day when it has one. */
+  currentExactDay?: string | null;
+  datePicker?: boolean;
+  /** Photo detail: the boxes start out holding the photo's own date and event (Apply is enabled
+   *  once something changes), instead of empty with a "now …" hint. */
+  initialDate?: string;
+  initialKindId?: number | null;
+  initialEventLabel?: string | null;
+  /** The photo page has its own Left / Right rotate buttons. */
+  showRotate?: boolean;
 };
 
 /** Date + event entry used by both the bulk bar and photo detail. */
-export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, compact }: Props) {
-  const [date, setDate] = useState("");
-  const [kindId, setKindId] = useState<string>("");
-  const [label, setLabel] = useState("");
+export function DateEventEditor({
+  ids, currentDate, currentEvent, autoFocus, compact, currentExactDay, datePicker,
+  initialDate = "", initialKindId = null, initialEventLabel = null, showRotate = true,
+}: Props) {
+  const startKind = initialKindId != null ? String(initialKindId) : "";
+  const startLabel = initialEventLabel ?? "";
+  const [date, setDate] = useState(initialDate);
+  const [kindId, setKindId] = useState<string>(startKind);
+  const [label, setLabel] = useState(startLabel);
   const [error, setError] = useState("");
   const parsed = useParsedDate(date);
   const kinds = useEventKinds();
@@ -38,12 +53,13 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
   const qc = useQueryClient();
   const dateRef = useRef<HTMLInputElement>(null);
 
+  // Another photo, or this one's date or event changed (e.g. after Apply or Undo): start over.
   useEffect(() => {
-    setDate("");
-    setKindId("");
-    setLabel("");
+    setDate(initialDate);
+    setKindId(startKind);
+    setLabel(startLabel);
     setError("");
-  }, [ids.join(",")]);
+  }, [ids.join(","), initialDate, startKind, startLabel]);
 
   useEffect(() => {
     const focusDate = (e: KeyboardEvent) => {
@@ -60,22 +76,25 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
     setError("");
     try {
       await update.mutateAsync(body);
-      setDate("");
-      setLabel("");
-      setKindId("");
+      setDate(initialDate);
+      setLabel(startLabel);
+      setKindId(startKind);
       dateRef.current?.blur();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     }
   };
 
+  // Only what was changed is sent, so re-applying an unchanged date doesn't change where it came from.
+  const dateChanged = date.trim() !== initialDate.trim();
+  const eventChanged = kindId !== startKind || label.trim() !== startLabel.trim();
   const apply = () => {
-    if (!date.trim() && !kindId) return;
+    if (!(dateChanged && date.trim()) && !(eventChanged && kindId)) return;
     run({
       ids,
-      date: date.trim() || undefined,
-      event_kind_id: kindId ? Number(kindId) : undefined,
-      event_label: label.trim() || undefined,
+      date: dateChanged && date.trim() ? date.trim() : undefined,
+      event_kind_id: eventChanged && kindId ? Number(kindId) : undefined,
+      event_label: eventChanged ? label.trim() || undefined : undefined,
     });
   };
 
@@ -91,7 +110,8 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
     }
   };
 
-  const canApply = (date.trim() !== "" && parsed?.ok) || (date.trim() === "" && kindId !== "");
+  const dateOk = !dateChanged || date.trim() === "" || parsed?.ok === true;
+  const canApply = dateOk && ((dateChanged && date.trim() !== "") || (eventChanged && kindId !== ""));
 
   return (
     <div className={`editor ${compact ? "editor--compact" : ""}`}>
@@ -104,7 +124,7 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
       >
         <label className="field">
           <span className="field__label">
-            Date {currentDate ? <em className="muted">now {currentDate}</em> : null}
+            Date {currentDate && !initialDate ? <em className="muted">now {currentDate}</em> : null}
           </span>
           <input
             ref={dateRef}
@@ -116,15 +136,30 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
             aria-invalid={parsed?.ok === false}
           />
           <span className={`field__hint ${parsed?.ok === false ? "is-error" : ""}`}>
-            {parsed ? (parsed.ok ? `→ ${parsed.label}` : parsed.error) : " "}
+            {parsed && dateChanged ? (parsed.ok ? `→ ${parsed.label}` : parsed.error) : " "}
           </span>
         </label>
+        {datePicker && (
+          <label className="field">
+            <span className="field__label">Exact day</span>
+            <input
+              type="date"
+              className="editor__daypicker"
+              min="1850-01-01"
+              max={new Date().toISOString().slice(0, 10)}
+              // What's typed (when it's a whole day), else the photo's own day, else empty.
+              value={/^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? date.trim() : !date.trim() ? currentExactDay ?? "" : ""}
+              onChange={(e) => e.target.value && setDate(e.target.value)}
+            />
+            <span className="field__hint">&nbsp;</span>
+          </label>
+        )}
         <label className="field">
           <span className="field__label">
-            Event {currentEvent ? <em className="muted">now {currentEvent}</em> : null}
+            Event {currentEvent && initialKindId == null ? <em className="muted">now {currentEvent}</em> : null}
           </span>
           <div className="field__inline">
-            <select value={kindId} onChange={(e) => setKindId(e.target.value)}>
+            <select value={kindId} onChange={(e) => (setKindId(e.target.value), setLabel(""))}>
               <option value="">—</option>
               {kinds.data?.map((k) => (
                 <option key={k.id} value={k.id}>
@@ -160,34 +195,43 @@ export function DateEventEditor({ ids, currentDate, currentEvent, autoFocus, com
         <button className="btn btn--ghost" onClick={() => run({ ids, clear_event: true })} disabled={update.isPending}>
           Clear event
         </button>
-        <button className="btn btn--ghost" onClick={() => run({ ids, rotate_by: 270 })} title="Rotate left (Shift+R)">
-          ⟲ Rotate
-        </button>
-        <button className="btn btn--ghost" onClick={() => run({ ids, rotate_by: 90 })} title="Rotate right (R)">
-          ⟳ Rotate
-        </button>
+        {showRotate && (
+          <>
+            <button className="btn btn--ghost" onClick={() => run({ ids, rotate_by: 270 })} title="Rotate left (Shift+R)">
+              ⟲ Rotate left
+            </button>
+            <button className="btn btn--ghost" onClick={() => run({ ids, rotate_by: 90 })} title="Rotate right (R)">
+              ⟳ Rotate right
+            </button>
+          </>
+        )}
         {error && <span className="error">{error}</span>}
       </div>
     </div>
   );
 }
 
-type PlaceFields = { country: string; state: string; city: string };
+type PlaceFields = { location: string; country: string; state: string; city: string };
 const PLACE_FIELDS: { key: keyof PlaceFields; label: string; hint: string }[] = [
+  // A general area rather than a town: exported as a keyword, not a map location.
+  { key: "location", label: "Location", hint: "e.g. Cape Cod" },
   { key: "country", label: "Country", hint: "e.g. United States" },
   { key: "state", label: "State", hint: "e.g. Massachusetts" },
   { key: "city", label: "City", hint: "e.g. Salem" },
 ];
 
-/** Country / state / city for one photo (pre-filled) or a selection (blank = leave as is). Suggests
+/** Location (a general area) and country / state / city for one photo (pre-filled) or a selection (blank = leave as is). Suggests
  *  places already used; only fields you change are sent, so a blank field in bulk changes nothing. */
 export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?: Partial<Record<keyof PlaceFields, string | null>>; compact?: boolean }) {
-  const initial: PlaceFields = { country: current?.country ?? "", state: current?.state ?? "", city: current?.city ?? "" };
+  const initial: PlaceFields = {
+    location: current?.location ?? "", country: current?.country ?? "", state: current?.state ?? "", city: current?.city ?? "",
+  };
   const [values, setValues] = useState<PlaceFields>(initial);
   const [error, setError] = useState("");
   const places = usePlaces();
+  const locations = useLocations();
   const update = useUpdatePhotos();
-  const key = `${ids.join(",")}|${initial.country}|${initial.state}|${initial.city}`;
+  const key = `${ids.join(",")}|${initial.location}|${initial.country}|${initial.state}|${initial.city}`;
   useEffect(() => {
     setValues(initial);
     setError("");
@@ -196,6 +240,7 @@ export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?
   const changed = PLACE_FIELDS.filter(({ key: k }) => values[k].trim() !== initial[k].trim());
   // Suggestions narrow to what fits the fields already typed (a state within the chosen country, …).
   const options = (k: keyof PlaceFields) => {
+    if (k === "location") return locations.data ?? [];
     const rows = (places.data ?? []).filter(
       (p) => (k === "country" || !values.country || p.country === values.country) && (k !== "city" || !values.state || p.state === values.state),
     );
@@ -223,6 +268,7 @@ export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?
           <span className="field__label">{label}</span>
           <input
             list={listId(k)}
+            title={k === "location" ? "A general area (Cape Cod, Grandma's farm): exported as a keyword" : undefined}
             value={values[k]}
             onChange={(e) => setValues((v) => ({ ...v, [k]: e.target.value }))}
             placeholder={current ? hint : "leave as is"}
@@ -245,8 +291,8 @@ export function PlaceEditor({ ids, current, compact }: { ids: number[]; current?
           <button
             className="btn btn--ghost"
             type="button"
-            disabled={update.isPending || (!!current && !initial.country && !initial.state && !initial.city)}
-            onClick={() => save({ country: "", state: "", city: "" })}
+            disabled={update.isPending || (!!current && !initial.location && !initial.country && !initial.state && !initial.city)}
+            onClick={() => save({ location: "", country: "", state: "", city: "" })}
           >
             Clear place
           </button>

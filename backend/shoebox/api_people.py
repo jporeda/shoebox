@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,6 +31,9 @@ class FaceOut(BaseModel):
     h: float
     person_id: Optional[int]
     person_name: Optional[str]
+    # Set when the face is one of two people, not known which (twins): person OR alt person.
+    alt_person_id: Optional[int] = None
+    alt_name: Optional[str] = None
     source: str
     ignored: bool
     est_age: Optional[float]
@@ -37,6 +41,9 @@ class FaceOut(BaseModel):
     year_label: str
     suggested_person_id: Optional[int]
     suggested_name: Optional[str]
+    # "Ana or Ben?": matching couldn't tell two known twins apart.
+    suggested_alt_person_id: Optional[int] = None
+    suggested_alt_name: Optional[str] = None
     confidence: Optional[float]
 
 
@@ -71,6 +78,13 @@ class PersonOut(BaseModel):
     kind: Literal["person", "pet"]
     face_count: int
     auto_count: int
+    # Photos they're in: what "Show photos" opens. Fewer than face_count when they're named on two
+    # faces of one photo (double_photo_ids: usually a mistake, e.g. both twins named the same).
+    photo_count: int = 0
+    double_photo_ids: list[int] = []
+    # People this one has been paired with on a "one of two" face (twins): "A or B" is then
+    # offered wherever A is suggested or typed.
+    twin_ids: list[int] = []
     cover_face_id: Optional[int]
     first_year: Optional[int]
     last_year: Optional[int]
@@ -80,6 +94,9 @@ class AssignIn(BaseModel):
     face_ids: list[int]
     person_id: Optional[int] = None
     name: Optional[str] = None  # creates the person if needed
+    # "Or" a second person: one of the two, not known which (twins). Id, or a name (created if needed).
+    alt_person_id: Optional[int] = None
+    alt_name: Optional[str] = None
 
 
 class IgnoreIn(BaseModel):
@@ -108,11 +125,10 @@ class ReviewGroup(BaseModel):
     person_id: int
     name: str
     faces: list[FaceOut]
-    # Best-guess age bracket for these faces (age_lo..age_lo+4), None if no guess is possible.
+    # The 5-year bracket these faces fall in: the person's age (age_lo..age_lo+4) when they have a
+    # birth year, else the photos' years (year_lo..year_lo+4); both None for undated photos.
     age_lo: Optional[int] = None
-    # How the ages were guessed: "birth_year" (photo year minus birth year), "looks" (the face's
-    # apparent age), or "mixed".
-    age_basis: Optional[Literal["birth_year", "looks", "mixed"]] = None
+    year_lo: Optional[int] = None
     person_total: int  # this person's faces to check across all brackets
 
 
@@ -123,7 +139,7 @@ class BatchOut(BaseModel):
 
 def _year_label(p: Photo) -> str:
     if p.t_year is not None:
-        return format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max)
+        return format_partial(p.t_year, p.t_month, p.t_day, p.t_precision, p.t_min, p.t_max, p.t_months)
     if p.i_year is not None:
         return "≈" + format_partial(p.i_year, p.i_month, None, p.i_precision, p.i_min, p.i_max)
     return ""
@@ -134,9 +150,12 @@ def face_out(f: Face, p: Photo, names: dict[int, str]) -> FaceOut:
     return FaceOut(
         id=f.id, photo_id=p.id, photo_sha256=p.sha256, rotation=p.rotation, x=x, y=y, w=w, h=h,
         person_id=f.person_id, person_name=names.get(f.person_id) if f.person_id else None,
+        alt_person_id=f.alt_person_id, alt_name=names.get(f.alt_person_id) if f.alt_person_id else None,
         source=f.source, ignored=f.ignored, est_age=f.est_age, cluster_id=f.cluster_id, year_label=_year_label(p),
         suggested_person_id=f.suggested_person_id,
         suggested_name=names.get(f.suggested_person_id) if f.suggested_person_id else None,
+        suggested_alt_person_id=f.suggested_alt_person_id,
+        suggested_alt_name=names.get(f.suggested_alt_person_id) if f.suggested_alt_person_id else None,
         confidence=f.confidence,
     )
 
@@ -152,14 +171,23 @@ def _faces_out(s: Session, faces: list[Face]) -> list[FaceOut]:
 
 
 def _person_out(s: Session, person: Person) -> PersonOut:
-    faces = s.exec(select(Face).where(Face.person_id == person.id)).all()
-    photos = s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()
+    faces = s.exec(select(Face).where((Face.person_id == person.id) | (Face.alt_person_id == person.id))).all()
+    # Only photos still in the folder, as in the grid.
+    photos = s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}), Photo.missing == False)).all()  # noqa: E712
+    live = {p.id for p in photos}
+    faces = [f for f in faces if f.photo_id in live]
+    per_photo = Counter(f.photo_id for f in faces)
     years = sorted(y for p in photos if (y := p.t_year if p.t_year is not None else p.i_year) is not None)
-    cover = max(faces, key=lambda f: (f.source != "auto", f.w * f.h), default=None)
+    # The cover is a face known to be them, not a "one of two" (it may be their twin).
+    cover = max(faces, key=lambda f: (f.alt_person_id is None, f.source != "auto", f.w * f.h), default=None)
     return PersonOut(
         id=person.id, name=person.name, birth_year=person.birth_year, notes=person.notes, kind=person.kind or "person",
         face_count=len(faces),
         auto_count=sum(f.source == "auto" for f in faces),
+        photo_count=len(per_photo),
+        double_photo_ids=sorted(pid for pid, n in per_photo.items() if n > 1),
+        twin_ids=sorted({f.alt_person_id if f.person_id == person.id else f.person_id
+                         for f in faces if f.alt_person_id and not f.ignored}),
         cover_face_id=cover.id if cover else None, first_year=years[0] if years else None,
         last_year=years[-1] if years else None,
     )
@@ -223,9 +251,11 @@ def merge_person(person_id: int, body: MergeIn, s: Session = Depends(get_session
 
 @router.get("/people/{person_id}/faces", response_model=list[FaceOut])
 def person_faces(person_id: int, s: Session = Depends(get_session)):
-    faces = list(s.exec(select(Face).where(Face.person_id == person_id)).all())
+    faces = list(s.exec(select(Face).where((Face.person_id == person_id) | (Face.alt_person_id == person_id))).all())
+    # Only photos still in the folder, as in the grid that "Show photos" opens.
+    photos = {p.id: p for p in s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}), Photo.missing == False)).all()}  # noqa: E712
+    faces = [f for f in faces if f.photo_id in photos]
     out = _faces_out(s, faces)
-    photos = {p.id: p for p in s.exec(select(Photo).where(col(Photo.id).in_({f.photo_id for f in faces}))).all()}
     albums = {a.id: a.sort_order for a in s.exec(select(Album)).all()}
 
     def key(fo: FaceOut):
@@ -290,7 +320,15 @@ def assign_faces(body: AssignIn, s: Session = Depends(get_session)):
         person_id = person.id
     elif person_id is not None and s.get(Person, person_id) is None:
         raise HTTPException(404, "person not found")
-    batch = people.assign(s, body.face_ids, person_id, extra=new_person)
+    alt_id = body.alt_person_id
+    if body.alt_name and body.alt_name.strip():
+        alt, created = people.person_for_name(s, body.alt_name)
+        alt_id, new_person = alt.id, new_person + created
+    elif alt_id is not None and s.get(Person, alt_id) is None:
+        raise HTTPException(404, "person not found")
+    if alt_id is not None and (person_id is None or alt_id == person_id):
+        raise HTTPException(422, "the second person must be someone other than the first")
+    batch = people.assign(s, body.face_ids, person_id, extra=new_person, alt_person_id=alt_id)
     s.commit()
     jobs.enqueue("estimate")
     return BatchOut(batch_id=batch, person=_person_out(s, s.get(Person, person_id)) if person_id else None)
@@ -312,9 +350,14 @@ def accept_faces(body: FaceIds, s: Session = Depends(get_session)):
     return BatchOut(batch_id=batch)
 
 
+class RejectIn(FaceIds):
+    # Which person they're not, for one-of-two faces (twins): "not Ana" leaves Ben. Omitted: neither.
+    person_id: Optional[int] = None
+
+
 @router.post("/faces/reject", response_model=BatchOut)
-def reject_faces(body: FaceIds, s: Session = Depends(get_session)):
-    batch = people.reject(s, body.face_ids)
+def reject_faces(body: RejectIn, s: Session = Depends(get_session)):
+    batch = people.reject(s, body.face_ids, body.person_id)
     s.commit()
     jobs.enqueue("estimate")
     return BatchOut(batch_id=batch)
@@ -336,19 +379,21 @@ def review_faces(s: Session = Depends(get_session)):
     for f in faces:
         by_person.setdefault(f.person_id or f.suggested_person_id, []).append(f)
     out = []
-    # People with the most to check first; within a person, youngest bracket first, unknown ages last.
+    # People with the most to check first; within a person, by age (or by year without a birth
+    # year), youngest or earliest first, undated photos last.
     for pid, members in sorted(by_person.items(), key=lambda kv: -len(kv[1])):
-        brackets: dict[Optional[int], list[tuple[Face, str]]] = {}
+        brackets: dict[tuple[int, Optional[int]], list[Face]] = {}
         for f in members:
-            age, basis = people.best_guess_age(f, photos.get(f.photo_id), persons.get(pid))
-            brackets.setdefault(None if age is None else int(age // 5) * 5, []).append((f, basis))
-        for lo in sorted(brackets, key=lambda b: (b is None, b or 0)):
-            group = sorted(brackets[lo], key=lambda fb: -(fb[0].confidence or 0))
-            bases = {b for _, b in group if b}
+            photo = photos.get(f.photo_id)
+            age = people.known_age(photo, persons.get(pid))
+            year = people.photo_year(photo)
+            key = (0, age // 5 * 5) if age is not None else (1, year // 5 * 5) if year is not None else (2, None)
+            brackets.setdefault(key, []).append(f)
+        for kind, lo in sorted(brackets, key=lambda k: (k[0], k[1] or 0)):
+            group = sorted(brackets[(kind, lo)], key=lambda f: -(f.confidence or 0))
             out.append(ReviewGroup(
-                person_id=pid, name=names[pid], faces=_faces_out(s, [f for f, _ in group]), age_lo=lo,
-                age_basis=None if not bases else bases.pop() if len(bases) == 1 else "mixed",
-                person_total=len(members),
+                person_id=pid, name=names[pid], faces=_faces_out(s, group), person_total=len(members),
+                age_lo=lo if kind == 0 else None, year_lo=lo if kind == 1 else None,
             ))
     return out
 
@@ -383,9 +428,8 @@ def scan_faces(photo_id: int, body: ScanIn):
         raise HTTPException(404, "photo not found")
     except FileNotFoundError:
         raise HTTPException(409, "the photo's file is missing")
-    if result["added"]:
-        jobs.enqueue("cluster")
-        jobs.enqueue("estimate")  # new faces may match named people
+    if result["added"] or result["updated"]:
+        jobs.enqueue("faces")  # estimates the new faces' ages, then regroups and re-suggests names
     return ScanOut(**result)
 
 
@@ -429,7 +473,8 @@ def face_image(face_id: int, s: Session = Depends(get_session)):
     if f is None:
         raise HTTPException(404, "face not found")
     path = people.face_crop(f, s.get(Photo, f.photo_id))
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+    # Face ids repeat across collections: the URL carries the collection, and caches key on the cookie.
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600", "Vary": "Cookie"})
 
 
 @router.get("/faces/stats")

@@ -96,8 +96,11 @@ def phash(img: Image.Image) -> str:
     return str(imagehash.phash(img))
 
 
-def hamming_groups(hashes: dict[int, str], max_distance: int) -> list[list[int]]:
-    """Group ids whose 64-bit pHashes are within max_distance (union-find)."""
+def hamming_groups(
+    hashes: dict[int, str], max_distance: int, apart: set[frozenset[int]] | None = None
+) -> list[list[int]]:
+    """Group ids whose 64-bit pHashes are within max_distance (union-find). Pairs in ``apart``
+    aren't linked directly (they can still meet through a third photo close to both)."""
     ids = list(hashes)
     if len(ids) < 2:
         return []
@@ -117,7 +120,7 @@ def hamming_groups(hashes: dict[int, str], max_distance: int) -> list[list[int]]
         dist = np.unpackbits(x.view(np.uint8).reshape(*x.shape, 8), axis=-1).sum(-1)
         rows, cols = np.nonzero(dist <= max_distance)
         for r, c in zip(rows + start, cols):
-            if r < c:
+            if r < c and not (apart and frozenset((ids[r], ids[c])) in apart):
                 ra, rb = find(r), find(c)
                 if ra != rb:
                     parent[rb] = ra

@@ -17,8 +17,8 @@ from .db import session_scope
 from .estimate import TRUSTED_FACE_SOURCES, estimate_for, load_world
 from .faces import from_blob
 from .jobs_ctx import NULL_CTX, JobContext
-from .matching import decide, load_exemplars, match, photo_year
-from .models import Face, Photo
+from .matching import decide, known_age, load_exemplars, match, photo_year
+from .models import Face, Person, Photo
 
 MIN_DATES = 5
 MIN_FACES = 10
@@ -90,18 +90,20 @@ def evaluate_faces(fraction: float, seed: int) -> dict:
         photos = {p.id: p for p in s.exec(select(Photo)).all()}
         years: dict[int, Optional[int]] = {pid: photo_year(p) for pid, p in photos.items()}
         faces = list(s.exec(select(Face).where(Face.ignored == False)).all())  # noqa: E712
-    named = [f for f in faces if f.person_id and f.source in TRUSTED_FACE_SOURCES and f.embedding]
+        births = {p.id: p.birth_year for p in s.exec(select(Person)).all()}
+    named = [f for f in faces if f.person_id and not f.alt_person_id and f.source in TRUSTED_FACE_SOURCES and f.embedding]
     if len(named) < MIN_FACES:
         return {"status": f"need at least {MIN_FACES} named faces (have {len(named)})"}
     hidden = random.Random(seed).sample(named, max(1, round(len(named) * fraction)))
-    ex = load_exemplars(faces, years, exclude={f.id for f in hidden})
+    ex = load_exemplars(faces, years, exclude={f.id for f in hidden}, births=births)
     rows_all, rows_young = [], []
     for f in hidden:
         m = match(from_blob(f.embedding), years.get(f.photo_id), ex) if ex else None
-        verdict = decide(m, f.est_age)
+        verdict = decide(m, f.est_age, known_age(years.get(f.photo_id), births.get(m.person_id)) if m else None)
         row = (verdict, bool(m and m.person_id == f.person_id))
         rows_all.append(row)
-        if f.est_age is not None and f.est_age < 6:
+        true_age = known_age(years.get(f.photo_id), births.get(f.person_id))
+        if (true_age if true_age is not None else f.est_age if f.est_age is not None else 99) < 6:
             rows_young.append(row)
     return {"overall": _rates(rows_all, len(hidden)), "under_6": _rates(rows_young, len(rows_young))}
 

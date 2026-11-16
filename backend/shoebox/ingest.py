@@ -20,9 +20,10 @@ from sqlmodel import Session, select
 from .config import IMAGE_EXTENSIONS, get_settings
 from .db import session_scope
 from .exif import ExifTool
-from .images import THUMB_VERSION, ensure_thumb, hamming_groups, open_display, phash, sha256_file
+from .images import THUMB_VERSION, ensure_thumb, open_display, phash, sha256_file
 from .jobs_ctx import NULL_CTX, JobContext
 from .models import Album, LooseBack, Photo, utcnow
+from .services import dup_group_ids
 
 log = logging.getLogger(__name__)
 
@@ -369,13 +370,12 @@ def group_duplicates() -> int:
     settings = get_settings()
     with session_scope() as s:
         photos = s.exec(select(Photo).where(Photo.missing == False, Photo.phash != None)).all()  # noqa: E711,E712
-        groups = hamming_groups({p.id: p.phash for p in photos}, settings.dup_phash_distance)
-        group_of = {pid: g[0] for g in groups for pid in g}
+        group_of = dup_group_ids(photos, settings.dup_phash_distance)
         for p in photos:
-            gid = group_of.get(p.id)
+            gid = group_of[p.id]
             if p.dup_group_id != gid:
                 p.dup_group_id = gid
                 if gid is None:
                     p.is_dup_keeper = False
                 s.add(p)
-    return len(groups)
+    return len({g for g in group_of.values() if g is not None})

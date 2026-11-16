@@ -207,3 +207,22 @@ def test_pre_upgrade_snapshot_is_reused_while_the_db_is_unchanged(env):
     with session_scope() as s:
         db.set_meta(s, "touched", True)
     assert backup.pre_upgrade_snapshot("abc123") != first
+
+
+def test_not_duplicates_survive_a_rebuild(album_tree, env, tmp_path, monkeypatch):
+    from conftest import make_image
+
+    make_image(album_tree / "Album 1990s" / "rescan.jpg", 2, size=(640, 480), quality=60)
+    run_ingest()
+    with session_scope() as s:
+        a = s.exec(select(Photo).where(Photo.rel_path == "Album 1990s/rescan.jpg")).one()
+        services.not_duplicates(s, a.id)
+    backup.run_backup("test")
+
+    lose_live_volume(tmp_path, monkeypatch)
+    run_ingest()
+    with session_scope() as s:
+        assert s.exec(select(Photo).where(Photo.dup_group_id != None)).all()  # noqa: E711 (grouped again)
+    backup.restore_truth(json.loads((env.backup_dir / "truth" / "truth.json").read_text()))
+    with session_scope() as s:
+        assert s.exec(select(Photo).where(Photo.dup_group_id != None)).all() == []  # noqa: E711

@@ -73,19 +73,16 @@ def test_estimates_are_never_anchors(album):
     assert p(album[9]).i_year == first == 1980
 
 
-def test_age_anchor_from_named_person(album):
+def test_how_old_a_face_looks_never_dates_a_photo(album):
+    """The face-age model read young children as ~25-30 on real scans, so it isn't evidence."""
     with session_scope() as s:
         sam = Person(name="Sam", birth_year=1972)
         s.add(sam)
         s.flush()
         s.add(Face(photo_id=album[5], x=0.1, y=0.1, w=0.2, h=0.2, person_id=sam.id, source="manual", est_age=6.4,
                    embedding=to_blob(unit(rng.normal(size=512)))))
-        s.add(Face(photo_id=album[8], x=0.1, y=0.1, w=0.2, h=0.2, person_id=sam.id, source="auto", est_age=30,
-                   embedding=to_blob(unit(rng.normal(size=512)))))
     run_estimates()
-    five = p(album[5])
-    assert (five.i_year, five.i_min, five.i_max) == (1978, 1976, 1980) and "Sam looks about 6" in five.i_source
-    assert p(album[8]).i_year is None  # automatic names don't date photos
+    assert p(album[5]).i_year is None  # no other evidence, so no estimate at all
 
 
 def faces_for(album, people_vecs):
@@ -214,7 +211,7 @@ def test_ocr_back_dates_are_weaker_anchors_and_not_double_counted(album):
         services.bulk_update(s, [album[9]], date="1976")
     run_estimates()
     four = p(album[4])
-    assert four.i_year == 1975 and "between 1975 (ocr) and 1975 (ocr)" in four.i_source
+    assert four.i_year == 1975 and "between photos dated 1975 (ocr)" in four.i_source
     with session_scope() as s:  # same gap but confirmed anchors -> more confident
         services.bulk_update(s, [album[0], album[8]], date="1975")
     run_estimates()
@@ -299,3 +296,13 @@ def test_estimate_job_uses_shared_people_and_says_why(album):
     seven = p(album[7])
     assert seven.i_year == 1985 and "Sam also in 1 dated photo nearby (1985)" in seven.i_source
     assert counts["shared_people"] + counts["neighbours"] >= 1
+
+
+def test_a_known_young_child_is_only_ever_suggested_even_if_the_face_looks_adult():
+    from shoebox.matching import Match
+
+    sure = Match(person_id=1, score=0.9, margin=0.5)
+    assert decide(sure, 30.0) == "auto"  # an adult, as far as anyone knows
+    assert decide(sure, 30.0, age=3) == "suggest"  # born 3 years before the photo: a toddler
+    assert decide(sure, 30.0, age=40) == "auto"
+    assert decide(sure, 4.0, age=None) == "suggest"  # the model saying "young" still counts

@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -129,10 +130,14 @@ def build_truth() -> dict:
                 entry["caption"] = p.caption
             if p.country or p.state or p.city:
                 entry["place"] = {"country": p.country, "state": p.state, "city": p.city}
+            if p.location:
+                entry["location"] = p.location
             if p.rotation_source == "manual":
                 entry["rotation"] = p.rotation
             if p.is_dup_keeper:
                 entry["dup_keeper"] = True
+            if p.not_dup_of:
+                entry["not_dup_of"] = p.not_dup_of
             if p.back_source == "manual":
                 entry["back_date"] = {"year": p.back_year, "month": p.back_month}
             faces = [
@@ -142,6 +147,7 @@ def build_truth() -> dict:
                     "detector_ver": f.detector_ver,
                     "source": f.source,
                     "person": people[f.person_id].name if f.person_id else None,
+                    **({"or": people[f.alt_person_id].name} if f.alt_person_id else {}),
                     "ignored": f.ignored,
                     "not": sorted(people[i].name for i in f.rejected_person_ids or [] if i in people),
                 }
@@ -325,10 +331,35 @@ def fixity_due() -> bool:
     return datetime.fromisoformat(last) < utcnow() - timedelta(days=get_settings().fixity_interval_days)
 
 
-def run_backup(reason: str = "manual") -> dict:
+# A database snapshot after a job is skipped if the last one is newer than this many minutes
+# (Settings page, per collection; 0 = after every job). Tagging queues a job for nearly every
+# edit, and each snapshot is a full copy of the database: this keeps that from wearing out an SD
+# card or filling the backup disk. truth.json is still written after every job.
+SNAPSHOT_GAP_KEY = "snapshot_gap_minutes"
+SNAPSHOT_GAP_DEFAULT = 30
+
+
+def snapshot_gap_minutes() -> int:
+    with session_scope() as s:
+        return int(get_meta(s, SNAPSHOT_GAP_KEY, SNAPSHOT_GAP_DEFAULT))
+
+
+def _minutes_since_last_snapshot() -> float | None:
+    newest = max((p.stat().st_mtime for p in (get_settings().backup_dir / "db").glob("shoebox-*.db")), default=None)
+    return None if newest is None else (time.time() - newest) / 60
+
+
+def run_backup(reason: str = "manual", after_job: bool = False) -> dict:
+    """Snapshot the database, export truth.json and write the manifest. ``after_job``: the
+    automatic backup after a job, whose snapshot is skipped if one was taken recently."""
     truth = export_truth()
+    gap, since = (snapshot_gap_minutes(), _minutes_since_last_snapshot()) if after_job else (0, None)
+    if gap > 0 and since is not None and since < gap:
+        snap = f"skipped: the last snapshot is {since:.0f} min old (Settings: at most one every {gap} min)"
+    else:
+        snap = str(snapshot(reason))
     return {
-        "snapshot": str(snapshot(reason)),
+        "snapshot": snap,
         "truth": str(truth) if truth else "not updated: truth.json belongs to another database (run Restore)",
         "manifest": str(write_manifest()),
     }
@@ -357,7 +388,9 @@ def _restore_faces(s, p: Photo, entries: list[dict]) -> None:
             s.flush()
             existing.append(match)
         person_id = get_or_create_person(s, e["person"]).id if e.get("person") else None
-        changes = [(match, "person_id", person_id), (match, "ignored", bool(e.get("ignored")))]
+        alt_id = get_or_create_person(s, e["or"]).id if e.get("or") and person_id else None
+        changes = [(match, "person_id", person_id), (match, "alt_person_id", alt_id),
+                   (match, "ignored", bool(e.get("ignored")))]
         if e.get("not"):
             changes.append((match, "rejected_person_ids", sorted(get_or_create_person(s, n).id for n in e["not"])))
         if e.get("source") in ("manual", "drawn", "accepted", "reverted"):
@@ -409,7 +442,7 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
             matched += 1
             changes = []
             if "date" in e:
-                changes += [(p, f, e["date"][f[2:]]) for f in TRUSTED_FIELDS]
+                changes += [(p, f, e["date"].get(f[2:])) for f in TRUSTED_FIELDS]  # older backups: no months
             if "event" in e:
                 inst = get_or_create_instance(s, kinds[e["event"]["kind"]], None, e["event"]["label"])
                 changes.append((p, "event_instance_id", inst.id))
@@ -420,10 +453,14 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
                 changes.append((p, "caption", e["caption"]))
             if "place" in e:
                 changes += [(p, f, e["place"].get(f)) for f in ("country", "state", "city")]
+            if "location" in e:
+                changes.append((p, "location", e["location"]))
             if "rotation" in e:
                 changes += [(p, "rotation", e["rotation"]), (p, "rotation_source", "manual")]
             if e.get("dup_keeper"):
                 changes.append((p, "is_dup_keeper", True))
+            if e.get("not_dup_of"):
+                changes.append((p, "not_dup_of", sorted(set(p.not_dup_of or []) | set(e["not_dup_of"]))))
             if "back_date" in e:
                 changes += [
                     (p, "back_year", e["back_date"]["year"]),
@@ -457,6 +494,8 @@ def restore_truth(truth: dict, ctx: JobContext = NULL_CTX) -> dict:
         # From now on this database owns the truth file (see _may_replace).
         set_meta(s, "truth_adopted", truth.get("db_id") or LEGACY_OWNER)
     from .estimate import run_estimates
+    from .ingest import group_duplicates
 
+    group_duplicates()  # restored "not duplicates" marks split their groups again
     run_estimates()
     return {"matched": matched, "unmatched": unmatched}

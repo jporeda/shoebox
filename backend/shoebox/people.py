@@ -65,6 +65,7 @@ def merge_detections(s: Session, p: Photo, found: list[DetectedFace], run_id: st
             used.add(best.id)
             best.x, best.y, best.w, best.h, best.frame_rotation = *box, p.rotation
             best.embedding, best.det_score, best.est_age, best.detector_ver = to_blob(d.embedding), d.det_score, d.age, DETECTOR_VERSION
+            best.age_ver = 0  # the box moved: estimate its age again
             s.add(best)
             updated += 1
         else:
@@ -187,6 +188,57 @@ def scan_photo(photo_id: int, level: int, detector=None) -> dict:
     return {"found": len(found), "added": result["added"], "updated": result["updated"], "rotated": False}
 
 
+def run_face_ages(ctx: JobContext = NULL_CTX, photo_ids: Optional[Iterable[int]] = None, ager=None) -> dict:
+    """Estimate each face's age with the FairFace model (faces.estimate_age), for faces whose age
+    was estimated by an older model or not at all. Model work happens outside any transaction; a
+    face moved or re-estimated meanwhile is left alone."""
+    from .faces import AGE_VERSION, age_model_available, estimate_age
+
+    if ager is None:
+        if not age_model_available():
+            return {"skipped": "age model not installed"}
+        ager = estimate_age
+    with session_scope() as s:
+        q = select(Face).where(Face.age_ver < AGE_VERSION)
+        if photo_ids is not None:
+            q = q.where(Face.photo_id.in_(list(photo_ids)))
+        by_photo: dict[int, list[Face]] = {}
+        for f in s.exec(q).all():
+            by_photo.setdefault(f.photo_id, []).append(f)
+        photos = {p.id: p for p in s.exec(select(Photo).where(Photo.id.in_(list(by_photo)))).all()}
+    totals = {"faces": sum(len(v) for v in by_photo.values()), "estimated": 0, "failed": 0}
+    done = 0
+    for pid, faces in by_photo.items():
+        ctx.check_cancel()
+        ctx.progress(done, totals["faces"], "estimating ages")
+        p = photos.get(pid)
+        if p is None or p.missing:
+            continue
+        try:
+            img = open_display(get_settings().photos_root / p.rel_path, p.rotation, max_size=DETECT_EDGE)
+        except Exception as exc:
+            log.warning("age estimate: can't open %s: %s", p.rel_path, exc)
+            totals["failed"] += len(faces)
+            continue
+        results = []
+        for f in faces:
+            try:
+                group, age = ager(img, rotate_box((f.x, f.y, f.w, f.h), f.frame_rotation, p.rotation))
+            except Exception as exc:
+                log.warning("age estimate failed for face %s: %s", f.id, exc)
+                totals["failed"] += 1
+                continue
+            results.append((f, group, age))
+        with session_scope() as s:
+            for f, group, age in results:
+                if update_if(s, Face, f.id, Face.age_ver == f.age_ver, Face.x == f.x, Face.y == f.y,
+                             Face.frame_rotation == f.frame_rotation,
+                             est_age=round(age, 1), age_group=group, age_ver=AGE_VERSION):
+                    totals["estimated"] += 1
+        done += len(faces)
+    return totals
+
+
 def run_embed_missing(ctx: JobContext = NULL_CTX, embedder=None) -> dict:
     """Embeddings for faces a person drew (or restored ones the detector hasn't matched)."""
     from .faces import embed_region
@@ -254,7 +306,8 @@ def run_cluster(ctx: JobContext = NULL_CTX) -> dict:
 
 def person_centroids(s: Session) -> dict[int, np.ndarray]:
     sums: dict[int, list[np.ndarray]] = {}
-    for f in s.exec(select(Face).where(Face.person_id != None, Face.ignored == False)).all():  # noqa: E711,E712
+    # Not "one of two" faces: a twin's face would pull the other twin's centre towards it.
+    for f in s.exec(select(Face).where(Face.person_id != None, Face.alt_person_id == None, Face.ignored == False)).all():  # noqa: E711,E712
         e = _emb(f)
         if e is not None:
             sums.setdefault(f.person_id, []).append(e)
@@ -301,31 +354,132 @@ def person_for_name(s: Session, name: str) -> tuple[Person, list]:
     return person, [(person, editlog.CREATED, True)]
 
 
+def name_order(name: str) -> tuple[str, str]:
+    """How the two names of a pair (twins) are ordered: alphabetically, so it's always "Ana or Ben"."""
+    return (name.lower(), name)
+
+
+_TWIN_FIELDS = ("person_id", "alt_person_id", "suggested_person_id", "suggested_alt_person_id", "source", "ignored")
+
+
+def twin_deductions(s: Session, changes: list[tuple]) -> list[tuple]:
+    """What naming these faces tells us about twins elsewhere in the same photos:
+
+    - one person can't be in a photo twice, so once Ana is confirmed on one face, another face
+      that's "Ana or Ben" is Ben (and an "Ana or Ben?" suggestion becomes "Ben?");
+    - if the app found both twins in a photo and one face is set to "Ana or Ben", the face it
+      took for the other twin is just as uncertain, so it becomes "Ana or Ben" too.
+
+    Works on the photos' faces as they'll be after ``changes``, and returns the extra changes to
+    record in the same batch, so one Undo takes back both."""
+    touched = {obj.photo_id for obj, field, _ in changes if isinstance(obj, Face)}
+    if not touched:
+        return []
+    faces = list(s.exec(select(Face).where(Face.photo_id.in_(touched))).all())
+    state = {f.id: {k: getattr(f, k) for k in _TWIN_FIELDS} for f in faces}
+    for obj, field, value in changes:
+        if isinstance(obj, Face) and obj.id in state and field in _TWIN_FIELDS:
+            state[obj.id][field] = value
+    by_id = {f.id: f for f in faces}
+    extra: list[tuple] = []
+
+    def put(fid: int, field: str, value) -> None:
+        state[fid][field] = value
+        extra.append((by_id[fid], field, value))
+
+    for _ in range(len(faces)):  # a deduction can settle another face in the photo; stop when none do
+        changed = False
+        for photo in touched:
+            mine = [fid for fid in state if by_id[fid].photo_id == photo and not state[fid]["ignored"]]
+            sure = {state[i]["person_id"] for i in mine if state[i]["person_id"] and not state[i]["alt_person_id"]
+                    and state[i]["source"] != "auto"}
+            for i in mine:
+                st = state[i]
+                if st["alt_person_id"] and st["person_id"]:
+                    pair = {st["person_id"], st["alt_person_id"]}
+                    if len(pair & sure) == 1:
+                        put(i, "person_id", (pair - sure).pop())
+                        put(i, "alt_person_id", None)
+                        changed = True
+                elif st["person_id"] is None and st["suggested_person_id"] and st["suggested_alt_person_id"]:
+                    pair = {st["suggested_person_id"], st["suggested_alt_person_id"]}
+                    if len(pair & sure) == 1:
+                        put(i, "suggested_person_id", (pair - sure).pop())
+                        put(i, "suggested_alt_person_id", None)
+                        changed = True
+                        continue
+                # The app's guess for this face (an automatic name or a suggestion) is one of a pair
+                # someone set on another face here, and neither twin is confirmed in the photo:
+                # this face is "Ana or Ben" as well.
+                if st["alt_person_id"] or (st["person_id"] and st["source"] != "auto"):
+                    continue
+                guess = {st["person_id"], st["suggested_person_id"], st["suggested_alt_person_id"]} - {None}
+                for j in mine:
+                    other = state[j]
+                    if j == i or not (other["alt_person_id"] and other["person_id"]) or other["source"] == "auto":
+                        continue
+                    pair = (other["person_id"], other["alt_person_id"])  # already in "Ana or Ben" order
+                    if guess & set(pair) and not set(pair) & sure:
+                        put(i, "person_id", pair[0])
+                        put(i, "alt_person_id", pair[1])
+                        put(i, "suggested_person_id", None)
+                        put(i, "suggested_alt_person_id", None)
+                        if st["source"] in ("auto", REVERTED):
+                            put(i, "source", "accepted")
+                        changed = True
+                        break
+        if not changed:
+            break
+    return extra
+
+
+def _record_with_twins(s: Session, changes: list[tuple], description: str) -> Optional[str]:
+    """Record changes plus what they imply for twins in the same photos, as one undoable batch."""
+    extra = twin_deductions(s, changes)
+    if extra:
+        n = len({obj.id for obj, _, _ in extra})
+        description += f", and the twin on {n} other face{'s' if n != 1 else ''}"
+    return editlog.record(s, changes + extra, description)
+
+
 def assign(s: Session, face_ids: list[int], person_id: Optional[int], description: str = "",
-           extra: Iterable[tuple] = ()) -> Optional[str]:
+           extra: Iterable[tuple] = (), alt_person_id: Optional[int] = None) -> Optional[str]:
+    """Name faces. With alt_person_id, each face is one of the two people, not known which (twins)."""
+    if person_id is None or alt_person_id == person_id:
+        alt_person_id = None
+    if alt_person_id is not None:  # one order per pair, alphabetical: always "Ana or Ben"
+        a, b = s.get(Person, person_id), s.get(Person, alt_person_id)
+        if name_order(b.name) < name_order(a.name):
+            person_id, alt_person_id = alt_person_id, person_id
     faces = s.exec(select(Face).where(Face.id.in_(face_ids))).all()
     changes = list(extra)
     for f in faces:
-        changes += [(f, "person_id", person_id), (f, "ignored", False), (f, "suggested_person_id", None)]
+        changes += [(f, "person_id", person_id), (f, "alt_person_id", alt_person_id), (f, "ignored", False),
+                    (f, "suggested_person_id", None), (f, "suggested_alt_person_id", None)]
         if person_id is not None and f.source in ("auto", REVERTED):
             changes.append((f, "source", "manual"))
     if not description:
         who = s.get(Person, person_id).name if person_id else "nobody"
+        if alt_person_id:
+            who += f" or {s.get(Person, alt_person_id).name}"
         description = f"{len(faces)} face(s) → {who}"
-    return editlog.record(s, changes, description)
+    return _record_with_twins(s, changes, description)
 
 
-def best_guess_age(face: Face, photo: Optional[Photo], person: Optional[Person]) -> tuple[Optional[float], Optional[str]]:
-    """How old this person probably is in this photo, and how that was worked out.
+def photo_year(photo: Optional[Photo]) -> Optional[int]:
+    """The photo's year: entered, else estimated."""
+    return None if photo is None else photo.t_year if photo.t_year is not None else photo.i_year
 
-    Prefers the photo's year (entered or estimated) minus the person's birth year; otherwise the
-    face's apparent age from the detector, which is only meaningful for people, not pets."""
-    year = None if photo is None else photo.t_year if photo.t_year is not None else photo.i_year
-    if person is not None and person.birth_year is not None and year is not None:
-        return float(max(0, year - person.birth_year)), "birth_year"
-    if face.est_age is not None and (person is None or person.kind != "pet"):
-        return max(0.0, face.est_age), "looks"
-    return None, None
+
+def known_age(photo: Optional[Photo], person: Optional[Person]) -> Optional[int]:
+    """This person's age in this photo: the photo's year minus their birth year, or None.
+
+    How old a face *looks* (Face.est_age) is deliberately not used here: it's only an age group
+    estimate (faces.estimate_age), while a birth year gives the age exactly."""
+    year = photo_year(photo)
+    if person is None or person.birth_year is None or year is None:
+        return None
+    return max(0, year - person.birth_year)
 
 
 def accept(s: Session, face_ids: list[int], description: str | None = None) -> Optional[str]:
@@ -334,11 +488,13 @@ def accept(s: Session, face_ids: list[int], description: str | None = None) -> O
     for f in s.exec(select(Face).where(Face.id.in_(face_ids))).all():
         if f.person_id is None and f.suggested_person_id is not None:
             changes.append((f, "person_id", f.suggested_person_id))
+            if f.suggested_alt_person_id is not None:  # "Ana or Ben?" -> yes, one of the two
+                changes.append((f, "alt_person_id", f.suggested_alt_person_id))
         if f.person_id is not None or f.suggested_person_id is not None:
-            changes.append((f, "suggested_person_id", None))
+            changes += [(f, "suggested_person_id", None), (f, "suggested_alt_person_id", None)]
             if f.source in ("auto", REVERTED):
                 changes.append((f, "source", "accepted"))
-    return editlog.record(s, changes, description or f"confirm {len(face_ids)} name(s)")
+    return _record_with_twins(s, changes, description or f"confirm {len(face_ids)} name(s)")
 
 
 def run_accept_guesses(min_percent: float, ctx: JobContext = NULL_CTX) -> dict:
@@ -360,16 +516,32 @@ def run_accept_guesses(min_percent: float, ctx: JobContext = NULL_CTX) -> dict:
     return {"min_percent": min_percent, "guesses": len(guesses), "accepted": len(chosen), "batch_id": batch}
 
 
-def reject(s: Session, face_ids: list[int]) -> Optional[str]:
-    """"Not this person": remember it so the same name isn't suggested again for this face."""
+def reject(s: Session, face_ids: list[int], person_id: Optional[int] = None) -> Optional[str]:
+    """"Not this person": remember it so the same name isn't suggested again for this face.
+
+    On a one-of-two face (twins), "not Ana" leaves it as the other person; without person_id
+    (or naming neither of the two) it's "neither of them"."""
     changes = []
     for f in s.exec(select(Face).where(Face.id.in_(face_ids))).all():
+        if f.alt_person_id:
+            pair = {f.person_id, f.alt_person_id}
+            if person_id in pair:
+                other = (pair - {person_id}).pop()
+                rejected = sorted(set(f.rejected_person_ids or []) | {person_id})
+                changes += [(f, "person_id", other), (f, "alt_person_id", None), (f, "rejected_person_ids", rejected)]
+            else:
+                rejected = sorted(set(f.rejected_person_ids or []) | pair)
+                changes += [(f, "person_id", None), (f, "alt_person_id", None), (f, "rejected_person_ids", rejected)]
+            continue
         target = f.person_id or f.suggested_person_id
         if target is None:
             continue
-        rejected = sorted(set(f.rejected_person_ids or []) | {target})
-        changes += [(f, "person_id", None), (f, "suggested_person_id", None), (f, "rejected_person_ids", rejected)]
-    return editlog.record(s, changes, f"not that person ({len(face_ids)} face(s))")
+        # "Ana or Ben?" -> no: neither of them.
+        targets = {target} | ({f.suggested_alt_person_id} if f.person_id is None and f.suggested_alt_person_id else set())
+        rejected = sorted(set(f.rejected_person_ids or []) | targets)
+        changes += [(f, "person_id", None), (f, "suggested_person_id", None), (f, "suggested_alt_person_id", None),
+                    (f, "rejected_person_ids", rejected)]
+    return _record_with_twins(s, changes, f"not that person ({len(face_ids)} face(s))")
 
 
 def revert_run(s: Session, run_id: str) -> Optional[str]:
@@ -391,14 +563,19 @@ def set_ignored(s: Session, face_ids: list[int], ignored: bool) -> Optional[str]
     faces = s.exec(select(Face).where(Face.id.in_(face_ids))).all()
     changes = [(f, "ignored", ignored) for f in faces]
     if ignored:
-        changes += [(f, "person_id", None) for f in faces]
+        changes += [(f, k, None) for f in faces for k in ("person_id", "alt_person_id")]
     return editlog.record(s, changes, f"{'ignore' if ignored else 'un-ignore'} {len(faces)} face(s)")
 
 
 def merge_people(s: Session, source_id: int, target_id: int) -> Optional[str]:
-    faces = s.exec(select(Face).where(Face.person_id == source_id)).all()
+    faces = s.exec(select(Face).where((Face.person_id == source_id) | (Face.alt_person_id == source_id))).all()
     src, dst = s.get(Person, source_id), s.get(Person, target_id)
-    changes = [(f, "person_id", target_id) for f in faces]
+    changes = []
+    for f in faces:
+        first = target_id if f.person_id == source_id else f.person_id
+        alt = target_id if f.alt_person_id == source_id else f.alt_person_id
+        # "Sam or Sammy", once Sammy turns out to be Sam, is just Sam.
+        changes += [(f, "person_id", first), (f, "alt_person_id", None if alt == first else alt)]
     if dst.birth_year is None and src.birth_year is not None:
         changes.append((dst, "birth_year", src.birth_year))
     if src.kind == "pet" and dst.kind != "pet":  # "person" is only the default; "pet" was tagged on purpose

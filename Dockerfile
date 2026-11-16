@@ -25,14 +25,32 @@ ADD https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.
 RUN echo "${BUFFALO_SHA256}  /tmp/buffalo_l.zip" | sha256sum -c - \
     && mkdir -p /models/models/buffalo_l \
     && python -c "import zipfile; z=zipfile.ZipFile('/tmp/buffalo_l.zip'); [z.extract(n, '/models/models/buffalo_l') for n in ('det_10g.onnx','w600k_r50.onnx','genderage.onnx')]"
+# Face ages: ViT trained on FairFace (dima806/fairface_age_image_detection, Apache-2.0), ONNX export
+# by onnx-community, pinned to one revision and checksum. See faces.AGE_MODEL.
+ARG FAIRFACE_REV=fd04cddf04982f6acc1ac76fb1a31b44c9285596
+ARG FAIRFACE_SHA256=7f28fc7e890b4c21bf48f65d9985cefaea3430c28df1391e4f91293c0d89555a
+ADD https://huggingface.co/onnx-community/fairface_age_image_detection-ONNX/resolve/${FAIRFACE_REV}/onnx/model.onnx /tmp/fairface.onnx
+RUN echo "${FAIRFACE_SHA256}  /tmp/fairface.onnx" | sha256sum -c - \
+    && mkdir -p /models/fairface && mv /tmp/fairface.onnx /models/fairface/model.onnx
 
 # ---- runtime ----
+# Town coordinates for exports (a city's centre on the map), from GeoNames (CC-BY 4.0, geonames.org).
+# The files are updated daily upstream, so there is no fixed checksum; they're only read as data,
+# and a sanity check below makes sure the town list is complete.
+FROM python:3.12-slim AS geo
+ADD https://download.geonames.org/export/dump/cities500.zip /tmp/cities500.zip
+ADD https://download.geonames.org/export/dump/admin1CodesASCII.txt /geo/admin1CodesASCII.txt
+ADD https://download.geonames.org/export/dump/countryInfo.txt /geo/countryInfo.txt
+RUN python -c "import zipfile; zipfile.ZipFile('/tmp/cities500.zip').extract('cities500.txt', '/geo')" \
+    && chmod 644 /geo/* && test "$(wc -l < /geo/cities500.txt)" -gt 150000
+
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libimage-exiftool-perl libjpeg-turbo-progs libgomp1 tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /venv /venv
 COPY --from=models /models /models
+COPY --from=geo /geo /geo
 ENV PATH=/venv/bin:$PATH \
     PYTHONPATH=/app/backend \
     PYTHONUNBUFFERED=1 \
@@ -42,5 +60,6 @@ COPY pyproject.toml alembic.ini ./
 COPY backend/ backend/
 COPY tests/ tests/
 COPY --from=frontend /fe/dist frontend/dist
+COPY --from=frontend /fe/dist-touch frontend/dist-touch
 EXPOSE 8000
 CMD ["python", "-m", "shoebox.cli", "serve"]

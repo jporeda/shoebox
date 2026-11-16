@@ -1,10 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, faceUrl, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
-import { useLongPress, useTouch } from "./hooks";
+import { api, ApiError, faceName, faceUrl, pairLabel, type Cluster, type Face, type ListParams, type Person, type ReviewGroup } from "./api";
+import { useLongPress, useRemembered, useSaveOnLeave, useTouch } from "./hooks";
 import { gridHref, navigate, photoHref } from "./route";
 
-export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
+import { usePeople, useTwins, type Pair } from "./peopleData";
+
+export { usePeople, useTwins };
+export type { Pair };
+
+/** "Ana or Ben" buttons for a person's known twins (nothing if they have none). */
+export function TwinChoices({ personId, name, onPick, prefix = "", suffix = "", className = "btn btn--ghost", disabled }: {
+  personId: number | null | undefined;
+  name: string;
+  onPick: (pair: Pair) => void;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const { twinsOf } = useTwins();
+  return (
+    <>
+      {twinsOf(personId).map((t) => (
+        <button key={t.id} className={className} disabled={disabled} title="One of the two, not sure which"
+          onClick={() => onPick({ person_id: personId!, alt_person_id: t.id })}>
+          {prefix}{pairLabel(name, t.name)}{suffix}
+        </button>
+      ))}
+    </>
+  );
+}
 
 function useInvalidateFaces() {
   const qc = useQueryClient();
@@ -17,36 +43,47 @@ function useInvalidateFaces() {
 /** Name box with autocomplete over existing people; Enter submits. */
 export function NameInput({
   onSubmit,
+  onPair,
   placeholder = "Who is this?",
   autoFocus,
   busy,
 }: {
   onSubmit: (name: string) => void;
+  /** Set where faces are being named: known twins are then offered as "Ana or Ben" too. */
+  onPair?: (pair: Pair) => void;
   placeholder?: string;
   autoFocus?: boolean;
   busy?: boolean;
 }) {
   const people = usePeople();
+  const { pairs } = useTwins();
   const touch = useTouch();
   const [name, setName] = useState("");
   // A name that matches no one creates a new person on submit; say so, so a typo doesn't quietly
   // make a duplicate. Only once the people list has loaded, to avoid a false "new" while loading.
   const typed = name.trim();
+  const said = typed.toLowerCase();
+  const pair = onPair
+    ? pairs.find((p) => p.label.toLowerCase() === said || p.label.toLowerCase().split(" or ").reverse().join(" or ") === said)
+    : undefined;
   const isNew =
-    typed !== "" && !!people.data && !people.data.some((p) => p.name.trim().toLowerCase() === typed.toLowerCase());
+    typed !== "" && !pair && !!people.data && !people.data.some((p) => p.name.trim().toLowerCase() === typed.toLowerCase());
   return (
     <form
       className={`field__inline ${isNew ? "name-input--new" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
-        if (name.trim()) {
+        if (pair && onPair) {
+          onPair(pair.pair);
+          setName("");
+        } else if (name.trim()) {
           onSubmit(name.trim());
           setName("");
         }
       }}
     >
       <input
-        list="people-names"
+        list={onPair ? "people-names-pairs" : "people-names"}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={placeholder}
@@ -62,6 +99,12 @@ export function NameInput({
       <datalist id="people-names">
         {people.data?.map((p) => <option key={p.id} value={p.name} />)}
       </datalist>
+      {onPair && (
+        <datalist id="people-names-pairs">
+          {people.data?.map((p) => <option key={p.id} value={p.name} />)}
+          {pairs.map((p) => <option key={p.label} value={p.label} />)}
+        </datalist>
+      )}
       <button className="btn btn--primary" type="submit" disabled={busy || !name.trim()}>
         Name
       </button>
@@ -90,7 +133,7 @@ export function FaceThumb({
   /** The list Prev/Next walk through when a double-click opens the face's photo. */
   photoList?: ListParams;
 }) {
-  const who = face.person_name ?? (face.est_age != null ? `age ≈${Math.round(face.est_age)}` : "");
+  const who = faceName(face) ?? ""; // no "age ≈N": the face-age model is unreliable on old scans
   const open = () => navigate(photoHref(face.photo_id, photoList));
   // Finger: tap toggles as with a mouse click; press and hold opens the photo (mouse: double-click).
   const press = useLongPress(open);
@@ -111,11 +154,18 @@ export function FaceThumb({
   );
 }
 
+// Scroll position of each People tab, so coming back from a photo ("View 9 photos") lands where you were.
+const peopleScroll = new Map<string, number>();
+
 export function PeoplePage({ tab }: { tab: "name" | "check" | "people" }) {
   const stats = useQuery({ queryKey: ["faceStats"], queryFn: api.faceStats });
   const s = stats.data;
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (box.current) box.current.scrollTop = peopleScroll.get(tab) ?? 0;
+  }, [tab]);
   return (
-    <div className="people pad">
+    <div className="people pad" ref={box} onScroll={(e) => peopleScroll.set(tab, e.currentTarget.scrollTop)}>
       <div className="people__head">
         <div className="segmented segmented--inline">
           <button className={tab === "name" ? "is-active" : ""} onClick={() => navigate("#/people")}>
@@ -168,40 +218,58 @@ function Check() {
   return (
     <div className="clusters">
       <p className="muted small">
-        Faces the app thinks it recognizes, by person and best-guess age (5-year brackets, from the birth year where
-        you've set one, otherwise from how old the face looks), most confident first. <b>?</b> marks names it applied itself;{" "}
-        <i>maybe</i> marks suggestions it wasn't sure enough to apply (and every face that looks under 6).{" "}
+        Faces the app thinks it recognizes, by person and 5-year bracket (their age, where you've set a birth year;
+        otherwise the photos' years), most confident first. <b>?</b> marks names it applied itself;{" "}
+        <i>maybe</i> marks suggestions it wasn't sure enough to apply (and every young child: under 6 by their birth year).{" "}
         {touch ? "Tap" : "Click"} the wrong ones, then Confirm: the rest become confirmed and teach the matcher; the{" "}
         {touch ? "tapped" : "clicked"} ones are remembered as “not them”.
       </p>
       {review.data?.length === 0 && <p className="empty">Nothing to check. Name more faces, or run “Infer dates & names”.</p>}
-      {review.data?.map((g) => <CheckGroup key={`${g.person_id}:${g.age_lo ?? "?"}`} group={g} />)}
+      {review.data?.map((g) => <CheckGroup key={`${g.person_id}:${g.age_lo ?? "-"}:${g.year_lo ?? "-"}`} group={g} />)}
     </div>
   );
 }
 
-/** "age 5–9", "looks 5–9" or "age unknown": the bracket a Check group covers, and how it was guessed. */
+/** "age 5–9" (from the birth year), "photos 1980–84" (no birth year) or "undated": the group's bracket. */
 function ageLabel(group: ReviewGroup): string {
-  if (group.age_lo == null) return "age unknown";
-  const range = `${group.age_lo}–${group.age_lo + 4}`;
-  return group.age_basis === "looks" ? `looks ${range}` : group.age_basis === "mixed" ? `about ${range}` : `age ${range}`;
+  if (group.age_lo != null) return `age ${group.age_lo}–${group.age_lo + 4}`;
+  if (group.year_lo != null) return `photos ${group.year_lo}–${String(group.year_lo + 4).slice(-2)}`;
+  return "undated";
+}
+
+/** Opens the photo page on these faces' photos; Prev / Next then step through just those photos,
+ *  where each face can be checked with the rest of the photo in view (Accept all guesses, Yes/No). */
+function ViewPhotos({ faces }: { faces: Face[] }) {
+  const ids = [...new Set(faces.map((f) => f.photo_id))];
+  if (!ids.length) return null;
+  return (
+    <a className="btn btn--ghost" href={photoHref(ids[0], { ids: ids.join(",") })} title="Step through these photos on the photo page">
+      View {ids.length === 1 ? "photo" : `${ids.length} photos`}
+    </a>
+  );
 }
 
 function CheckGroup({ group }: { group: ReviewGroup }) {
   const invalidate = useInvalidateFaces();
   const qc = useQueryClient();
-  const [wrong, setWrong] = useState<Set<number>>(new Set());
+  // Kept when "View photos" (or anything else) leaves the page: coming back must not lose the marks,
+  // or Confirm would confirm the faces you said were wrong.
+  const [wrong, setWrong] = useRemembered(`check:${group.person_id}:${group.age_lo ?? "-"}:${group.year_lo ?? "-"}`, new Set<number>());
   const run = useMutation({
-    mutationFn: async () => {
+    // pair: confirm the right-looking ones as "this person or their twin" instead of as them.
+    mutationFn: async (pair?: Pair) => {
       const bad = group.faces.filter((f) => wrong.has(f.id)).map((f) => f.id);
       const good = group.faces.filter((f) => !wrong.has(f.id)).map((f) => f.id);
       if (bad.length) await api.rejectFaces(bad);
-      if (good.length) await api.acceptFaces(good);
+      if (good.length) await (pair ? api.assignFaces(good, pair) : api.acceptFaces(good));
     },
     onSuccess: () => {
       setWrong(new Set());
       invalidate();
       qc.invalidateQueries({ queryKey: ["faceReview"] });
+      // Confirming queues "Infer dates & names", which re-matches the other faces; looking at the
+      // jobs now lets App's job watcher refresh this page again when that run finishes.
+      qc.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
   return (
@@ -212,12 +280,14 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
         </a>
         <span className="cluster__age">{ageLabel(group)}</span>
         <span className="muted small">
-          {group.faces.length - wrong.size} of {group.faces.length} look right
+          {group.faces.filter((f) => !wrong.has(f.id)).length} of {group.faces.length} look right
           {group.person_total > group.faces.length && ` · ${group.person_total} to check in all`}
         </span>
-        <button className="btn btn--primary" onClick={() => run.mutate()} disabled={run.isPending}>
+        <button className="btn btn--primary" onClick={() => run.mutate(undefined)} disabled={run.isPending}>
           Confirm
         </button>
+        <TwinChoices personId={group.person_id} name={group.name} prefix="Confirm as " onPick={(p) => run.mutate(p)} disabled={run.isPending} />
+        <ViewPhotos faces={group.faces} />
       </div>
       <div className="cluster__faces">
         {group.faces.map((f) => (
@@ -225,7 +295,7 @@ function CheckGroup({ group }: { group: ReviewGroup }) {
             key={f.id}
             face={f}
             dimmed={wrong.has(f.id)}
-            caption={`${f.source === "auto" && f.person_id ? "?" : "maybe"} ${Math.round((f.confidence ?? 0) * 100)}% ${f.year_label}`}
+            caption={`${f.source === "auto" && f.person_id ? "?" : "maybe"}${f.suggested_name && f.suggested_alt_name ? ` ${pairLabel(f.suggested_name, f.suggested_alt_name)}?` : ""} ${Math.round((f.confidence ?? 0) * 100)}% ${f.year_label}`}
             onClick={() =>
               setWrong((prev) => {
                 const next = new Set(prev);
@@ -254,10 +324,10 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
   };
 
   const run = useMutation({
-    mutationFn: async (action: { name?: string; person_id?: number; ignore?: boolean }) => {
+    mutationFn: async (action: { name?: string; person_id?: number; alt_person_id?: number; ignore?: boolean }) => {
       const ids = cluster.member_ids.filter((id) => !excluded.has(id));
       if (action.ignore) return api.ignoreFaces(ids);
-      return api.assignFaces(ids, action.person_id ? { person_id: action.person_id } : { name: action.name });
+      return api.assignFaces(ids, action.person_id ? { person_id: action.person_id, alt_person_id: action.alt_person_id } : { name: action.name });
     },
     onSuccess: invalidate,
     onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
@@ -291,7 +361,11 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
             {cluster.suggestion.name}? <span className="muted">{Math.round(cluster.suggestion.similarity * 100)}%</span>
           </button>
         )}
-        <NameInput onSubmit={(name) => run.mutate({ name })} busy={run.isPending} />
+        {cluster.suggestion && (
+          <TwinChoices personId={cluster.suggestion.person_id} name={cluster.suggestion.name} suffix="?" className="chip"
+            onPick={(p) => run.mutate(p)} disabled={run.isPending} />
+        )}
+        <NameInput onSubmit={(name) => run.mutate({ name })} onPair={(p) => run.mutate(p)} busy={run.isPending} />
         <button className="btn btn--ghost" onClick={() => run.mutate({ ignore: true })} disabled={run.isPending} title="Strangers, background people, not faces">
           Ignore
         </button>
@@ -334,7 +408,7 @@ function Singles() {
       {selected.size > 0 && (
         <div className="cluster__actions">
           <span className="muted small">{selected.size} selected</span>
-          <NameInput onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} />
+          <NameInput onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} onPair={(p) => act(() => api.assignFaces([...selected], p))} />
           <button className="btn btn--ghost" onClick={() => act(() => api.ignoreFaces([...selected]))}>
             Ignore
           </button>
@@ -358,7 +432,7 @@ function PeopleList() {
             {p.kind === "pet" && <span className="badge person-card__pet">pet</span>}
           </span>
           <span className="muted small">
-            {p.face_count - p.auto_count} photos{p.auto_count > 0 && ` (+${p.auto_count} to check)`}
+            {p.photo_count} photo{p.photo_count === 1 ? "" : "s"}{p.auto_count > 0 && ` (${p.auto_count} to check)`}
             {p.first_year && ` · ${p.first_year}${p.last_year !== p.first_year ? `–${p.last_year}` : ""}`}
             {p.birth_year && ` · b. ${p.birth_year}`}
           </span>
@@ -395,6 +469,16 @@ export function PersonPage({ id }: { id: number }) {
     invalidate();
   };
 
+  // Saved on Enter, on clicking away, and when you leave the page with the change still typed.
+  const nameField = useSaveOnLeave((value) => {
+    const v = value.trim();
+    if (person && v && v !== person.name) save({ name: v });
+  }, id);
+  const yearField = useSaveOnLeave((value) => {
+    const v = value.trim() ? Number(value) : null;
+    if (person && v !== person.birth_year && (v === null || Number.isInteger(v))) save({ birth_year: v });
+  }, id);
+
   if (!person) return <div className="pad muted">{people.isLoading ? "Loading…" : "Person not found."}</div>;
   return (
     <div className="people pad">
@@ -408,7 +492,7 @@ export function PersonPage({ id }: { id: number }) {
           title="Click to rename"
           key={person.name}
           defaultValue={person.name}
-          onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== person.name && save({ name: e.target.value.trim() })}
+          {...nameField}
         />
         <div className="field">
           <span className="field__label">Person or pet</span>
@@ -434,10 +518,7 @@ export function PersonPage({ id }: { id: number }) {
             type="number"
             defaultValue={person.birth_year ?? ""}
             placeholder="e.g. 1972"
-            onBlur={(e) => {
-              const v = e.target.value ? Number(e.target.value) : null;
-              if (v !== person.birth_year) save({ birth_year: v });
-            }}
+            {...yearField}
           />
         </label>
         <label className="field">
@@ -463,10 +544,21 @@ export function PersonPage({ id }: { id: number }) {
           </select>
         </label>
         <a className="btn btn--ghost" href={gridHref({ person_id: id, order: "chrono" })}>
-          Show {person.face_count} photos →
+          Show {person.photo_count} photo{person.photo_count === 1 ? "" : "s"} →
         </a>
         {error && <span className="error">{error}</span>}
       </div>
+      {(person.double_photo_ids ?? []).length > 0 && (
+        // Why there are more faces here than photos: the same person on two faces of one photo.
+        <p className="person-note small">
+          {person.name} is named on more than one face in {(person.double_photo_ids ?? []).length} photo
+          {(person.double_photo_ids ?? []).length === 1 ? "" : "s"}, so there are more faces here than photos. Usually one of
+          them is someone else.{" "}
+          <a href={photoHref((person.double_photo_ids ?? [])[0], { ids: (person.double_photo_ids ?? []).join(",") })}>
+            Check {(person.double_photo_ids ?? []).length === 1 ? "it" : "them"} →
+          </a>
+        </p>
+      )}
       <p className="muted small">
         Oldest to newest. A face that doesn't belong stands out here; select it and remove it.{" "}
         {touch ? "Press and hold a face to open its photo." : "Double-click opens the photo."}
@@ -477,7 +569,7 @@ export function PersonPage({ id }: { id: number }) {
             key={f.id}
             face={f}
             selected={selected.has(f.id)}
-            caption={`${f.source === "auto" ? "? " : ""}${f.year_label || "undated"}`}
+            caption={`${f.source === "auto" ? "? " : ""}${orOther(f, id)}${f.year_label || "undated"}`}
             photoList={{ person_id: id, order: "chrono" }}
             onClick={() =>
               setSelected((prev) => {
@@ -495,10 +587,10 @@ export function PersonPage({ id }: { id: number }) {
           <button className="btn btn--ghost" onClick={() => act(() => api.acceptFaces([...selected]))}>
             Confirm
           </button>
-          <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([...selected]))}>
+          <button className="btn btn--ghost" onClick={() => act(() => api.rejectFaces([...selected], id))}>
             Not {person.name}
           </button>
-          <NameInput placeholder="Move to…" onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} />
+          <NameInput placeholder="Move to…" onSubmit={(name) => act(() => api.assignFaces([...selected], { name }))} onPair={(p) => act(() => api.assignFaces([...selected], p))} />
           <button className="btn btn--ghost" onClick={() => act(() => api.ignoreFaces([...selected]))}>
             Ignore
           </button>
@@ -506,6 +598,12 @@ export function PersonPage({ id }: { id: number }) {
       )}
     </div>
   );
+}
+
+/** "or Ben · " on Ana's page for a face that's one of the two (twins); "" otherwise. */
+function orOther(f: Face, personId: number): string {
+  if (!f.alt_person_id) return "";
+  return `or ${f.person_id === personId ? f.alt_name : f.person_name} · `;
 }
 
 export type { Person };
